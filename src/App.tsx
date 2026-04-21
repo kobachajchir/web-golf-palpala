@@ -1,77 +1,83 @@
-import { Routes, Route } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { Navbar } from './components/Navbar';
+import { AdminRoute, ProtectedRoute, PublicRoute } from './components/routes/RoleBasedRoute';
+import { useAuth } from './hooks/useAuth';
+import { AdminUserProfile } from './pages/AdminUserProfile';
+import { Home } from './pages/Home';
 import { Index } from './pages/Index';
 import { Login } from './pages/Login';
-import { Home } from './pages/Home';
-import { PublicRoute, AdminRoute, OwnerRoute, EmployeeRoute, MembersRoute, ProtectedRoute } from './components/routes/RoleBasedRoute';
+import { Profile } from './pages/Profile';
+import { SignUp } from './pages/SignUp';
+import './styles/pages.css';
 
 function App() {
+  const location = useLocation();
+  const { isAuthenticated, loading } = useAuth();
+  const showNavbar =
+    !loading &&
+    isAuthenticated &&
+    location.pathname !== '/login' &&
+    location.pathname !== '/signup';
+
   return (
-    <Routes>
-      {/* Ruta index - verifica sesión y redirige */}
-      <Route path="/" element={<Index />} />
+    <>
+      <main className={showNavbar ? 'app-shell' : 'app-shell app-shell--full'}>
+        {showNavbar && <Navbar />}
+        <Routes>
+          <Route path="/" element={<Index />} />
 
-      {/* Rutas públicas */}
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <Login />
-          </PublicRoute>
-        }
-      />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
 
-      {/* Home accesible para todos los roles autenticados */}
-      <Route
-        path="/home"
-        element={
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        }
-      />
+          <Route
+            path="/signup"
+            element={
+              <PublicRoute>
+                <SignUp />
+              </PublicRoute>
+            }
+          />
 
-      {/* TODO: Agregar rutas específicas por rol */}
-      {/* 
-      <Route
-        path="/admin"
-        element={
-          <AdminRoute>
-            <AdminPage />
-          </AdminRoute>
-        }
-      />
+          <Route
+            path="/home"
+            element={
+              <ProtectedRoute>
+                <Home />
+              </ProtectedRoute>
+            }
+          />
 
-      <Route
-        path="/owner"
-        element={
-          <OwnerRoute>
-            <OwnerPage />
-          </OwnerRoute>
-        }
-      />
+          <Route
+            path="/users/:id"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
 
-      <Route
-        path="/employee"
-        element={
-          <EmployeeRoute>
-            <EmployeePage />
-          </EmployeeRoute>
-        }
-      />
+          <Route
+            path="/admin/users/:id"
+            element={
+              <AdminRoute>
+                <AdminUserProfile />
+              </AdminRoute>
+            }
+          />
 
-      <Route
-        path="/members"
-        element={
-          <MembersRoute>
-            <MembersPage />
-          </MembersRoute>
-        }
-      />
-      */}
-
-      {/* Ruta 404 */}
-      <Route path="*" element={<div style={{ textAlign: 'center', marginTop: '50px' }}>Página no encontrada</div>} />
-    </Routes>
+          <Route
+            path="*"
+            element={<div className="empty-state">Página no encontrada</div>}
+          />
+        </Routes>
+      </main>
+    </>
   );
 }
 
