@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import { getUserDisplayName } from '../utils/user';
@@ -32,54 +33,54 @@ type RoleView = {
 const ROLE_VIEWS: Record<RoleType, RoleView> = {
   [ROLES.MEMBER]: {
     eyebrow: 'Tu cuenta',
-    description: 'Tu vista personal para reservas, cuotas y agenda deportiva.',
-    summaryTitle: 'Tu proxima salida',
-    summaryDetail: 'Reserva activa hoy a las 16:30 en cancha principal.',
-    summaryCta: 'Ver reserva',
+    description: 'Consulta tu estado de cuenta, cuotas y movimientos vinculados al club.',
+    summaryTitle: 'Tu estado de cuenta',
+    summaryDetail: 'Tenes una cuota pendiente y un comprobante nuevo disponible para revisar.',
+    summaryCta: 'Ver cuenta',
     actions: [
-      { id: 'book-court', label: 'Reservar cancha', helper: 'Elegir horario disponible', icon: 'calendar' },
-      { id: 'fees', label: 'Ver cuotas', helper: 'Estado y vencimientos', icon: 'wallet' },
-      { id: 'events', label: 'Inscribirme a eventos', helper: 'Torneos y actividades', icon: 'flag' },
+      { id: 'account-status', label: 'Estado de cuenta', helper: 'Pendientes y saldo', icon: 'wallet' },
+      { id: 'payments', label: 'Mis pagos', helper: 'Cobros y acreditaciones', icon: 'calendar' },
+      { id: 'receipts', label: 'Comprobantes', helper: 'Recibos y respaldos', icon: 'flag' },
       { id: 'profile', label: 'Actualizar mis datos', helper: 'Telefono y perfil', icon: 'badge' },
     ],
   },
   [ROLES.EMPLOYEE]: {
     eyebrow: 'Operacion diaria',
-    description: 'Acciones rapidas para la operacion diaria del club.',
-    summaryTitle: 'Turnos del dia',
-    summaryDetail: 'Hay 3 reservas por confirmar y 2 pagos para registrar.',
-    summaryCta: 'Ir a operacion',
+    description: 'Acciones rapidas para registrar ingresos, egresos y movimientos diarios.',
+    summaryTitle: 'Caja del dia',
+    summaryDetail: 'Hay 2 ingresos por registrar, 1 egreso pendiente y 3 movimientos para conciliar.',
+    summaryCta: 'Ir a caja',
     actions: [
-      { id: 'check-reservations', label: 'Gestionar reservas', helper: 'Confirmar y reprogramar', icon: 'calendar' },
-      { id: 'cash-desk', label: 'Registrar cobros', helper: 'Caja y movimientos', icon: 'wallet' },
-      { id: 'members-support', label: 'Asistir socios', helper: 'Datos y consultas', icon: 'people' },
+      { id: 'cash-income', label: 'Registrar ingresos', helper: 'Cobros y entradas', icon: 'wallet' },
+      { id: 'cash-expense', label: 'Registrar egresos', helper: 'Pagos y salidas', icon: 'clipboard' },
+      { id: 'cash-close', label: 'Cierre de caja', helper: 'Resumen del turno', icon: 'chart' },
       { id: 'report-expense', label: 'Cargar gasto', helper: 'Tickets y rendiciones', icon: 'clipboard' },
     ],
   },
   [ROLES.ADMIN]: {
     eyebrow: 'Gestion interna',
-    description: 'Herramientas de control para usuarios, permisos y administracion.',
-    summaryTitle: 'Pendientes de gestion',
-    summaryDetail: 'Hay 2 usuarios para revisar, 4 gastos pendientes y 1 ajuste de caja.',
+    description: 'Control administrativo para usuarios, gastos, cobros y movimientos contables.',
+    summaryTitle: 'Pendientes contables',
+    summaryDetail: 'Hay 4 gastos por validar, 3 cobros sin conciliar y 1 ajuste de caja para revisar.',
     summaryCta: 'Abrir panel',
     actions: [
       { id: 'manage-users', label: 'Gestionar usuarios', helper: 'Altas, bajas y perfiles', icon: 'people' },
-      { id: 'roles-permissions', label: 'Roles y permisos', helper: 'Accesos por modulo', icon: 'shield' },
-      { id: 'audit', label: 'Ver auditoria', helper: 'Cambios recientes', icon: 'chart' },
-      { id: 'fees-admin', label: 'Administrar cuotas', helper: 'Generacion y seguimiento', icon: 'wallet' },
+      { id: 'expense-review', label: 'Validar gastos', helper: 'Revision y aprobacion', icon: 'clipboard' },
+      { id: 'cash-movements', label: 'Caja y movimientos', helper: 'Ingresos y egresos', icon: 'chart' },
+      { id: 'fees-admin', label: 'Cobros y cuotas', helper: 'Generacion y seguimiento', icon: 'wallet' },
     ],
   },
   [ROLES.OWNER]: {
-    eyebrow: 'Decision y seguimiento',
-    description: 'Resumen ejecutivo para decisiones rapidas del club.',
-    summaryTitle: 'Estado del negocio',
-    summaryDetail: 'La caja diaria viene arriba de ayer y hay un evento con cupo casi completo.',
+    eyebrow: 'Seguimiento institucional',
+    description: 'Vision consolidada para decision contable y administrativa de la Junta Directiva.',
+    summaryTitle: 'Estado financiero',
+    summaryDetail: 'Hoy ingreso mas dinero del esperado, pero hay egresos extraordinarios pendientes de aprobacion.',
     summaryCta: 'Ver tablero',
     actions: [
-      { id: 'metrics', label: 'Indicadores clave', helper: 'Ingresos, gastos y uso', icon: 'chart' },
+      { id: 'cash-flow', label: 'Flujo de caja', helper: 'Entradas y salidas', icon: 'chart' },
       { id: 'approvals', label: 'Aprobar gastos', helper: 'Control de egresos', icon: 'clipboard' },
-      { id: 'events-owner', label: 'Supervisar eventos', helper: 'Capacidad y resultados', icon: 'flag' },
-      { id: 'strategic-users', label: 'Equipo y roles', helper: 'Usuarios y permisos', icon: 'shield' },
+      { id: 'monthly-reports', label: 'Reportes mensuales', helper: 'Balance y resumen', icon: 'flag' },
+      { id: 'budget-followup', label: 'Seguimiento presupuestario', helper: 'Desvios y decisiones', icon: 'shield' },
     ],
   },
 };
@@ -121,11 +122,22 @@ function Icon({ type }: { type: ActionIconType }) {
 
 export function Home() {
   const { user, interfaceMode } = useAuth();
+  const navigate = useNavigate();
   const displayName = getUserDisplayName(user);
   const roleView = ROLE_VIEWS[interfaceMode];
   const isMemberView = interfaceMode === ROLES.MEMBER;
 
   const handlePrimaryAction = () => {
+    if (interfaceMode === ROLES.ADMIN) {
+      navigate('/admin/members');
+      return;
+    }
+
+    if (interfaceMode === ROLES.MEMBER) {
+      navigate(`/users/${user?.id || 'test'}`);
+      return;
+    }
+
     console.log('Mock accion destacada del home', {
       role: interfaceMode,
       action: roleView.summaryCta,
@@ -134,6 +146,16 @@ export function Home() {
   };
 
   const handleRoleAction = (action: RoleAction) => {
+    if (action.id === 'manage-users' && user?.role_id === ROLES.ADMIN) {
+      navigate('/admin/members');
+      return;
+    }
+
+    if (action.id === 'profile') {
+      navigate(`/users/${user?.id || 'test'}`);
+      return;
+    }
+
     console.log('Mock accion por rol', {
       role: interfaceMode,
       action_id: action.id,

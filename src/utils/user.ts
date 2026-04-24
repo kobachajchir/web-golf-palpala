@@ -10,22 +10,18 @@ function toTitleCase(value: string): string {
 }
 
 export function getUserDisplayName(
-  user: Pick<User, 'display_name' | 'email' | 'profile_id'> | null | undefined,
+  user: Pick<User, 'first_name' | 'last_name' | 'user_number' | 'profile_id'> | null | undefined,
 ): string {
   if (!user) {
     return 'invitado';
   }
 
-  if ('display_name' in user && typeof user.display_name === 'string' && user.display_name.trim()) {
-    return toTitleCase(user.display_name.trim());
-  }
-
-  const emailName = user.email.split('@')[0];
-  return toTitleCase(emailName || user.profile_id || 'usuario');
+  const fullName = `${user.first_name} ${user.last_name}`.trim();
+  return toTitleCase(fullName || user.user_number || user.profile_id || 'usuario');
 }
 
 export function getUserInitial(
-  user: Pick<User, 'display_name' | 'email' | 'profile_id'> | null | undefined,
+  user: Pick<User, 'first_name' | 'last_name' | 'user_number' | 'profile_id'> | null | undefined,
 ): string {
   return getUserDisplayName(user).charAt(0).toUpperCase();
 }

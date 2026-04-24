@@ -6,6 +6,8 @@ import { AdminUserProfile } from './pages/AdminUserProfile';
 import { Home } from './pages/Home';
 import { Index } from './pages/Index';
 import { Login } from './pages/Login';
+import { MemberMembershipProfile } from './pages/MemberMembershipProfile';
+import { MembersAdmin } from './pages/MembersAdmin';
 import { Profile } from './pages/Profile';
 import { SignUp } from './pages/SignUp';
 import './styles/pages.css';
@@ -72,9 +74,24 @@ function App() {
           />
 
           <Route
-            path="*"
-            element={<div className="empty-state">Página no encontrada</div>}
+            path="/admin/members"
+            element={
+              <AdminRoute>
+                <MembersAdmin />
+              </AdminRoute>
+            }
           />
+
+          <Route
+            path="/admin/members/:memberId"
+            element={
+              <AdminRoute>
+                <MemberMembershipProfile />
+              </AdminRoute>
+            }
+          />
+
+          <Route path="*" element={<div className="empty-state">Pagina no encontrada</div>} />
         </Routes>
       </main>
     </>

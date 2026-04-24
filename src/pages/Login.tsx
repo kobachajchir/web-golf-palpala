@@ -1,28 +1,13 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ROLES } from '../constants/roles';
-import type { User } from '../context/AuthContext';
 import { useAuth } from '../hooks/useAuth';
-import { DEV_USER, DEV_USER_EMAIL, DEV_USER_PASSWORD } from '../mocks/devUser';
+import { DEV_USER_NUMBER, DEV_USER_PASSWORD } from '../mocks/devUser';
+import { findUserByLogin, updateMockUserTimestamps } from '../mocks/userDirectory';
 import '../styles/pages.css';
 
 type LoginFormState = {
-  email: string;
+  user_number: string;
   password: string;
-};
-
-// Valores por defecto para un usuario nuevo.
-export const initialDefaultUser: User = {
-  id: '',
-  auth_uid: '',
-  email: '',
-  role_id: ROLES.MEMBER,
-  profile_type: 'socio',
-  profile_id: '',
-  status: 'activo',
-  must_change_password: false,
-  created_at: '',
-  updated_at: '',
 };
 
 function toDatetimeLocal(date = new Date()) {
@@ -34,7 +19,7 @@ export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState<LoginFormState>({
-    email: '',
+    user_number: '',
     password: '',
   });
   const [error, setError] = useState('');
@@ -51,49 +36,31 @@ export function Login() {
     event.preventDefault();
     setError('');
 
-    if (!formData.email || !formData.password) {
-      setError('Por favor completa email y contrasena.');
+    if (!formData.user_number || !formData.password) {
+      setError('Por favor completa numero de usuario y contrasena.');
       return;
     }
 
     const now = toDatetimeLocal();
-    const normalizedEmail = formData.email.trim().toLowerCase();
+    const normalizedUserNumber = formData.user_number.trim();
+    const foundUser = findUserByLogin(normalizedUserNumber, formData.password);
 
-    if (normalizedEmail === DEV_USER_EMAIL && formData.password !== DEV_USER_PASSWORD) {
-      setError('La contrasena del usuario dev no coincide.');
+    if (!foundUser) {
+      setError('El numero de usuario o la contrasena no coinciden.');
       return;
     }
 
-    if (normalizedEmail === DEV_USER_EMAIL && formData.password === DEV_USER_PASSWORD) {
-      const userData: User = {
-        ...DEV_USER,
+    const userData =
+      updateMockUserTimestamps(foundUser.id, now) || {
+        ...foundUser,
         last_login_at: now,
         updated_at: now,
       };
 
-      console.log('Mock Firebase Auth login dev', {
-        email: DEV_USER_EMAIL,
-        role_id: userData.role_id,
-      });
-      console.log('Mock Firestore users document', userData);
-
-      login(userData);
-      navigate('/home', { replace: true });
-      return;
-    }
-
-    const userData: User = {
-      ...initialDefaultUser,
-      id: `user-${Date.now()}`,
-      auth_uid: `firebase-uid-${Date.now()}`,
-      email: normalizedEmail,
-      created_at: now,
-      updated_at: now,
-    };
-
     console.log('Mock Firebase Auth login', {
-      email: normalizedEmail,
-      password_length: formData.password.length,
+      user_number: normalizedUserNumber,
+      is_dev_user: normalizedUserNumber === DEV_USER_NUMBER && formData.password === DEV_USER_PASSWORD,
+      role_id: userData.role_id,
     });
     console.log('Mock Firestore users document', userData);
 
@@ -107,25 +74,25 @@ export function Login() {
         <div className="auth-card__intro">
           <p className="eyebrow">Golf Palpala</p>
           <h1>Ingreso</h1>
-          <p>Ingresa con tu email y contrasena.</p>
+          <p>Ingresa con tu numero de usuario y contrasena.</p>
           <p className="auth-dev-note">
-            Dev: <strong>{DEV_USER_EMAIL}</strong> / <strong>{DEV_USER_PASSWORD}</strong>
+            Dev: <strong>{DEV_USER_NUMBER}</strong> / <strong>{DEV_USER_PASSWORD}</strong>
           </p>
         </div>
 
         {error && <div className="error-message">{error}</div>}
 
         <form className="auth-form" onSubmit={handleSubmit}>
-          <label className="form-field" htmlFor="email">
-            <span>Email</span>
+          <label className="form-field" htmlFor="user_number">
+            <span>Numero de usuario</span>
             <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={formData.email}
+              id="user_number"
+              name="user_number"
+              type="text"
+              autoComplete="username"
+              value={formData.user_number}
               onChange={handleChange}
-              placeholder="tu@email.com"
+              placeholder="Ej. 100001"
             />
           </label>
 

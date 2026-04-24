@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seed:members": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-users-emulator.ps1",
+    "emulators:start:users": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-users-emulators.ps1"
   },
   "dependencies": {
+    "firebase": "^12.12.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.14.1"

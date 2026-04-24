@@ -1,0 +1,105 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasClaim(claim) {
+      return isSignedIn() && request.auth.token[claim] == true;
+    }
+
+    function isDirectivo() {
+      return hasClaim('directivo');
+    }
+
+    function isAdministrativo() {
+      return hasClaim('administrativo');
+    }
+
+    function isStaff() {
+      return isDirectivo() || isAdministrativo();
+    }
+
+    function isOwnUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isLinkedMemberSelf(memberResource) {
+      return isSignedIn() && memberResource.data.linkedUserId == request.auth.uid;
+    }
+
+    function isLinkedHandicapSelf(handicapResource) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/members/$(handicapResource.data.memberId)).data.linkedUserId == request.auth.uid;
+    }
+
+    function isOwnUserSelfServiceUpdate(uid) {
+      return isOwnUser(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+        && request.resource.data.displayName is string
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.primaryRoleId == resource.data.primaryRoleId
+        && request.resource.data.roleIds == resource.data.roleIds
+        && request.resource.data.profileType == resource.data.profileType
+        && request.resource.data.profileId == resource.data.profileId
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.claimsVersion == resource.data.claimsVersion
+        && request.resource.data.lastLoginAt == resource.data.lastLoginAt
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.updatedBy == resource.data.updatedBy;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwnUser(uid) || isStaff();
+      allow create: if false;
+      allow update: if isDirectivo() || isOwnUserSelfServiceUpdate(uid);
+      allow delete: if false;
+    }
+
+    match /roles/{roleId} {
+      allow read: if isSignedIn();
+      allow write: if isDirectivo();
+    }
+
+    match /permissions/{permissionId} {
+      allow read: if isSignedIn();
+      allow write: if isDirectivo();
+    }
+
+    match /role_permissions/{rolePermissionId} {
+      allow read: if isSignedIn();
+      allow write: if isDirectivo();
+    }
+
+    match /member_types/{memberTypeId} {
+      allow read: if isSignedIn();
+      allow write: if isDirectivo();
+    }
+
+    match /family_groups/{familyGroupId} {
+      allow read, write: if isStaff();
+      allow delete: if false;
+    }
+
+    match /members/{memberId} {
+      allow read: if isStaff() || isLinkedMemberSelf(resource);
+      allow write: if isStaff();
+      allow delete: if false;
+    }
+
+    match /employees/{employeeId} {
+      allow read, write: if isStaff();
+      allow delete: if false;
+    }
+
+    match /handicaps/{handicapId} {
+      allow read: if isStaff() || isLinkedHandicapSelf(resource);
+      allow write: if isStaff();
+      allow delete: if false;
+    }
+  }
+}

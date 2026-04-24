@@ -1,26 +1,24 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { initialDefaultUser } from './Login';
-import type { User } from '../context/AuthContext';
 import { useAuth } from '../hooks/useAuth';
+import { isDniAlreadyRegistered, registerMockUser } from '../mocks/userDirectory';
 
 type SignUpFormState = {
-  email: string;
+  first_name: string;
+  last_name: string;
+  dni: string;
   password: string;
   confirmPassword: string;
   acceptTerms: boolean;
 };
 
-function toDatetimeLocal(date = new Date()) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
-}
-
 export function SignUp() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState<SignUpFormState>({
-    email: '',
+    first_name: '',
+    last_name: '',
+    dni: '',
     password: '',
     confirmPassword: '',
     acceptTerms: false,
@@ -41,41 +39,54 @@ export function SignUp() {
     event.preventDefault();
     setError('');
 
-    if (!formData.email || !formData.password || !formData.confirmPassword) {
+    if (
+      !formData.first_name ||
+      !formData.last_name ||
+      !formData.dni ||
+      !formData.password ||
+      !formData.confirmPassword
+    ) {
       setError('Por favor completa todos los campos.');
       return;
     }
 
+    if (!/^\d{7,8}$/.test(formData.dni.trim())) {
+      setError('El DNI debe tener 7 u 8 numeros.');
+      return;
+    }
+
+    if (isDniAlreadyRegistered(formData.dni)) {
+      setError('Ya existe un usuario registrado con ese DNI.');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
-      setError('Las contraseñas no coinciden.');
+      setError('Las contrasenas no coinciden.');
       return;
     }
 
     if (formData.password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.');
+      setError('La contrasena debe tener al menos 6 caracteres.');
       return;
     }
 
     if (!formData.acceptTerms) {
-      setError('Debes aceptar los términos y condiciones.');
+      setError('Debes aceptar los terminos y condiciones.');
       return;
     }
 
-    const now = toDatetimeLocal();
-
-    // Crear usuario con datos completos desde los valores por defecto
-    const userData: User = {
-      ...initialDefaultUser,
-      id: `user-${Date.now()}`,
-      auth_uid: `firebase-uid-${Date.now()}`,
-      email: formData.email,
-      status: 'activo',
-      created_at: now,
-      updated_at: now,
-    };
+    const userData = registerMockUser({
+      first_name: formData.first_name,
+      last_name: formData.last_name,
+      dni: formData.dni,
+      password: formData.password,
+    });
 
     console.log('Mock Firebase Auth signup', {
-      email: formData.email,
+      user_number: userData.user_number,
+      first_name: userData.first_name,
+      last_name: userData.last_name,
+      dni: userData.dni,
       password_length: formData.password.length,
     });
     console.log('Mock Firestore users document created', userData);
@@ -88,29 +99,55 @@ export function SignUp() {
     <div className="page-container signup-page">
       <section className="auth-card">
         <div className="auth-card__intro">
-          <p className="eyebrow">Golf Palpalá</p>
+          <p className="eyebrow">Golf Palpala</p>
           <h1>Registro</h1>
-          <p>Crea tu cuenta para acceder.</p>
+          <p>Crea tu cuenta con nombre, apellido y DNI. El numero de usuario se genera automaticamente.</p>
         </div>
 
         {error && <div className="error-message">{error}</div>}
 
         <form className="auth-form" onSubmit={handleSubmit}>
-          <label className="form-field" htmlFor="email">
-            <span>Email</span>
+          <label className="form-field" htmlFor="first_name">
+            <span>Nombre</span>
             <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              value={formData.email}
+              id="first_name"
+              name="first_name"
+              type="text"
+              autoComplete="given-name"
+              value={formData.first_name}
               onChange={handleChange}
-              placeholder="tu@email.com"
+              placeholder="Tu nombre"
+            />
+          </label>
+
+          <label className="form-field" htmlFor="last_name">
+            <span>Apellido</span>
+            <input
+              id="last_name"
+              name="last_name"
+              type="text"
+              autoComplete="family-name"
+              value={formData.last_name}
+              onChange={handleChange}
+              placeholder="Tu apellido"
+            />
+          </label>
+
+          <label className="form-field" htmlFor="dni">
+            <span>DNI</span>
+            <input
+              id="dni"
+              name="dni"
+              type="text"
+              inputMode="numeric"
+              value={formData.dni}
+              onChange={handleChange}
+              placeholder="Solo numeros"
             />
           </label>
 
           <label className="form-field" htmlFor="password">
-            <span>Contraseña</span>
+            <span>Contrasena</span>
             <input
               id="password"
               name="password"
@@ -118,12 +155,12 @@ export function SignUp() {
               autoComplete="new-password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="Mínimo 6 caracteres"
+              placeholder="Minimo 6 caracteres"
             />
           </label>
 
           <label className="form-field" htmlFor="confirmPassword">
-            <span>Confirmar contraseña</span>
+            <span>Confirmar contrasena</span>
             <input
               id="confirmPassword"
               name="confirmPassword"
@@ -131,7 +168,7 @@ export function SignUp() {
               autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleChange}
-              placeholder="Repite tu contraseña"
+              placeholder="Repite tu contrasena"
             />
           </label>
 
@@ -143,7 +180,7 @@ export function SignUp() {
               checked={formData.acceptTerms}
               onChange={handleChange}
             />
-            <span>Acepto los términos y condiciones</span>
+            <span>Acepto los terminos y condiciones</span>
           </label>
 
           <button type="submit" className="btn-primary form-submit">
@@ -153,7 +190,7 @@ export function SignUp() {
 
         <div className="auth-card__footer">
           <p>
-            ¿Ya tenés cuenta?{' '}
+            Ya tenes cuenta?{' '}
             <Link to="/login" className="auth-link">
               Ingresar
             </Link>

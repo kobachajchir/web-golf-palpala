@@ -1,0 +1,38 @@
+{
+  "name": "web-golf-palpala-functions",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:test": "tsc -p tsconfig.tests.json",
+    "build:watch": "tsc -w -p tsconfig.json",
+    "lint": "eslint .",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "test": "npm run test:unit && npm run test:rules",
+    "test:rules": "npm run build:test && firebase emulators:exec --config ..\\firebase.json --project demo-web-golf-palpala --only firestore \"node --test --test-isolation=none lib-tests/tests/rules/firestore.rules.test.js\"",
+    "test:unit": "npm run build:test && node --test --test-isolation=none lib-tests/tests/unit/all.test.js",
+    "import:palpala-members": "npm run build && node lib/scripts/import-palpala-members.js",
+    "deploy": "firebase deploy --only functions",
+    "deploy:healthcheck": "firebase deploy --only functions:healthcheck",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.43.0",
+    "@typescript-eslint/parser": "^8.43.0",
+    "eslint": "^9.39.4",
+    "firebase-tools": "^14.20.0",
+    "globals": "^17.5.0",
+    "typescript": "^6.0.3"
+  }
+}

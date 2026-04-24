@@ -34,8 +34,8 @@ export function Profile() {
           </div>
 
           <div className="public-profile-field">
-            <span>Email</span>
-            <strong>{profile.email}</strong>
+            <span>Numero de usuario</span>
+            <strong>{profile.user_number}</strong>
           </div>
 
           <div className="public-profile-field">

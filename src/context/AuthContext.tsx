@@ -15,9 +15,7 @@ export type {
   user_type,
 } from '../types';
 
-export type User = user_type & {
-  display_name?: string;
-};
+export type User = user_type;
 export type ThemeMode = 'light' | 'dark';
 
 const INTERFACE_MODE_STORAGE_KEY = 'interface_mode';
@@ -66,6 +64,22 @@ function asThemeMode(value: unknown): ThemeMode {
   return value === 'dark' ? 'dark' : 'light';
 }
 
+function splitName(value: string): { firstName: string; lastName: string } {
+  const sanitizedValue = value.trim().replace(/\s+/g, ' ');
+  if (!sanitizedValue) {
+    return {
+      firstName: 'Usuario',
+      lastName: '',
+    };
+  }
+
+  const [firstName, ...rest] = sanitizedValue.split(' ');
+  return {
+    firstName: firstName || 'Usuario',
+    lastName: rest.join(' '),
+  };
+}
+
 function normalizeStoredUser(value: unknown): User | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -74,11 +88,19 @@ function normalizeStoredUser(value: unknown): User | null {
   const record = value as Record<string, unknown>;
   const legacyRole = asString(record.role, ROLES.MEMBER);
   const now = timestampNow();
+  const legacyDisplayName = asString(
+    record.display_name,
+    asString(record.email, asString(record.profile_id, 'Usuario')),
+  );
+  const { firstName, lastName } = splitName(legacyDisplayName);
 
   const normalizedUser: User = {
     id: asString(record.id, 'user-demo'),
     auth_uid: asString(record.auth_uid, 'firebase-uid-demo'),
-    email: asString(record.email, 'socio@golfpalpala.com'),
+    user_number: asString(record.user_number, '100000'),
+    first_name: asString(record.first_name, firstName),
+    last_name: asString(record.last_name, lastName),
+    dni: asString(record.dni, '00000000'),
     role_id: asString(record.role_id, legacyRole),
     profile_type: asProfileType(record.profile_type),
     profile_id: asString(record.profile_id, 'socio-001'),
@@ -87,10 +109,6 @@ function normalizeStoredUser(value: unknown): User | null {
     created_at: asString(record.created_at, now),
     updated_at: asString(record.updated_at, now),
   };
-
-  if (typeof record.display_name === 'string' && record.display_name.trim()) {
-    normalizedUser.display_name = record.display_name.trim();
-  }
 
   if (typeof record.last_login_at === 'string' && record.last_login_at) {
     normalizedUser.last_login_at = record.last_login_at;

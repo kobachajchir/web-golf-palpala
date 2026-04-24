@@ -13,8 +13,17 @@ export type user_type = {
   // UID de Firebase Auth asociado a este usuario
   auth_uid: string;
 
-  // Email principal de acceso
-  email: string;
+  // Numero unico de usuario utilizado para iniciar sesion
+  user_number: string;
+
+  // Nombre del usuario
+  first_name: string;
+
+  // Apellido del usuario
+  last_name: string;
+
+  // Documento nacional de identidad
+  dni: string;
 
   // ID del rol asignado al usuario
   role_id: id_type;

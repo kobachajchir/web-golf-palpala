@@ -89,21 +89,23 @@ export function Navbar() {
   const notificationsByMode: Record<RoleType, NotificationItem[]> = useMemo(
     () => ({
       [ROLES.MEMBER]: [
-        { id: 'n1', title: 'Reserva confirmada', detail: 'Cancha principal hoy a las 16:30.' },
+        { id: 'n1', title: 'Comprobante disponible', detail: 'Ya podes revisar el ultimo recibo emitido.' },
         { id: 'n2', title: 'Cuota proxima a vencer', detail: 'Tu cuota vence en 3 dias.' },
       ],
       [ROLES.EMPLOYEE]: [
-        { id: 'n1', title: 'Reservas por revisar', detail: 'Hay 2 turnos nuevos para confirmar.' },
-        { id: 'n2', title: 'Caja pendiente', detail: 'Se registro un pago manual sin metodo.' },
-        { id: 'n3', title: 'Socio en espera', detail: 'Recepcion espera validacion de acceso.' },
+        { id: 'n1', title: 'Ingreso por registrar', detail: 'Hay 2 cobros pendientes de carga.' },
+        { id: 'n2', title: 'Caja pendiente', detail: 'Se registro un movimiento sin medio de pago.' },
+        { id: 'n3', title: 'Egreso en espera', detail: 'Hay un pago manual pendiente de confirmacion.' },
         { id: 'n4', title: 'Gasto cargado', detail: 'Hay un ticket pendiente de revision.' },
       ],
       [ROLES.ADMIN]: [
-        { id: 'n1', title: 'Nuevo usuario', detail: 'Hay una cuenta nueva para revisar.' },
-        { id: 'n2', title: 'Permisos actualizados', detail: 'Se modifico un rol administrativo.' },
-        { id: 'n3', title: 'Auditoria disponible', detail: 'Se registraron cambios en caja.' },
+        { id: 'n1', title: 'Gastos por aprobar', detail: 'Hay 4 gastos pendientes de validacion.' },
+        { id: 'n2', title: 'Cobros conciliados', detail: 'Se acreditaron 3 pagos durante la manana.' },
+        { id: 'n3', title: 'Auditoria disponible', detail: 'Se registraron cambios en caja y movimientos.' },
       ],
-      [ROLES.OWNER]: [{ id: 'n1', title: 'Resumen diario listo', detail: 'Ya esta disponible el cierre del dia.' }],
+      [ROLES.OWNER]: [
+        { id: 'n1', title: 'Cierre financiero listo', detail: 'La Junta Directiva ya puede revisar el resumen del dia.' },
+      ],
     }),
     [],
   );
@@ -111,6 +113,7 @@ export function Navbar() {
   const notifications = notificationsByMode[interfaceMode];
   const pendingNotifications = notifications.length;
   const displayName = getUserDisplayName(user);
+  const canManageMembers = user?.role_id === ROLES.ADMIN;
 
   useEffect(() => {
     setIsOpen(false);
@@ -210,8 +213,9 @@ export function Navbar() {
       <div className="navbar-center">
         <nav className={`navbar-links ${isOpen ? 'navbar-links--open' : ''}`}>
           <NavLink to="/home">Inicio</NavLink>
-          <button type="button" onClick={() => console.log('Mock navegacion a reservas')}>
-            Reservas
+          {canManageMembers && <NavLink to="/admin/members">Socios</NavLink>}
+          <button type="button" onClick={() => console.log('Mock navegacion a caja')}>
+            Caja
           </button>
         </nav>
       </div>
@@ -288,7 +292,7 @@ export function Navbar() {
             <div className="nav-popover nav-popover--user">
               <div className="nav-user-summary">
                 <strong>{displayName}</strong>
-                <small>{user?.email || 'Sin email'}</small>
+                <small>{user ? `Usuario ${user.user_number}` : 'Sin usuario'}</small>
               </div>
 
               <div className="nav-settings-row">

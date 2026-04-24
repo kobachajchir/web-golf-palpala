@@ -18,7 +18,8 @@ const STATUS_LABELS = {
 } as const;
 
 type ProfileFormState = User & {
-  display_name: string;
+  first_name: string;
+  last_name: string;
 };
 
 function toDatetimeLocal(date = new Date()) {
@@ -29,7 +30,6 @@ function toDatetimeLocal(date = new Date()) {
 function createProfileFormState(profile: User): ProfileFormState {
   return {
     ...profile,
-    display_name: profile.display_name?.trim() || getUserDisplayName(profile),
   };
 }
 
@@ -84,21 +84,25 @@ export function AdminUserProfile() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const normalizedDisplayName = formData.display_name.trim();
-    if (!normalizedDisplayName) {
-      setError('El nombre visible no puede quedar vacio.');
+    const normalizedFirstName = formData.first_name.trim();
+    const normalizedLastName = formData.last_name.trim();
+
+    if (!normalizedFirstName || !normalizedLastName) {
+      setError('El nombre y el apellido no pueden quedar vacios.');
       return;
     }
 
     const updatedProfile: User = {
       ...formData,
-      display_name: normalizedDisplayName,
+      first_name: normalizedFirstName,
+      last_name: normalizedLastName,
       updated_at: toDatetimeLocal(),
     };
 
     console.log('Mock Firestore admin update users/{id}', {
       user_id: updatedProfile.id,
-      display_name: updatedProfile.display_name,
+      first_name: updatedProfile.first_name,
+      last_name: updatedProfile.last_name,
     });
 
     if (isOwnProfile) {
@@ -135,21 +139,28 @@ export function AdminUserProfile() {
         {error && <div className="error-message">{error}</div>}
 
         <form className="profile-form" onSubmit={handleSubmit}>
-          <label className="form-field" htmlFor="profile-display_name">
-            <span>Nombre visible</span>
+          <label className="form-field" htmlFor="profile-first_name">
+            <span>Nombre</span>
             <input
-              id="profile-display_name"
-              name="display_name"
+              id="profile-first_name"
+              name="first_name"
               type="text"
-              value={formData.display_name}
+              value={formData.first_name}
               onChange={handleChange}
               disabled={!isEditing}
             />
           </label>
 
-          <label className="form-field" htmlFor="profile-email">
-            <span>Email principal</span>
-            <input id="profile-email" name="email" type="email" value={formData.email} readOnly />
+          <label className="form-field" htmlFor="profile-last_name">
+            <span>Apellido</span>
+            <input
+              id="profile-last_name"
+              name="last_name"
+              type="text"
+              value={formData.last_name}
+              onChange={handleChange}
+              disabled={!isEditing}
+            />
           </label>
 
           <label className="form-field" htmlFor="profile-id">
@@ -160,6 +171,16 @@ export function AdminUserProfile() {
           <label className="form-field" htmlFor="profile-auth_uid">
             <span>UID de Firebase Auth</span>
             <input id="profile-auth_uid" name="auth_uid" type="text" value={formData.auth_uid} readOnly />
+          </label>
+
+          <label className="form-field" htmlFor="profile-user_number">
+            <span>Numero de usuario</span>
+            <input id="profile-user_number" name="user_number" type="text" value={formData.user_number} readOnly />
+          </label>
+
+          <label className="form-field" htmlFor="profile-dni">
+            <span>DNI</span>
+            <input id="profile-dni" name="dni" type="text" value={formData.dni} readOnly />
           </label>
 
           <label className="form-field" htmlFor="profile-role_id">
@@ -245,7 +266,7 @@ export function AdminUserProfile() {
                 </>
               ) : (
                 <button type="button" className="btn-primary" onClick={handleEdit}>
-                  Modificar nombre
+                  Modificar datos personales
                 </button>
               )}
             </div>
