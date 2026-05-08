@@ -5,6 +5,7 @@ import type {
   EntityWithId,
   FamilyGroupDocument,
   HandicapDocument,
+  MemberLoginIdentifierDocument,
   MemberDocument,
   MemberTypeDocument,
   PermissionDocument,
@@ -79,7 +80,21 @@ export interface MembersStore {
     data: StoreCreate<Omit<MemberDocument, keyof import('./models.js').AuditFields>>,
     actorUid: string,
   ): Promise<string>;
+  createWithId(
+    memberId: string,
+    data: StoreCreate<Omit<MemberDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void>;
   update(memberId: string, patch: StorePatch<MemberDocument>, actorUid: string): Promise<void>;
+}
+
+export interface MemberLoginIdentifiersStore {
+  getById(normalizedMemberNumber: string): Promise<EntityWithId<MemberLoginIdentifierDocument> | null>;
+  set(
+    normalizedMemberNumber: string,
+    data: StorePatch<MemberLoginIdentifierDocument>,
+    actorUid: string,
+  ): Promise<void>;
 }
 
 export interface EmployeesStore {
@@ -110,6 +125,7 @@ export interface UsersDataAccess {
   memberTypes: MemberTypesStore;
   familyGroups: FamilyGroupsStore;
   members: MembersStore;
+  memberLoginIdentifiers: MemberLoginIdentifiersStore;
   employees: EmployeesStore;
   handicaps: HandicapsStore;
 }

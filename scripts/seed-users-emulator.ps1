@@ -2,10 +2,15 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $functionsDir = Join-Path $root 'functions'
+$npmCmd = 'C:\Users\kobac\AppData\Roaming\npm\npm.cmd'
+
+if (-not (Test-Path -LiteralPath $npmCmd)) {
+  $npmCmd = 'npm'
+}
 
 Push-Location $functionsDir
 try {
-  & npm run build
+  & $npmCmd run build
   if ($LASTEXITCODE -ne 0) {
     throw 'Fallo la compilacion de functions.'
   }

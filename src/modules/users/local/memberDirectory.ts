@@ -11,6 +11,8 @@ export type ClubMemberTypeId =
   | 'grupo_familiar_asociado'
   | 'grupo_familiar_titular';
 
+export type ClubMemberStatus = 'active' | 'inactive' | 'license' | 'suspended';
+
 export type ClubMemberRecord = {
   id: string;
   memberNumber: string;
@@ -19,6 +21,7 @@ export type ClubMemberRecord = {
   firstName: string;
   lastName: string;
   dni?: string | undefined;
+  linkedUserId?: string | undefined;
   aagMembershipNumber?: string | undefined;
   membershipStatusLabel: string;
   memberTypeId: ClubMemberTypeId;
@@ -26,7 +29,10 @@ export type ClubMemberRecord = {
   feeDeductionLabel?: string | undefined;
   notes?: string | undefined;
   active: boolean;
+  status: ClubMemberStatus;
   legacyOrder: number;
+  familyGroupId?: string | undefined;
+  familyHolderMemberId?: string | undefined;
   familyGroupCode?: string | undefined;
   householdSize: number;
   isFamilyHolder: boolean;
@@ -41,9 +47,8 @@ export type ClubMemberDraft = {
   fullName: string;
   dni?: string | undefined;
   aagMembershipNumber?: string | undefined;
-  membershipStatusLabel: string;
   memberTypeId: ClubMemberTypeId;
-  feeDeductionLabel?: string | undefined;
+  familyHolderMemberId?: string | undefined;
   notes?: string | undefined;
   active: boolean;
 };
@@ -83,7 +88,6 @@ const COMMON_GIVEN_NAMES = new Set([
   'FABRICIO',
   'FEDERICO',
   'FRANCO',
-  'FRANCILE',
   'FRANCISCO',
   'GABRIEL',
   'GASTON',
@@ -176,6 +180,19 @@ function cleanOptionalValue(value: string): string | undefined {
   return trimmedValue;
 }
 
+function buildFamilyGroupCode(memberNumber: string, fallbackId?: string): string {
+  const cleanedMemberNumber = memberNumber.trim();
+  if (cleanedMemberNumber) {
+    return `GF-${cleanedMemberNumber.padStart(4, '0')}`;
+  }
+
+  return `GF-${fallbackId ?? Date.now().toString(36)}`;
+}
+
+function isEligibleFamilyHolder(member: Pick<ClubMemberRecord, 'memberTypeId'>): boolean {
+  return member.memberTypeId === 'pleno' || member.memberTypeId === 'grupo_familiar_titular';
+}
+
 function mapMemberType(statusLabel: string): { memberTypeId: ClubMemberTypeId; memberTypeLabel: string } {
   const normalizedStatus = normalizeSearchText(statusLabel);
 
@@ -218,6 +235,60 @@ function getMemberTypeLabel(memberTypeId: ClubMemberTypeId): string {
     default:
       return 'Socio pleno';
   }
+}
+
+function getDefaultMembershipStatusLabel(memberTypeId: ClubMemberTypeId): string {
+  switch (memberTypeId) {
+    case 'vitalicio':
+      return 'VITALICIO';
+    case 'menor':
+      return 'SOCIO MENOR';
+    case 'licencia':
+      return 'LICENCIA';
+    case 'grupo_familiar_asociado':
+      return 'GRUPO FAMILIAR';
+    case 'grupo_familiar_titular':
+    case 'pleno':
+    default:
+      return 'SOCIO PLENO';
+  }
+}
+
+function resolveMembershipStatusLabel(
+  memberTypeId: ClubMemberTypeId,
+  currentLabel?: string | undefined,
+): string {
+  return cleanOptionalValue(currentLabel ?? '') ?? getDefaultMembershipStatusLabel(memberTypeId);
+}
+
+function resolveFeeDeductionLabel(
+  memberTypeId: ClubMemberTypeId,
+  _currentLabel?: string | undefined,
+): string | undefined {
+  if (memberTypeId === 'menor') {
+    return '30% SOCIO PLENO';
+  }
+
+  if (memberTypeId !== 'pleno') {
+    return '50% SOCIO PLENO';
+  }
+
+  return undefined;
+}
+
+function buildMemberTypeState(
+  memberTypeId: ClubMemberTypeId,
+  options?: {
+    preserveMembershipStatusLabel?: string | undefined;
+    preserveFeeDeductionLabel?: string | undefined;
+  },
+): Pick<ClubMemberRecord, 'memberTypeId' | 'memberTypeLabel' | 'membershipStatusLabel' | 'feeDeductionLabel'> {
+  return {
+    memberTypeId,
+    memberTypeLabel: getMemberTypeLabel(memberTypeId),
+    membershipStatusLabel: resolveMembershipStatusLabel(memberTypeId, options?.preserveMembershipStatusLabel),
+    feeDeductionLabel: resolveFeeDeductionLabel(memberTypeId, options?.preserveFeeDeductionLabel),
+  };
 }
 
 function splitLegacyFullName(fullName: string): LegacySplitName {
@@ -295,25 +366,140 @@ function sortMembers(members: ClubMemberRecord[]): ClubMemberRecord[] {
   });
 }
 
+function normalizeExplicitFamilyGroups(members: ClubMemberRecord[]): ClubMemberRecord[] {
+  const groups = members.reduce<Map<string, ClubMemberRecord[]>>((accumulator, member) => {
+    if (!member.familyGroupId) {
+      return accumulator;
+    }
+
+    const currentMembers = accumulator.get(member.familyGroupId) ?? [];
+    currentMembers.push(member);
+    accumulator.set(member.familyGroupId, currentMembers);
+    return accumulator;
+  }, new Map());
+
+  if (groups.size === 0) {
+    return members;
+  }
+
+  const patches = new Map<string, Partial<ClubMemberRecord>>();
+
+  groups.forEach((groupMembers, groupId) => {
+    const associatedMembers = groupMembers.filter((member) => member.memberTypeId === 'grupo_familiar_asociado');
+    const holder =
+      groupMembers.find(
+        (member) => member.memberTypeId === 'grupo_familiar_titular' && member.id === member.familyHolderMemberId,
+      ) ??
+      groupMembers.find((member) => member.memberTypeId === 'grupo_familiar_titular') ??
+      groupMembers.find((member) => member.id === member.familyHolderMemberId && isEligibleFamilyHolder(member)) ??
+      groupMembers.find((member) => isEligibleFamilyHolder(member)) ??
+      null;
+
+    if (groupMembers.length < 2 || associatedMembers.length === 0 || !holder) {
+      groupMembers.forEach((member) => {
+        const fallbackTypeId: ClubMemberTypeId =
+          member.memberTypeId === 'grupo_familiar_asociado' || member.memberTypeId === 'grupo_familiar_titular'
+            ? 'pleno'
+            : member.memberTypeId;
+
+        patches.set(member.id, {
+          familyGroupId: undefined,
+          familyHolderMemberId: undefined,
+          ...buildMemberTypeState(fallbackTypeId),
+        });
+      });
+      return;
+    }
+
+    groupMembers.forEach((member) => {
+      if (member.id === holder.id) {
+        patches.set(member.id, {
+          familyGroupId: groupId,
+          familyHolderMemberId: holder.id,
+          ...buildMemberTypeState('grupo_familiar_titular', {
+            preserveMembershipStatusLabel: member.membershipStatusLabel,
+            preserveFeeDeductionLabel: member.feeDeductionLabel,
+          }),
+        });
+        return;
+      }
+
+      if (member.memberTypeId === 'grupo_familiar_asociado') {
+        patches.set(member.id, {
+          familyGroupId: groupId,
+          familyHolderMemberId: holder.id,
+          ...buildMemberTypeState('grupo_familiar_asociado', {
+            preserveMembershipStatusLabel: member.membershipStatusLabel,
+            preserveFeeDeductionLabel: member.feeDeductionLabel,
+          }),
+        });
+        return;
+      }
+
+      patches.set(member.id, {
+        familyGroupId: undefined,
+        familyHolderMemberId: undefined,
+      });
+    });
+  });
+
+  return members.map((member) => {
+    const patch = patches.get(member.id);
+    return patch ? { ...member, ...patch } : member;
+  });
+}
+
 function recomputeFamilyMetadata(members: ClubMemberRecord[]): ClubMemberRecord[] {
-  const membersByNumber = members.reduce<Map<string, ClubMemberRecord[]>>((accumulator, member) => {
+  const membersWithDerivedState = members.map((member) => ({
+    ...member,
+    ...buildMemberTypeState(member.memberTypeId, {
+      preserveMembershipStatusLabel: member.membershipStatusLabel,
+      preserveFeeDeductionLabel: member.feeDeductionLabel,
+    }),
+  }));
+  const normalizedMembers = normalizeExplicitFamilyGroups(membersWithDerivedState);
+  const membersByNumber = normalizedMembers.reduce<Map<string, ClubMemberRecord[]>>((accumulator, member) => {
+    if (member.familyGroupId) {
+      return accumulator;
+    }
+
     const currentMembers = accumulator.get(member.memberNumber) ?? [];
     currentMembers.push(member);
     accumulator.set(member.memberNumber, currentMembers);
     return accumulator;
   }, new Map());
+  const membersByFamilyGroupId = normalizedMembers.reduce<Map<string, ClubMemberRecord[]>>((accumulator, member) => {
+    if (!member.familyGroupId) {
+      return accumulator;
+    }
+
+    const currentMembers = accumulator.get(member.familyGroupId) ?? [];
+    currentMembers.push(member);
+    accumulator.set(member.familyGroupId, currentMembers);
+    return accumulator;
+  }, new Map());
 
   return sortMembers(
-    members.map((member) => {
-      const household = membersByNumber.get(member.memberNumber) ?? [member];
-      const familyGroupCode = household.length > 1 ? `GF-${member.memberNumber.padStart(4, '0')}` : undefined;
-      const holderCandidate =
-        household.find(
-          (entry) => entry.memberTypeId !== 'grupo_familiar_asociado' && entry.memberTypeId !== 'menor',
-        ) ?? household[0];
+    normalizedMembers.map((member) => {
+      const household = member.familyGroupId
+        ? membersByFamilyGroupId.get(member.familyGroupId) ?? [member]
+        : membersByNumber.get(member.memberNumber) ?? [member];
+      const familyGroupCode =
+        household.length > 1
+          ? member.familyGroupId ?? buildFamilyGroupCode(member.memberNumber, member.id)
+          : undefined;
+      const holderCandidate = member.familyGroupId
+        ? household.find((entry) => entry.id === member.familyHolderMemberId) ??
+          household.find((entry) => entry.memberTypeId === 'grupo_familiar_titular') ??
+          household.find((entry) => isEligibleFamilyHolder(entry)) ??
+          household[0]
+        : household.find(
+            (entry) => entry.memberTypeId !== 'grupo_familiar_asociado' && entry.memberTypeId !== 'menor',
+          ) ?? household[0];
 
       return {
         ...member,
+        familyHolderMemberId: familyGroupCode ? holderCandidate?.id : undefined,
         familyGroupCode,
         householdSize: household.length,
         isFamilyHolder: familyGroupCode ? holderCandidate?.id === member.id : false,
@@ -338,11 +524,12 @@ function createSeedRecords(rosterRows: LegacyRosterRow[]): ClubMemberRecord[] {
       firstName: parsedName.firstName || displayName,
       lastName: parsedName.lastName || displayName,
       aagMembershipNumber: row.aagMembershipNumber,
-      membershipStatusLabel: row.membershipStatusLabel,
-      memberTypeId,
-      memberTypeLabel,
-      feeDeductionLabel: row.feeDeductionLabel,
+      ...buildMemberTypeState(memberTypeId, {
+        preserveMembershipStatusLabel: row.membershipStatusLabel,
+        preserveFeeDeductionLabel: row.feeDeductionLabel,
+      }),
       active: true,
+      status: 'active' as const,
       legacyOrder: row.order,
       householdSize: 1,
       isFamilyHolder: false,
@@ -433,14 +620,52 @@ export async function getClubMemberHousehold(memberId: string): Promise<ClubMemb
   }
 
   const members = await getClubMembers();
-  return members.filter((entry) => entry.memberNumber === member.memberNumber);
+  if (member.familyGroupId) {
+    return members.filter((entry) => entry.familyGroupId === member.familyGroupId);
+  }
+
+  return members.filter((entry) => !entry.familyGroupId && entry.memberNumber === member.memberNumber);
 }
 
 export async function saveClubMember(draft: ClubMemberDraft): Promise<ClubMemberRecord> {
   const currentMembers = await getClubMembers();
   const now = new Date().toISOString();
+  const previousRecord = draft.id ? currentMembers.find((member) => member.id === draft.id) : undefined;
   const parsedName = splitLegacyFullName(draft.fullName);
   const displayName = toTitleCase(draft.fullName);
+
+  if (!draft.id && draft.memberTypeId === 'licencia') {
+    throw new Error('No puedes cargar un socio en licencia desde el alta inicial.');
+  }
+
+  const shouldJoinFamilyGroup = draft.memberTypeId === 'grupo_familiar_asociado';
+  const selectedHolder = shouldJoinFamilyGroup
+    ? currentMembers.find((member) => member.id === draft.familyHolderMemberId)
+    : undefined;
+
+  if (shouldJoinFamilyGroup) {
+    if (!selectedHolder) {
+      throw new Error('Debes seleccionar un titular para agregar este socio al grupo familiar.');
+    }
+
+    if (!isEligibleFamilyHolder(selectedHolder)) {
+      throw new Error('El titular seleccionado debe ser previamente un socio pleno.');
+    }
+  }
+
+  const resolvedFamilyGroupId =
+    shouldJoinFamilyGroup && selectedHolder
+      ? selectedHolder.familyGroupId ?? buildFamilyGroupCode(selectedHolder.memberNumber, selectedHolder.id)
+      : previousRecord?.memberTypeId === 'grupo_familiar_titular'
+        ? previousRecord.familyGroupId
+        : undefined;
+  const resolvedFamilyHolderMemberId =
+    shouldJoinFamilyGroup && selectedHolder
+      ? selectedHolder.id
+      : previousRecord?.memberTypeId === 'grupo_familiar_titular'
+        ? previousRecord.familyHolderMemberId ?? previousRecord.id
+        : undefined;
+  const didTypeChange = previousRecord ? previousRecord.memberTypeId !== draft.memberTypeId : true;
 
   const nextRecord: ClubMemberRecord = {
     id:
@@ -453,27 +678,51 @@ export async function saveClubMember(draft: ClubMemberDraft): Promise<ClubMember
     lastName: parsedName.lastName || displayName,
     dni: cleanOptionalValue(draft.dni ?? ''),
     aagMembershipNumber: cleanOptionalValue(draft.aagMembershipNumber ?? ''),
-    membershipStatusLabel: draft.membershipStatusLabel.trim(),
-    memberTypeId: draft.memberTypeId,
-    memberTypeLabel: getMemberTypeLabel(draft.memberTypeId),
-    feeDeductionLabel: cleanOptionalValue(draft.feeDeductionLabel ?? ''),
+    ...buildMemberTypeState(draft.memberTypeId, {
+      preserveMembershipStatusLabel:
+        previousRecord && !didTypeChange ? previousRecord.membershipStatusLabel : undefined,
+      preserveFeeDeductionLabel: previousRecord && !didTypeChange ? previousRecord.feeDeductionLabel : undefined,
+    }),
     notes: cleanOptionalValue(draft.notes ?? ''),
     active: draft.active,
+    status: draft.active ? 'active' : 'inactive',
     legacyOrder:
       draft.id
-        ? currentMembers.find((member) => member.id === draft.id)?.legacyOrder ?? currentMembers.length + 1
+        ? previousRecord?.legacyOrder ?? currentMembers.length + 1
         : currentMembers.length + 1,
+    familyGroupId: resolvedFamilyGroupId,
+    familyHolderMemberId: resolvedFamilyHolderMemberId,
     householdSize: 1,
     isFamilyHolder: false,
-    source: draft.id ? currentMembers.find((member) => member.id === draft.id)?.source ?? 'manual' : 'manual',
-    createdAt: draft.id ? currentMembers.find((member) => member.id === draft.id)?.createdAt ?? now : now,
+    source: draft.id ? previousRecord?.source ?? 'manual' : 'manual',
+    createdAt: draft.id ? previousRecord?.createdAt ?? now : now,
     updatedAt: now,
   };
 
+  const nextMembersBase = draft.id
+    ? currentMembers.map((member) => (member.id === draft.id ? nextRecord : member))
+    : [...currentMembers, nextRecord];
+  const nextMembersWithHolderSync =
+    shouldJoinFamilyGroup && selectedHolder
+      ? nextMembersBase.map((member) => {
+          if (member.id !== selectedHolder.id) {
+            return member;
+          }
+
+          return {
+            ...member,
+            ...buildMemberTypeState('grupo_familiar_titular', {
+              preserveMembershipStatusLabel: member.membershipStatusLabel,
+              preserveFeeDeductionLabel: member.feeDeductionLabel,
+            }),
+            familyGroupId: resolvedFamilyGroupId,
+            familyHolderMemberId: member.id,
+            updatedAt: now,
+          };
+        })
+      : nextMembersBase;
   const nextMembers = recomputeFamilyMetadata(
-    draft.id
-      ? currentMembers.map((member) => (member.id === draft.id ? nextRecord : member))
-      : [...currentMembers, nextRecord],
+    nextMembersWithHolderSync,
   );
 
   persistDirectory(nextMembers);
@@ -489,6 +738,7 @@ export async function setClubMemberActive(memberId: string, active: boolean): Pr
         ? {
             ...member,
             active,
+            status: active ? 'active' : 'inactive',
             updatedAt: new Date().toISOString(),
           }
         : member,
@@ -525,6 +775,7 @@ export function matchesClubMemberSearch(member: ClubMemberRecord, query: string)
       member.aagMembershipNumber ?? '',
       member.membershipStatusLabel,
       member.memberTypeLabel,
+      member.familyGroupCode ?? '',
       member.feeDeductionLabel ?? '',
     ].join(' '),
   );

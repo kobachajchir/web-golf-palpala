@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -49,6 +50,13 @@ function createRepository<T extends DocumentData>(db: Firestore, path: string) {
     async listByQuery(queryRef: Query<T>): Promise<Array<EntityWithId<T>>> {
       const snapshot = await getDocs(queryRef);
       return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as EntityWithId<T>);
+    },
+    async listAll(): Promise<Array<EntityWithId<T>>> {
+      const snapshot = await getDocs(collectionRef);
+      return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as EntityWithId<T>);
+    },
+    async countByQuery(queryRef: Query<T>): Promise<number> {
+      return (await getCountFromServer(queryRef)).data().count;
     },
   };
 }
@@ -153,6 +161,9 @@ export function createFamilyGroupsRepository(db: Firestore = requireFirestore())
 
   return {
     ...repository,
+    listActive() {
+      return repository.listByQuery(query(repository.collectionRef, where('active', '==', true)));
+    },
     listByHolder(holderMemberId: string, active = true) {
       return repository.listByQuery(
         query(
@@ -170,6 +181,22 @@ export function createMembersRepository(db: Firestore = requireFirestore()) {
 
   return {
     ...repository,
+    async listDirectory() {
+      const members = await repository.listAll();
+      return [...members].sort((left, right) => {
+        const lastNameOrder = left.lastName.localeCompare(right.lastName, 'es-AR');
+        if (lastNameOrder !== 0) {
+          return lastNameOrder;
+        }
+
+        const firstNameOrder = left.firstName.localeCompare(right.firstName, 'es-AR');
+        if (firstNameOrder !== 0) {
+          return firstNameOrder;
+        }
+
+        return left.memberNumber.localeCompare(right.memberNumber, 'es-AR', { numeric: true });
+      });
+    },
     listByStatusAndType(status: string, typeId: string, pageSize = 50) {
       return repository.listByQuery(
         query(
@@ -209,6 +236,16 @@ export function createMembersRepository(db: Firestore = requireFirestore()) {
         query(repository.collectionRef, where('linkedUserId', '==', linkedUserId)),
       );
     },
+    listAlphabetical(pageSize = 12) {
+      return repository.listByQuery(
+        query(repository.collectionRef, orderBy('lastName', 'asc'), orderBy('firstName', 'asc'), limit(pageSize)),
+      );
+    },
+    countActive() {
+      return repository.countByQuery(
+        query(repository.collectionRef, where('status', '==', 'active')),
+      );
+    },
   };
 }
 
@@ -231,6 +268,16 @@ export function createEmployeesRepository(db: Firestore = requireFirestore()) {
     listByLinkedUserId(linkedUserId: string) {
       return repository.listByQuery(
         query(repository.collectionRef, where('linkedUserId', '==', linkedUserId)),
+      );
+    },
+    listAlphabetical(pageSize = 12) {
+      return repository.listByQuery(
+        query(repository.collectionRef, orderBy('lastName', 'asc'), orderBy('firstName', 'asc'), limit(pageSize)),
+      );
+    },
+    countActive() {
+      return repository.countByQuery(
+        query(repository.collectionRef, where('status', '==', 'active')),
       );
     },
   };

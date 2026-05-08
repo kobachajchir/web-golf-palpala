@@ -1,15 +1,22 @@
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
-import { AdminRoute, ProtectedRoute, PublicRoute } from './components/routes/RoleBasedRoute';
+import { AccountingRoute, AdminRoute, MembersRoute, PasswordChangeRoute, ProtectedRoute, PublicRoute } from './components/routes/RoleBasedRoute';
 import { useAuth } from './hooks/useAuth';
+import { AccountingDashboard } from './pages/AccountingDashboard';
 import { AdminUserProfile } from './pages/AdminUserProfile';
+import { ChangePassword } from './pages/ChangePassword';
+import { CourtRequests } from './pages/CourtRequests';
+import { ForgotPassword } from './pages/ForgotPassword';
 import { Home } from './pages/Home';
+import { ExecutiveBoardAdmin } from './pages/ExecutiveBoardAdmin';
 import { Index } from './pages/Index';
 import { Login } from './pages/Login';
 import { MemberMembershipProfile } from './pages/MemberMembershipProfile';
 import { MembersAdmin } from './pages/MembersAdmin';
+import { NotFound } from './pages/NotFound';
 import { Profile } from './pages/Profile';
 import { SignUp } from './pages/SignUp';
+import { TournamentRegistration } from './pages/TournamentRegistration';
 import './styles/pages.css';
 
 function App() {
@@ -19,7 +26,9 @@ function App() {
     !loading &&
     isAuthenticated &&
     location.pathname !== '/login' &&
-    location.pathname !== '/signup';
+    location.pathname !== '/signup' &&
+    location.pathname !== '/olvide-contrasena' &&
+    location.pathname !== '/cambiar-contrasena';
 
   return (
     <>
@@ -47,6 +56,24 @@ function App() {
           />
 
           <Route
+            path="/olvide-contrasena"
+            element={
+              <PublicRoute>
+                <ForgotPassword />
+              </PublicRoute>
+            }
+          />
+
+          <Route
+            path="/cambiar-contrasena"
+            element={
+              <PasswordChangeRoute>
+                <ChangePassword />
+              </PasswordChangeRoute>
+            }
+          />
+
+          <Route
             path="/home"
             element={
               <ProtectedRoute>
@@ -65,6 +92,51 @@ function App() {
           />
 
           <Route
+            path="/perfil"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/mi-membresia"
+            element={
+              <ProtectedRoute>
+                <MemberMembershipProfile />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/canchas"
+            element={
+              <ProtectedRoute>
+                <CourtRequests />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/torneos"
+            element={
+              <ProtectedRoute>
+                <TournamentRegistration />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/accounting"
+            element={
+              <AccountingRoute>
+                <AccountingDashboard />
+              </AccountingRoute>
+            }
+          />
+
+          <Route
             path="/admin/users/:id"
             element={
               <AdminRoute>
@@ -76,22 +148,49 @@ function App() {
           <Route
             path="/admin/members"
             element={
-              <AdminRoute>
+              <MembersRoute>
                 <MembersAdmin />
-              </AdminRoute>
+              </MembersRoute>
             }
           />
 
           <Route
             path="/admin/members/:memberId"
             element={
-              <AdminRoute>
+              <MembersRoute>
                 <MemberMembershipProfile />
-              </AdminRoute>
+              </MembersRoute>
             }
           />
 
-          <Route path="*" element={<div className="empty-state">Pagina no encontrada</div>} />
+          <Route
+            path="/admin/directiva"
+            element={
+              <ProtectedRoute>
+                <ExecutiveBoardAdmin />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/club"
+            element={
+              <ProtectedRoute>
+                <ExecutiveBoardAdmin />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/directiva"
+            element={
+              <ProtectedRoute>
+                <ExecutiveBoardAdmin />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
     </>

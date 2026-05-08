@@ -1,3 +1,6 @@
+import { getApp, getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { onCall } from 'firebase-functions/v2/https';
 import {
@@ -18,6 +21,7 @@ import {
   removeMemberFromFamilyGroupUseCase,
 } from '../application/use-cases/family-group.use-cases.js';
 import { parseRecordHandicapInput, recordHandicapUseCase } from '../application/use-cases/handicap.use-cases.js';
+import { getNextMemberNumberFromExisting } from '../application/use-cases/member-number.use-cases.js';
 import {
   createMemberUseCase,
   endLicenseUseCase,
@@ -29,12 +33,23 @@ import {
   updateMemberUseCase,
 } from '../application/use-cases/member.use-cases.js';
 import { assignRoleUseCase, parseAssignRoleInput } from '../application/use-cases/role.use-cases.js';
-import { resolveActor, toHttpsError } from '../application/shared.js';
+import { buildCustomClaims, ensureStaff, pickPrimaryRoleId, resolveActor, toHttpsError } from '../application/shared.js';
 import { FirebaseAuthGateway } from '../infrastructure/firestore/auth-gateway.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../infrastructure/firestore/repositories.js';
+import { USERS_COLLECTIONS } from '../domain/constants.js';
+import type { MemberDocument, UserDocument } from '../domain/models.js';
+import {
+  buildSyntheticAuthEmail,
+  generateMemberTemporaryPassword,
+  normalizeMemberNumber,
+} from '../../auth/member-number-auth.js';
 
 const transactions = new FirestoreUsersTransactionManager(new SystemClock());
 const authGateway = new FirebaseAuthGateway();
+
+function getOrInitializeApp() {
+  return getApps().length > 0 ? getApp() : initializeApp();
+}
 
 async function getActorFromCallableRequest(
   auth:
@@ -60,16 +75,194 @@ function withCallableLogging(functionName: string, error: unknown): never {
   throw toHttpsError(error);
 }
 
+async function getOrCreateMemberAuthUser(params: {
+  email: string;
+  displayName: string;
+  password: string;
+  active: boolean;
+}) {
+  const auth = getAuth(getOrInitializeApp());
+
+  try {
+    const existingUser = await auth.getUserByEmail(params.email);
+    return auth.updateUser(existingUser.uid, {
+      displayName: params.displayName,
+      password: params.password,
+      disabled: !params.active,
+    });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code !== 'auth/user-not-found') {
+      throw error;
+    }
+  }
+
+  return auth.createUser({
+    email: params.email,
+    password: params.password,
+    displayName: params.displayName,
+    disabled: !params.active,
+  });
+}
+
+async function createDefaultAccessForMember(params: {
+  actorUid: string;
+  memberId: string;
+}) {
+  const db = getFirestore(getOrInitializeApp());
+  const memberRef = db.collection(USERS_COLLECTIONS.members).doc(params.memberId);
+  const memberSnapshot = await memberRef.get();
+
+  if (!memberSnapshot.exists) {
+    throw new Error(`No existe members/${params.memberId}.`);
+  }
+
+  const member = memberSnapshot.data() as MemberDocument;
+  const normalizedMemberNumber = normalizeMemberNumber(member.memberNumber);
+  const email = buildSyntheticAuthEmail(normalizedMemberNumber);
+  const displayName = `${member.firstName} ${member.lastName}`.trim() || normalizedMemberNumber;
+  const generatedPassword = generateMemberTemporaryPassword(normalizedMemberNumber);
+  const authUser = await getOrCreateMemberAuthUser({
+    email,
+    displayName,
+    password: generatedPassword.temporaryPassword,
+    active: true,
+  });
+  const roleIds = ['socio'];
+  let claimRoleIds = roleIds;
+  let claimsVersion = 1;
+
+  await db.runTransaction(async (transaction) => {
+    const userRef = db.collection(USERS_COLLECTIONS.users).doc(authUser.uid);
+    const identifierRef = db.collection(USERS_COLLECTIONS.memberLoginIdentifiers).doc(normalizedMemberNumber);
+    const [freshMemberSnapshot, userSnapshot, identifierSnapshot] = await Promise.all([
+      transaction.get(memberRef),
+      transaction.get(userRef),
+      transaction.get(identifierRef),
+    ]);
+
+    if (!freshMemberSnapshot.exists) {
+      throw new Error(`No existe members/${params.memberId}.`);
+    }
+
+    const freshMember = freshMemberSnapshot.data() as MemberDocument;
+    if (freshMember.linkedUserId && freshMember.linkedUserId !== authUser.uid) {
+      throw new Error('El socio ya esta vinculado a otro usuario.');
+    }
+
+    if (identifierSnapshot.exists) {
+      const identifier = identifierSnapshot.data() as { uid?: string | null; memberId?: string | null };
+      if (identifier.uid && identifier.uid !== authUser.uid) {
+        throw new Error('Ya existe una cuenta para ese numero de socio.');
+      }
+    }
+
+    const existingUser = userSnapshot.exists ? (userSnapshot.data() as UserDocument) : null;
+    const mergedRoleIds = Array.from(new Set([...(existingUser?.roleIds ?? []), ...roleIds]));
+    claimRoleIds = mergedRoleIds;
+    claimsVersion = (existingUser?.claimsVersion ?? 0) + 1;
+
+    transaction.set(
+      userRef,
+      {
+        email,
+        displayName,
+        primaryRoleId: pickPrimaryRoleId(mergedRoleIds),
+        roleIds: mergedRoleIds,
+        profileType: 'member',
+        profileId: params.memberId,
+        active: true,
+        claimsVersion,
+        memberNumber: normalizedMemberNumber,
+        authProviderMode: 'member_number_password',
+        mustChangePassword: true,
+        passwordResetRequiredReason: 'initial_default',
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: params.actorUid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: params.actorUid,
+      },
+      { merge: true },
+    );
+
+    transaction.set(
+      identifierRef,
+      {
+        uid: authUser.uid,
+        memberId: params.memberId,
+        memberNumber: member.memberNumber,
+        active: true,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: params.actorUid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: params.actorUid,
+      },
+      { merge: true },
+    );
+
+    transaction.update(memberRef, {
+      linkedUserId: authUser.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: params.actorUid,
+    });
+  });
+
+  await getAuth(getOrInitializeApp()).setCustomUserClaims(
+    authUser.uid,
+    buildCustomClaims(claimRoleIds, claimsVersion, true),
+  );
+
+  return {
+    uid: authUser.uid,
+    memberNumber: normalizedMemberNumber,
+    temporaryPassword: generatedPassword.temporaryPassword,
+    passwordGeneratedAt: generatedPassword.passwordGeneratedAt,
+  };
+}
+
 export const usersCreateMember = onCall(async (request) => {
   try {
     const actor = await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined);
-    return createMemberUseCase({
+    const result = await createMemberUseCase({
       actor,
       input: parseCreateMemberInput(request.data),
       transactions,
     });
+    const staffActor = ensureStaff(actor);
+    const accessResult = await createDefaultAccessForMember({
+      actorUid: staffActor.uid,
+      memberId: result.memberId,
+    });
+
+    return {
+      ...result,
+      linkedUserId: accessResult.uid,
+      memberNumber: accessResult.memberNumber,
+      temporaryPassword: accessResult.temporaryPassword,
+      passwordGeneratedAt: accessResult.passwordGeneratedAt,
+      mustChangePassword: true,
+    };
   } catch (error) {
     withCallableLogging('usersCreateMember', error);
+  }
+});
+
+export const usersGetNextMemberNumber = onCall(async (request) => {
+  try {
+    ensureStaff(
+      await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined),
+    );
+
+    const snapshot = await getFirestore(getOrInitializeApp())
+      .collection(USERS_COLLECTIONS.members)
+      .select('memberNumber')
+      .get();
+    const memberNumbers = snapshot.docs
+      .map((entry) => entry.get('memberNumber'))
+      .filter((memberNumber): memberNumber is string => typeof memberNumber === 'string');
+
+    return getNextMemberNumberFromExisting(memberNumbers);
+  } catch (error) {
+    withCallableLogging('usersGetNextMemberNumber', error);
   }
 });
 
@@ -222,6 +415,7 @@ export const usersRecordHandicap = onCall(async (request) => {
 });
 
 export const users = {
+  getNextMemberNumber: usersGetNextMemberNumber,
   createMember: usersCreateMember,
   updateMember: usersUpdateMember,
   createFamilyGroup: usersCreateFamilyGroup,

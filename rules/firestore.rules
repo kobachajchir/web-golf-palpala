@@ -18,7 +18,15 @@ service cloud.firestore {
       return hasClaim('administrativo');
     }
 
+    function isEmpleado() {
+      return hasClaim('empleado');
+    }
+
     function isStaff() {
+      return isDirectivo() || isAdministrativo();
+    }
+
+    function isAccountingStaff() {
       return isDirectivo() || isAdministrativo();
     }
 
@@ -26,8 +34,35 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function isOwnEmployeeProfile(employeeId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileType == 'employee'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileId == employeeId;
+    }
+
     function isLinkedMemberSelf(memberResource) {
       return isSignedIn() && memberResource.data.linkedUserId == request.auth.uid;
+    }
+
+    function ownUserProfileId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileId;
+    }
+
+    function isFamilyGroupSelf(familyGroupResource) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileType == 'member'
+        && ownUserProfileId() in familyGroupResource.data.memberIds;
+    }
+
+    function isLinkedFamilyMember(memberResource) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileType == 'member'
+        && memberResource.data.familyGroupId != null
+        && exists(/databases/$(database)/documents/members/$(ownUserProfileId()))
+        && get(/databases/$(database)/documents/members/$(ownUserProfileId())).data.familyGroupId == memberResource.data.familyGroupId;
     }
 
     function isLinkedHandicapSelf(handicapResource) {
@@ -51,6 +86,54 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.updatedBy == resource.data.updatedBy;
+    }
+
+    function postedMovementImmutableFieldsUnchanged() {
+      return request.resource.data.grossAmountMinor == resource.data.grossAmountMinor
+        && request.resource.data.netAmountMinor == resource.data.netAmountMinor
+        && request.resource.data.appliedCommissionPctBps == resource.data.appliedCommissionPctBps
+        && request.resource.data.appliedCommissionAmountMinor == resource.data.appliedCommissionAmountMinor
+        && request.resource.data.paymentMethodCodeSnapshot == resource.data.paymentMethodCodeSnapshot
+        && request.resource.data.categoryCodeSnapshot == resource.data.categoryCodeSnapshot
+        && request.resource.data.originType == resource.data.originType
+        && request.resource.data.originId == resource.data.originId;
+    }
+
+    function canDirectivoUpdatePostedMovement() {
+      return isDirectivo()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'voidReason',
+          'reversalOfMovementId',
+          'approvedByUid',
+          'approvedAt',
+          'settlementId',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && postedMovementImmutableFieldsUnchanged();
+    }
+
+    function isOwnExpenseSubmissionCreate() {
+      return isEmpleado()
+        && isOwnEmployeeProfile(request.resource.data.employeeId)
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.reviewedByUid == null
+        && request.resource.data.reviewedAt == null
+        && request.resource.data.rejectionReason == null
+        && request.resource.data.linkedMovementId == null;
+    }
+
+    function isOwnExpenseSubmissionUpdate() {
+      return isEmpleado()
+        && isOwnEmployeeProfile(resource.data.employeeId)
+        && resource.data.status == 'submitted'
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.employeeId == resource.data.employeeId
+        && request.resource.data.reviewedByUid == resource.data.reviewedByUid
+        && request.resource.data.reviewedAt == resource.data.reviewedAt
+        && request.resource.data.rejectionReason == resource.data.rejectionReason
+        && request.resource.data.linkedMovementId == resource.data.linkedMovementId;
     }
 
     match /users/{uid} {
@@ -81,12 +164,13 @@ service cloud.firestore {
     }
 
     match /family_groups/{familyGroupId} {
-      allow read, write: if isStaff();
+      allow read: if isStaff() || isFamilyGroupSelf(resource);
+      allow write: if isStaff();
       allow delete: if false;
     }
 
     match /members/{memberId} {
-      allow read: if isStaff() || isLinkedMemberSelf(resource);
+      allow read: if isStaff() || isLinkedMemberSelf(resource) || isLinkedFamilyMember(resource);
       allow write: if isStaff();
       allow delete: if false;
     }
@@ -99,6 +183,117 @@ service cloud.firestore {
     match /handicaps/{handicapId} {
       allow read: if isStaff() || isLinkedHandicapSelf(resource);
       allow write: if isStaff();
+      allow delete: if false;
+    }
+
+    match /member_login_identifiers/{normalizedMemberNumber} {
+      allow read, write: if false;
+    }
+
+    match /password_reset_requests/{requestId} {
+      allow read: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /executive_board_terms/{termId} {
+      allow read: if isSignedIn();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /executive_board_members/{boardMemberId} {
+      allow read: if isSignedIn();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /financial_configs/{configId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /payment_methods/{paymentMethodId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /payment_commission_rules/{ruleId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /financial_income_categories/{categoryId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /financial_expense_categories/{categoryId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /financial_movements/{movementId} {
+      allow read: if isAccountingStaff();
+      allow create: if isAccountingStaff();
+      allow update: if (isAccountingStaff() && resource.data.status != 'posted')
+        || canDirectivoUpdatePostedMovement();
+      allow delete: if false;
+    }
+
+    match /macro_debit_settlements/{settlementId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /salary_configurations/{configurationId} {
+      allow read, create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /salary_payments/{paymentId} {
+      allow read, create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /external_accounting_references/{referenceId} {
+      allow read, create, update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /expense_submissions/{expenseSubmissionId} {
+      allow read: if isAccountingStaff() || isOwnEmployeeProfile(resource.data.employeeId);
+      allow create: if isAccountingStaff() || isOwnExpenseSubmissionCreate();
+      allow update: if isAccountingStaff() || isOwnExpenseSubmissionUpdate();
+      allow delete: if false;
+    }
+
+    match /concession_contracts/{contractId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /advertising_contracts/{contractId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /handicap_charges/{chargeId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /member_fee_charges/{chargeId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
   }

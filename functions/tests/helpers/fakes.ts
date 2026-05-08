@@ -6,6 +6,7 @@ import type {
   EntityWithId,
   FamilyGroupDocument,
   HandicapDocument,
+  MemberLoginIdentifierDocument,
   MemberDocument,
   MemberTypeDocument,
   PermissionDocument,
@@ -20,6 +21,7 @@ import type {
   EmployeesStore,
   FamilyGroupsStore,
   HandicapsStore,
+  MemberLoginIdentifiersStore,
   MemberTypesStore,
   MembersStore,
   PermissionsStore,
@@ -280,6 +282,18 @@ class InMemoryMembersStore implements MembersStore {
     return id;
   }
 
+  public async createWithId(
+    memberId: string,
+    data: Omit<MemberDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<void> {
+    this.items.set(memberId, {
+      id: memberId,
+      ...data,
+      ...createAudit(actorUid),
+    });
+  }
+
   public async update(memberId: string, patch: StorePatch<MemberDocument>, actorUid: string): Promise<void> {
     const existing = this.items.get(memberId);
     if (!existing) {
@@ -291,6 +305,40 @@ class InMemoryMembersStore implements MembersStore {
       ...applyPatch(existing, patch),
       updatedBy: actorUid,
       updatedAt: timestampNow(),
+    });
+  }
+}
+
+class InMemoryMemberLoginIdentifiersStore implements MemberLoginIdentifiersStore {
+  public constructor(private readonly items: Map<string, EntityWithId<MemberLoginIdentifierDocument>>) {}
+
+  public async getById(normalizedMemberNumber: string): Promise<EntityWithId<MemberLoginIdentifierDocument> | null> {
+    return this.items.get(normalizedMemberNumber) ?? null;
+  }
+
+  public async set(
+    normalizedMemberNumber: string,
+    data: StorePatch<MemberLoginIdentifierDocument>,
+    actorUid: string,
+  ): Promise<void> {
+    const existing = this.items.get(normalizedMemberNumber);
+    if (existing) {
+      this.items.set(normalizedMemberNumber, {
+        id: existing.id,
+        ...applyPatch(existing, data),
+        updatedBy: actorUid,
+        updatedAt: timestampNow(),
+      });
+      return;
+    }
+
+    this.items.set(normalizedMemberNumber, {
+      id: normalizedMemberNumber,
+      uid: data.uid ?? null,
+      memberId: data.memberId ?? null,
+      memberNumber: data.memberNumber ?? normalizedMemberNumber,
+      active: data.active ?? true,
+      ...createAudit(actorUid),
     });
   }
 }
@@ -401,6 +449,7 @@ export class InMemoryUsersTransactionManager implements UsersTransactionManager 
   public readonly memberTypes = new Map<string, EntityWithId<MemberTypeDocument>>();
   public readonly familyGroups = new Map<string, EntityWithId<FamilyGroupDocument>>();
   public readonly members = new Map<string, EntityWithId<MemberDocument>>();
+  public readonly memberLoginIdentifiers = new Map<string, EntityWithId<MemberLoginIdentifierDocument>>();
   public readonly employees = new Map<string, EntityWithId<EmployeeDocument>>();
   public readonly handicaps = new Map<string, EntityWithId<HandicapDocument>>();
 
@@ -418,6 +467,7 @@ export class InMemoryUsersTransactionManager implements UsersTransactionManager 
     memberTypes: new InMemoryMemberTypesStore(this.memberTypes),
     familyGroups: new InMemoryFamilyGroupsStore(this.familyGroups, () => `family-group-${++this.familyGroupCounter}`),
     members: new InMemoryMembersStore(this.members, () => `member-${++this.memberCounter}`),
+    memberLoginIdentifiers: new InMemoryMemberLoginIdentifiersStore(this.memberLoginIdentifiers),
     employees: new InMemoryEmployeesStore(this.employees, () => `employee-${++this.employeeCounter}`),
     handicaps: new InMemoryHandicapsStore(this.handicaps, () => `handicap-${++this.handicapCounter}`),
   };

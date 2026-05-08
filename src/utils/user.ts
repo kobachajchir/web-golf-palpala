@@ -1,5 +1,5 @@
 import { ROLE_LABELS } from '../constants/roles';
-import type { timestamp_type, User } from '../context/AuthContext';
+import type { User } from '../context/AuthContext';
 
 function toTitleCase(value: string): string {
   return value
@@ -10,18 +10,34 @@ function toTitleCase(value: string): string {
 }
 
 export function getUserDisplayName(
-  user: Pick<User, 'first_name' | 'last_name' | 'user_number' | 'profile_id'> | null | undefined,
+  user:
+    | (Partial<Pick<User, 'displayName' | 'memberNumber' | 'profileId'>> & {
+        first_name?: string;
+        last_name?: string;
+        user_number?: string;
+        profile_id?: string;
+      })
+    | null
+    | undefined,
 ): string {
   if (!user) {
     return 'invitado';
   }
 
-  const fullName = `${user.first_name} ${user.last_name}`.trim();
-  return toTitleCase(fullName || user.user_number || user.profile_id || 'usuario');
+  const legacyFullName = `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim();
+  return toTitleCase(
+    user.displayName ||
+      legacyFullName ||
+      user.memberNumber ||
+      user.user_number ||
+      user.profileId ||
+      user.profile_id ||
+      'usuario',
+  );
 }
 
 export function getUserInitial(
-  user: Pick<User, 'first_name' | 'last_name' | 'user_number' | 'profile_id'> | null | undefined,
+  user: Parameters<typeof getUserDisplayName>[0],
 ): string {
   return getUserDisplayName(user).charAt(0).toUpperCase();
 }
@@ -32,14 +48,14 @@ export function getRoleLabel(roleId: string | undefined): string {
     : roleId || 'Sin rol';
 }
 
-export function formatTimestamp(value?: timestamp_type): string {
+export function formatTimestamp(value?: string | Date | { toDate: () => Date } | null): string {
   if (!value) {
     return 'Sin registro';
   }
 
-  const date = new Date(value);
+  const date = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : value.toDate();
   if (Number.isNaN(date.getTime())) {
-    return value;
+    return typeof value === 'string' ? value : 'Sin registro';
   }
 
   return new Intl.DateTimeFormat('es-AR', {

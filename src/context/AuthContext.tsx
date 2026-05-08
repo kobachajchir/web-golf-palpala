@@ -1,37 +1,49 @@
-import { createContext, useEffect, useState, type ReactNode } from 'react';
-import { ROLES, type RoleType } from '../constants/roles';
-import type {
-  estado_usuario_type,
-  timestamp_type,
-  tipo_perfil_usuario_type,
-  user_type,
-} from '../types';
+import { createContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  type User as FirebaseAuthUser,
+} from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import {
+  normalizeRoleId,
+  normalizeRoleIds,
+  ROLES,
+  type RoleType,
+} from '../constants/roles';
+import { auth, firestore } from '../lib/firebase';
+import { buildSyntheticAuthEmail } from '../lib/memberAuth';
+import type { EntityWithId, MemberDocument, UserDocument } from '../modules/users/domain/models';
 
-export type {
-  estado_usuario_type,
-  id_type,
-  timestamp_type,
-  tipo_perfil_usuario_type,
-  user_type,
-} from '../types';
-
-export type User = user_type;
 export type ThemeMode = 'light' | 'dark';
+export type User = EntityWithId<
+  Omit<UserDocument, 'primaryRoleId' | 'roleIds'> & {
+    primaryRoleId: RoleType;
+    roleIds: RoleType[];
+  }
+>;
 
 const INTERFACE_MODE_STORAGE_KEY = 'interface_mode';
 const THEME_STORAGE_KEY = 'theme_mode';
+const LICENSE_LOGIN_MESSAGE = 'No podes ingresar porque tu membresia esta en licencia. Consulta con administracion.';
 
 export interface AuthContextType {
   user: User | null;
+  firebaseUser: FirebaseAuthUser | null;
   loading: boolean;
+  authError: string;
   isAuthenticated: boolean;
   interfaceMode: RoleType;
   themeMode: ThemeMode;
-  login: (userData: User) => void;
+  login: (memberNumber: string, password: string) => Promise<void>;
+  refreshUser: () => Promise<User | null>;
   updateUser: (userData: User) => void;
   setInterfaceMode: (mode: RoleType) => void;
   setThemeMode: (mode: ThemeMode) => void;
-  logout: () => void;
+  hasRole: (role: RoleType) => boolean;
+  hasAnyRole: (roles: readonly RoleType[]) => boolean;
+  logout: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -40,130 +52,189 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-const timestampNow = (): timestamp_type => new Date().toISOString();
-
-function asString(value: unknown, fallback: string): string {
-  return typeof value === 'string' && value.trim() ? value : fallback;
-}
-
-function asProfileType(value: unknown): tipo_perfil_usuario_type {
-  return value === 'empleado' || value === 'administrativo' ? value : 'socio';
-}
-
-function asUserStatus(value: unknown): estado_usuario_type {
-  return value === 'inactivo' || value === 'bloqueado' ? value : 'activo';
-}
-
-function asRoleType(value: unknown): RoleType {
-  return value === ROLES.ADMIN || value === ROLES.OWNER || value === ROLES.EMPLOYEE
-    ? value
-    : ROLES.MEMBER;
-}
-
 function asThemeMode(value: unknown): ThemeMode {
   return value === 'dark' ? 'dark' : 'light';
 }
 
-function splitName(value: string): { firstName: string; lastName: string } {
-  const sanitizedValue = value.trim().replace(/\s+/g, ' ');
-  if (!sanitizedValue) {
-    return {
-      firstName: 'Usuario',
-      lastName: '',
-    };
-  }
+function normalizeUserDocument(uid: string, data: UserDocument): User {
+  const roleIds = normalizeRoleIds(data.roleIds);
+  const primaryRoleId = normalizeRoleId(data.primaryRoleId) ?? roleIds[0] ?? ROLES.SOCIO;
 
-  const [firstName, ...rest] = sanitizedValue.split(' ');
   return {
-    firstName: firstName || 'Usuario',
-    lastName: rest.join(' '),
+    id: uid,
+    ...data,
+    primaryRoleId,
+    roleIds: roleIds.length > 0 ? roleIds : [primaryRoleId],
+    profileId: data.profileId ?? null,
+    memberNumber: data.memberNumber ?? null,
+    authProviderMode: data.authProviderMode ?? 'member_number_password',
+    mustChangePassword: data.mustChangePassword ?? false,
+    passwordResetRequiredReason: data.passwordResetRequiredReason ?? null,
   };
 }
 
-function normalizeStoredUser(value: unknown): User | null {
-  if (!value || typeof value !== 'object') {
-    return null;
+function pickInterfaceMode(user: User | null, storedMode: unknown): RoleType {
+  const storedRole = normalizeRoleId(storedMode);
+  if (!user) {
+    return storedRole ?? ROLES.SOCIO;
   }
 
-  const record = value as Record<string, unknown>;
-  const legacyRole = asString(record.role, ROLES.MEMBER);
-  const now = timestampNow();
-  const legacyDisplayName = asString(
-    record.display_name,
-    asString(record.email, asString(record.profile_id, 'Usuario')),
-  );
-  const { firstName, lastName } = splitName(legacyDisplayName);
-
-  const normalizedUser: User = {
-    id: asString(record.id, 'user-demo'),
-    auth_uid: asString(record.auth_uid, 'firebase-uid-demo'),
-    user_number: asString(record.user_number, '100000'),
-    first_name: asString(record.first_name, firstName),
-    last_name: asString(record.last_name, lastName),
-    dni: asString(record.dni, '00000000'),
-    role_id: asString(record.role_id, legacyRole),
-    profile_type: asProfileType(record.profile_type),
-    profile_id: asString(record.profile_id, 'socio-001'),
-    status: asUserStatus(record.status),
-    must_change_password: Boolean(record.must_change_password),
-    created_at: asString(record.created_at, now),
-    updated_at: asString(record.updated_at, now),
-  };
-
-  if (typeof record.last_login_at === 'string' && record.last_login_at) {
-    normalizedUser.last_login_at = record.last_login_at;
+  if (storedRole && user.roleIds.includes(storedRole)) {
+    return storedRole;
   }
 
-  return normalizedUser;
+  if (user.roleIds.includes(user.primaryRoleId)) {
+    return user.primaryRoleId;
+  }
+
+  return user.roleIds[0] ?? ROLES.SOCIO;
+}
+
+async function loadUserDocument(firebaseUser: FirebaseAuthUser): Promise<User> {
+  if (!firestore) {
+    throw new Error('Firestore no esta inicializado.');
+  }
+
+  const snapshot = await getDoc(doc(firestore, 'users', firebaseUser.uid));
+  if (!snapshot.exists()) {
+    throw new Error('No existe el perfil de usuario en Firestore.');
+  }
+
+  const user = normalizeUserDocument(firebaseUser.uid, snapshot.data() as UserDocument);
+  if (!user.active) {
+    throw new Error('El usuario esta inactivo.');
+  }
+
+  if (user.profileType === 'member' && user.profileId) {
+    const memberSnapshot = await getDoc(doc(firestore, 'members', user.profileId));
+    if (memberSnapshot.exists()) {
+      const member = memberSnapshot.data() as MemberDocument;
+      if (member.status === 'license') {
+        throw new Error(LICENSE_LOGIN_MESSAGE);
+      }
+    }
+  }
+
+  const tokenResult = await firebaseUser.getIdTokenResult();
+  const tokenClaimsVersion =
+    typeof tokenResult.claims.claimsVersion === 'number' ? tokenResult.claims.claimsVersion : 0;
+
+  if (tokenClaimsVersion < user.claimsVersion) {
+    await firebaseUser.getIdTokenResult(true);
+  }
+
+  return user;
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseAuthUser | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [interfaceMode, setInterfaceModeState] = useState<RoleType>(ROLES.MEMBER);
+  const [authError, setAuthError] = useState('');
+  const [interfaceMode, setInterfaceModeState] = useState<RoleType>(ROLES.SOCIO);
   const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
 
   useEffect(() => {
-    const storedMode = localStorage.getItem(INTERFACE_MODE_STORAGE_KEY);
-    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-    const storedUser = localStorage.getItem('user');
-
-    setThemeModeState(asThemeMode(storedTheme));
-
-    if (storedUser) {
-      try {
-        const normalizedUser = normalizeStoredUser(JSON.parse(storedUser));
-        setUser(normalizedUser);
-        setInterfaceModeState(asRoleType(storedMode || normalizedUser?.role_id));
-      } catch (error) {
-        console.error('Error al parsear usuario de localStorage:', error);
-        localStorage.removeItem('user');
-        setInterfaceModeState(asRoleType(storedMode));
-      }
-    } else {
-      setInterfaceModeState(asRoleType(storedMode));
-    }
-
-    setLoading(false);
+    setThemeModeState(asThemeMode(localStorage.getItem(THEME_STORAGE_KEY)));
   }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = themeMode;
   }, [themeMode]);
 
-  const login = (userData: User) => {
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-    setInterfaceModeState(asRoleType(userData.role_id));
-    localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, asRoleType(userData.role_id));
+  useEffect(() => {
+    const authInstance = auth;
+    if (!authInstance) {
+      setAuthError('Firebase Auth no esta inicializado.');
+      setLoading(false);
+      return undefined;
+    }
+
+    const unsubscribe = onAuthStateChanged(authInstance, (nextFirebaseUser) => {
+      void (async () => {
+        setLoading(true);
+        setAuthError('');
+        setFirebaseUser(nextFirebaseUser);
+
+        if (!nextFirebaseUser) {
+          setUser(null);
+          setInterfaceModeState(pickInterfaceMode(null, localStorage.getItem(INTERFACE_MODE_STORAGE_KEY)));
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const loadedUser = await loadUserDocument(nextFirebaseUser);
+          setUser(loadedUser);
+          const nextMode = pickInterfaceMode(loadedUser, localStorage.getItem(INTERFACE_MODE_STORAGE_KEY));
+          setInterfaceModeState(nextMode);
+          localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, nextMode);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'No pudimos cargar el usuario.';
+          setAuthError(message);
+          setUser(null);
+          await signOut(authInstance);
+        } finally {
+          setLoading(false);
+        }
+      })();
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const refreshUser = async (): Promise<User | null> => {
+    if (!auth?.currentUser) {
+      setUser(null);
+      return null;
+    }
+
+    const loadedUser = await loadUserDocument(auth.currentUser);
+    setUser(loadedUser);
+    setInterfaceModeState((currentMode) => pickInterfaceMode(loadedUser, currentMode));
+    return loadedUser;
+  };
+
+  const login = async (memberNumber: string, password: string) => {
+    if (!auth) {
+      throw new Error('Firebase Auth no esta inicializado.');
+    }
+
+    setAuthError('');
+    const internalEmail = buildSyntheticAuthEmail(memberNumber);
+
+    try {
+      const credential = await signInWithEmailAndPassword(auth, internalEmail, password);
+      const loadedUser = await loadUserDocument(credential.user);
+      setFirebaseUser(credential.user);
+      setUser(loadedUser);
+      const nextMode = pickInterfaceMode(loadedUser, localStorage.getItem(INTERFACE_MODE_STORAGE_KEY));
+      setInterfaceModeState(nextMode);
+      localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, nextMode);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '';
+      const message =
+        errorMessage === LICENSE_LOGIN_MESSAGE
+          ? LICENSE_LOGIN_MESSAGE
+          : 'El numero de socio o la contrasena no coinciden.';
+      if (auth.currentUser) {
+        await signOut(auth);
+      }
+      setAuthError(message);
+      throw new Error(message, { cause: error });
+    }
   };
 
   const updateUser = (userData: User) => {
-    localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
+    setInterfaceModeState((currentMode) => pickInterfaceMode(userData, currentMode));
   };
 
   const setInterfaceMode = (mode: RoleType) => {
+    if (user && !user.roleIds.includes(mode)) {
+      return;
+    }
+
     localStorage.setItem(INTERFACE_MODE_STORAGE_KEY, mode);
     setInterfaceModeState(mode);
   };
@@ -173,25 +244,39 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setThemeModeState(mode);
   };
 
-  const logout = () => {
-    localStorage.removeItem('user');
+  const hasRole = (role: RoleType) => Boolean(user?.roleIds.includes(role));
+  const hasAnyRole = (roles: readonly RoleType[]) => roles.some((role) => hasRole(role));
+
+  const logout = async () => {
+    if (auth) {
+      await signOut(auth);
+    }
     localStorage.removeItem(INTERFACE_MODE_STORAGE_KEY);
+    setFirebaseUser(null);
     setUser(null);
-    setInterfaceModeState(ROLES.MEMBER);
+    setInterfaceModeState(ROLES.SOCIO);
   };
 
-  const value: AuthContextType = {
-    user,
-    loading,
-    isAuthenticated: !!user,
-    interfaceMode,
-    themeMode,
-    login,
-    updateUser,
-    setInterfaceMode,
-    setThemeMode,
-    logout,
-  };
+  const value: AuthContextType = useMemo(
+    () => ({
+      user,
+      firebaseUser,
+      loading,
+      authError,
+      isAuthenticated: Boolean(user && firebaseUser),
+      interfaceMode,
+      themeMode,
+      login,
+      refreshUser,
+      updateUser,
+      setInterfaceMode,
+      setThemeMode,
+      hasRole,
+      hasAnyRole,
+      logout,
+    }),
+    [authError, firebaseUser, interfaceMode, loading, themeMode, user],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

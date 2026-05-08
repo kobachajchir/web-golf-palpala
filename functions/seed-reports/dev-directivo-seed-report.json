@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "projectId": "demo-web-golf-palpala",
+  "emulator": true,
+  "memberId": "dev-member-999-koba-chajchir",
+  "uid": "SQngrVbzuO9qpKi9uFIY8JMBEF8M",
+  "memberNumber": "999",
+  "normalizedMemberNumber": "000999",
+  "displayName": "Koba Chajchir",
+  "dni": "41041601",
+  "roleIds": [
+    "socio",
+    "directivo",
+    "administrativo",
+    "empleado"
+  ],
+  "authEmail": "socio-000999@club-auth.local",
+  "authUserCreated": true,
+  "password": "Club-Dev-2026"
+}

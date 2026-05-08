@@ -207,6 +207,13 @@ class InMemoryMembersStore {
         });
         return id;
     }
+    async createWithId(memberId, data, actorUid) {
+        this.items.set(memberId, {
+            id: memberId,
+            ...data,
+            ...createAudit(actorUid),
+        });
+    }
     async update(memberId, patch, actorUid) {
         const existing = this.items.get(memberId);
         if (!existing) {
@@ -217,6 +224,35 @@ class InMemoryMembersStore {
             ...applyPatch(existing, patch),
             updatedBy: actorUid,
             updatedAt: timestampNow(),
+        });
+    }
+}
+class InMemoryMemberLoginIdentifiersStore {
+    items;
+    constructor(items) {
+        this.items = items;
+    }
+    async getById(normalizedMemberNumber) {
+        return this.items.get(normalizedMemberNumber) ?? null;
+    }
+    async set(normalizedMemberNumber, data, actorUid) {
+        const existing = this.items.get(normalizedMemberNumber);
+        if (existing) {
+            this.items.set(normalizedMemberNumber, {
+                id: existing.id,
+                ...applyPatch(existing, data),
+                updatedBy: actorUid,
+                updatedAt: timestampNow(),
+            });
+            return;
+        }
+        this.items.set(normalizedMemberNumber, {
+            id: normalizedMemberNumber,
+            uid: data.uid ?? null,
+            memberId: data.memberId ?? null,
+            memberNumber: data.memberNumber ?? normalizedMemberNumber,
+            active: data.active ?? true,
+            ...createAudit(actorUid),
         });
     }
 }
@@ -309,6 +345,7 @@ export class InMemoryUsersTransactionManager {
     memberTypes = new Map();
     familyGroups = new Map();
     members = new Map();
+    memberLoginIdentifiers = new Map();
     employees = new Map();
     handicaps = new Map();
     clock = new FixedClock();
@@ -324,6 +361,7 @@ export class InMemoryUsersTransactionManager {
         memberTypes: new InMemoryMemberTypesStore(this.memberTypes),
         familyGroups: new InMemoryFamilyGroupsStore(this.familyGroups, () => `family-group-${++this.familyGroupCounter}`),
         members: new InMemoryMembersStore(this.members, () => `member-${++this.memberCounter}`),
+        memberLoginIdentifiers: new InMemoryMemberLoginIdentifiersStore(this.memberLoginIdentifiers),
         employees: new InMemoryEmployeesStore(this.employees, () => `employee-${++this.employeeCounter}`),
         handicaps: new InMemoryHandicapsStore(this.handicaps, () => `handicap-${++this.handicapCounter}`),
     };

@@ -1,3 +1,11 @@
 export * from './domain/models';
 export * from './functions/users.callables';
 export * from './infrastructure/firestore/repositories';
+export { createMembersRepository as createMembersQueryRepository } from './repositories/members.repository';
+export { createFamilyGroupsRepository as createFamilyGroupsQueryRepository } from './repositories/familyGroups.repository';
+export * from './services/memberDirectory';
+export * from './services/memberRegistry.service';
+export * from './services/memberSearch.service';
+export * from './types/member.types';
+export * from './types/family.types';
+export * from './types/user.types';

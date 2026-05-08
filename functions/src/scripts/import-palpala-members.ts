@@ -8,6 +8,7 @@ import {
   SYSTEM_ACTOR_UID,
   USERS_COLLECTIONS,
 } from '../modules/users/domain/constants.js';
+import { normalizeMemberNumber } from '../modules/auth/member-number-auth.js';
 
 type LegacyRosterRow = {
   order: number;
@@ -21,6 +22,7 @@ type LegacyRosterRow = {
 type ImportedMemberSeed = {
   id: string;
   memberNumber: string;
+  legacyMemberNumber: string;
   firstName: string;
   lastName: string;
   aagMembershipNumber?: string | undefined;
@@ -29,13 +31,23 @@ type ImportedMemberSeed = {
   typeId: string;
   familyGroupId?: string | undefined;
   isFamilyHolder: boolean;
+  memberNumberAssignment: 'legacy' | 'generated' | 'existing';
 };
 
 type FamilyGroupSeed = {
   id: string;
   code: string;
+  legacyMemberNumber: string;
   holderMemberId: string;
   memberIds: string[];
+};
+
+type MemberNumberReassignment = {
+  rowOrder: number;
+  fullName: string;
+  legacyMemberNumber: string;
+  assignedMemberNumber: string;
+  reason: string;
 };
 
 const IMPORT_MARK = 'Padron legado Palpala Golf Tenis Club';
@@ -43,6 +55,7 @@ const DEFAULT_PROJECT_ID = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOU
 const CSV_PATH = resolve(
   process.env.PALPALA_MEMBERS_CSV ?? resolve(process.cwd(), '..', 'public', 'data', 'palpala-members.csv'),
 );
+const DRY_RUN = process.env.MEMBERS_IMPORT_DRY_RUN === 'true' || process.argv.includes('--dry-run');
 
 const COMMON_GIVEN_NAMES = new Set([
   'ADRIANA',
@@ -65,7 +78,6 @@ const COMMON_GIVEN_NAMES = new Set([
   'FABRICIO',
   'FEDERICO',
   'FRANCO',
-  'FRANCILE',
   'FRANCISCO',
   'GABRIEL',
   'GASTON',
@@ -253,9 +265,26 @@ function createFamilyGroupId(memberNumber: string): string {
   return `legacy-family-${memberNumber.padStart(4, '0')}`;
 }
 
-function buildImportSeeds(rows: LegacyRosterRow[]): {
+function parseNumericMemberNumber(value: string): number | null {
+  const normalizedValue = value.trim().replace(/\s+/g, '');
+  if (!/^\d+$/.test(normalizedValue)) {
+    return null;
+  }
+
+  const numericValue = Number.parseInt(normalizedValue, 10);
+  return Number.isSafeInteger(numericValue) && numericValue >= 0 ? numericValue : null;
+}
+
+function buildImportSeeds(
+  rows: LegacyRosterRow[],
+  options: {
+    existingMemberNumberByMemberId: ReadonlyMap<string, string>;
+    occupiedMemberNumbers: ReadonlySet<string>;
+  },
+): {
   members: ImportedMemberSeed[];
   familyGroups: FamilyGroupSeed[];
+  memberNumberReassignments: MemberNumberReassignment[];
 } {
   const members = rows.map<ImportedMemberSeed>((row) => {
     const parsedName = splitLegacyFullName(row.fullName);
@@ -263,6 +292,7 @@ function buildImportSeeds(rows: LegacyRosterRow[]): {
     return {
       id: createMemberId(row),
       memberNumber: row.memberNumber,
+      legacyMemberNumber: row.memberNumber,
       firstName: parsedName.firstName || toTitleCase(row.fullName),
       lastName: parsedName.lastName || toTitleCase(row.fullName),
       aagMembershipNumber: row.aagMembershipNumber,
@@ -270,19 +300,104 @@ function buildImportSeeds(rows: LegacyRosterRow[]): {
       feeDeductionLabel: row.feeDeductionLabel,
       typeId: mapMemberType(row.membershipStatusLabel),
       isFamilyHolder: false,
+      memberNumberAssignment: 'legacy',
     };
   });
 
   const membersByNumber = members.reduce<Map<string, ImportedMemberSeed[]>>((accumulator, member) => {
-    const currentMembers = accumulator.get(member.memberNumber) ?? [];
+    const currentMembers = accumulator.get(normalizeMemberNumber(member.legacyMemberNumber)) ?? [];
     currentMembers.push(member);
-    accumulator.set(member.memberNumber, currentMembers);
+    accumulator.set(normalizeMemberNumber(member.legacyMemberNumber), currentMembers);
     return accumulator;
   }, new Map());
 
+  const highestLegacyMemberNumber = members.reduce<number>((highest, member) => {
+    const parsedValue = parseNumericMemberNumber(member.legacyMemberNumber);
+    return parsedValue !== null && parsedValue > highest ? parsedValue : highest;
+  }, 0);
+  let nextGeneratedMemberNumber = highestLegacyMemberNumber + 1;
+  const reservedMemberNumbers = new Set(options.occupiedMemberNumbers);
+  members.forEach((member) => reservedMemberNumbers.add(normalizeMemberNumber(member.legacyMemberNumber)));
+  const assignedMemberNumbers = new Set<string>();
+  const memberNumberReassignments: MemberNumberReassignment[] = [];
+
+  const reserveAssignedMemberNumber = (memberNumber: string) => {
+    const normalizedMemberNumber = normalizeMemberNumber(memberNumber);
+    reservedMemberNumbers.add(normalizedMemberNumber);
+    assignedMemberNumbers.add(normalizedMemberNumber);
+  };
+
+  const generateUniqueMemberNumber = (): string => {
+    let candidate = String(nextGeneratedMemberNumber);
+    while (reservedMemberNumbers.has(normalizeMemberNumber(candidate))) {
+      nextGeneratedMemberNumber += 1;
+      candidate = String(nextGeneratedMemberNumber);
+    }
+
+    nextGeneratedMemberNumber += 1;
+    reserveAssignedMemberNumber(candidate);
+    return candidate;
+  };
+
+  for (const groupedMembers of membersByNumber.values()) {
+    const holder =
+      groupedMembers.find(
+        (member) =>
+          member.typeId !== MEMBER_TYPE_IDS.grupoFamiliarAsociado &&
+          member.typeId !== MEMBER_TYPE_IDS.menor &&
+          member.typeId !== MEMBER_TYPE_IDS.licencia,
+      ) ?? groupedMembers[0]!;
+
+    for (const member of groupedMembers) {
+      const existingMemberNumber = options.existingMemberNumberByMemberId.get(member.id);
+      if (existingMemberNumber) {
+        member.memberNumber = existingMemberNumber;
+        member.memberNumberAssignment = 'existing';
+        reserveAssignedMemberNumber(existingMemberNumber);
+
+        if (normalizeMemberNumber(existingMemberNumber) !== normalizeMemberNumber(member.legacyMemberNumber)) {
+          memberNumberReassignments.push({
+            rowOrder: rows.find((row) => createMemberId(row) === member.id)?.order ?? 0,
+            fullName: `${member.lastName}, ${member.firstName}`,
+            legacyMemberNumber: member.legacyMemberNumber,
+            assignedMemberNumber: existingMemberNumber,
+            reason: 'Se conserva el ID unico ya importado anteriormente.',
+          });
+        }
+        continue;
+      }
+
+      const normalizedLegacyMemberNumber = normalizeMemberNumber(member.legacyMemberNumber);
+      const canUseLegacyNumber =
+        member.id === holder.id &&
+        !assignedMemberNumbers.has(normalizedLegacyMemberNumber) &&
+        !options.occupiedMemberNumbers.has(normalizedLegacyMemberNumber);
+
+      if (canUseLegacyNumber) {
+        member.memberNumber = member.legacyMemberNumber;
+        member.memberNumberAssignment = 'legacy';
+        reserveAssignedMemberNumber(member.memberNumber);
+        continue;
+      }
+
+      member.memberNumber = generateUniqueMemberNumber();
+      member.memberNumberAssignment = 'generated';
+      memberNumberReassignments.push({
+        rowOrder: rows.find((row) => createMemberId(row) === member.id)?.order ?? 0,
+        fullName: `${member.lastName}, ${member.firstName}`,
+        legacyMemberNumber: member.legacyMemberNumber,
+        assignedMemberNumber: member.memberNumber,
+        reason:
+          member.id === holder.id
+            ? 'El numero historico ya estaba reservado; se genero un ID unico.'
+            : 'Integrante de grupo familiar con numero historico compartido; se genero un ID unico.',
+      });
+    }
+  }
+
   const familyGroups: FamilyGroupSeed[] = [];
 
-  for (const [memberNumber, groupedMembers] of membersByNumber.entries()) {
+  for (const [, groupedMembers] of membersByNumber.entries()) {
     if (groupedMembers.length < 2) {
       continue;
     }
@@ -295,11 +410,13 @@ function buildImportSeeds(rows: LegacyRosterRow[]): {
           member.typeId !== MEMBER_TYPE_IDS.licencia,
       ) ?? groupedMembers[0]!;
 
-    const familyGroupId = createFamilyGroupId(memberNumber);
+    const legacyMemberNumber = groupedMembers[0]!.legacyMemberNumber;
+    const familyGroupId = createFamilyGroupId(legacyMemberNumber);
 
     familyGroups.push({
       id: familyGroupId,
-      code: `GF-${memberNumber.padStart(4, '0')}`,
+      code: `GF-${legacyMemberNumber.padStart(4, '0')}`,
+      legacyMemberNumber,
       holderMemberId: holder.id,
       memberIds: groupedMembers.map((member) => member.id),
     });
@@ -307,10 +424,12 @@ function buildImportSeeds(rows: LegacyRosterRow[]): {
     for (const groupedMember of groupedMembers) {
       groupedMember.familyGroupId = familyGroupId;
       groupedMember.isFamilyHolder = groupedMember.id === holder.id;
+      groupedMember.typeId =
+        groupedMember.id === holder.id ? MEMBER_TYPE_IDS.grupoFamiliarTitular : MEMBER_TYPE_IDS.grupoFamiliarAsociado;
     }
   }
 
-  return { members, familyGroups };
+  return { members, familyGroups, memberNumberReassignments };
 }
 
 async function readRoster(): Promise<LegacyRosterRow[]> {
@@ -324,7 +443,92 @@ async function run() {
   const firestore = getFirestore();
   firestore.settings({ ignoreUndefinedProperties: true });
   const importDate = new Date('2026-04-23T12:00:00-03:00');
-  const { members, familyGroups } = buildImportSeeds(await readRoster());
+  const rows = await readRoster();
+  const invalidRows = rows
+    .map((row, index) => ({ row, index: index + 2 }))
+    .filter(({ row }) => !row.memberNumber.trim() || !row.fullName.trim());
+  const rowsByMemberNumber = rows.reduce<Map<string, LegacyRosterRow[]>>((accumulator, row) => {
+    const normalizedMemberNumber = normalizeMemberNumber(row.memberNumber);
+    const groupedRows = accumulator.get(normalizedMemberNumber) ?? [];
+    groupedRows.push(row);
+    accumulator.set(normalizedMemberNumber, groupedRows);
+    return accumulator;
+  }, new Map());
+  const duplicateMemberNumbers = Array.from(rowsByMemberNumber.entries())
+    .filter(([, groupedRows]) => groupedRows.length > 1)
+    .map(([memberNumber, groupedRows]) => ({
+      memberNumber,
+      rows: groupedRows.map((row) => ({ order: row.order, fullName: row.fullName })),
+    }));
+  const invalidRowIndexes = new Set(invalidRows.map(({ index }) => index));
+  const importableRows = rows.filter((row, index) => {
+    const lineNumber = index + 2;
+    return !invalidRowIndexes.has(lineNumber);
+  });
+  const existingMemberIdSnapshots = await Promise.all(
+    importableRows.map((row) => firestore.collection(USERS_COLLECTIONS.members).doc(createMemberId(row)).get()),
+  );
+  const existingMemberNumberByMemberId = new Map<string, string>();
+  existingMemberIdSnapshots.forEach((snapshot) => {
+    if (!snapshot.exists) {
+      return;
+    }
+
+    const member = snapshot.data() as { memberNumber?: string };
+    if (member.memberNumber) {
+      existingMemberNumberByMemberId.set(snapshot.id, member.memberNumber);
+    }
+  });
+  const [allMembersSnapshot, allIdentifiersSnapshot] = await Promise.all([
+    firestore.collection(USERS_COLLECTIONS.members).select('memberNumber').get(),
+    firestore.collection(USERS_COLLECTIONS.memberLoginIdentifiers).select('active').get(),
+  ]);
+  const occupiedMemberNumbers = new Set<string>();
+  allMembersSnapshot.docs.forEach((snapshot) => {
+    const memberNumber = snapshot.get('memberNumber');
+    if (typeof memberNumber === 'string' && memberNumber.trim()) {
+      occupiedMemberNumbers.add(normalizeMemberNumber(memberNumber));
+    }
+  });
+  allIdentifiersSnapshot.docs.forEach((snapshot) => {
+    const active = snapshot.get('active');
+    if (active !== false) {
+      occupiedMemberNumbers.add(normalizeMemberNumber(snapshot.id));
+    }
+  });
+  const { members, familyGroups, memberNumberReassignments } = buildImportSeeds(importableRows, {
+    existingMemberNumberByMemberId,
+    occupiedMemberNumbers,
+  });
+  const existingMemberSnapshots = await Promise.all(
+    members.map((member) => firestore.collection(USERS_COLLECTIONS.members).doc(member.id).get()),
+  );
+  const createdMembers = existingMemberSnapshots.filter((snapshot) => !snapshot.exists).length;
+  const updatedMembers = existingMemberSnapshots.filter((snapshot) => snapshot.exists).length;
+  const identifierSnapshots = await Promise.all(
+    members.map((member) =>
+      firestore.collection(USERS_COLLECTIONS.memberLoginIdentifiers).doc(normalizeMemberNumber(member.memberNumber)).get(),
+    ),
+  );
+  const identifierConflicts = identifierSnapshots
+    .map((snapshot, index) => {
+      if (!snapshot.exists) {
+        return null;
+      }
+
+      const identifier = snapshot.data() as { memberId?: string | null; active?: boolean };
+      const member = members[index]!;
+      if (identifier.active === false || !identifier.memberId || identifier.memberId === member.id) {
+        return null;
+      }
+
+      return {
+        memberNumber: normalizeMemberNumber(member.memberNumber),
+        incomingMemberId: member.id,
+        existingMemberId: identifier.memberId,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
   const batch = firestore.batch();
 
@@ -393,9 +597,26 @@ async function run() {
       },
       { merge: true },
     );
+
+    batch.set(
+      firestore.collection(USERS_COLLECTIONS.memberLoginIdentifiers).doc(normalizeMemberNumber(member.memberNumber)),
+      {
+        uid: null,
+        memberId: member.id,
+        memberNumber: member.memberNumber,
+        active: true,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: SYSTEM_ACTOR_UID,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: SYSTEM_ACTOR_UID,
+      },
+      { merge: true },
+    );
   }
 
-  await batch.commit();
+  if (!DRY_RUN && identifierConflicts.length === 0) {
+    await batch.commit();
+  }
 
   console.log(
     JSON.stringify(
@@ -403,10 +624,23 @@ async function run() {
         ok: true,
         projectId: DEFAULT_PROJECT_ID,
         emulator: Boolean(process.env.FIRESTORE_EMULATOR_HOST),
+        dryRun: DRY_RUN,
         csvPath: CSV_PATH,
+        inputRows: rows.length,
+        importableRows: importableRows.length,
         importedMemberTypes: DEFAULT_MEMBER_TYPES.length,
-        importedFamilyGroups: familyGroups.length,
-        importedMembers: members.length,
+        importedFamilyGroups: DRY_RUN || identifierConflicts.length > 0 ? 0 : familyGroups.length,
+        createdMembers: DRY_RUN || identifierConflicts.length > 0 ? 0 : createdMembers,
+        updatedMembers: DRY_RUN || identifierConflicts.length > 0 ? 0 : updatedMembers,
+        skippedRows: rows.length - importableRows.length,
+        duplicateMemberNumbers,
+        memberNumberReassignments,
+        invalidRows: invalidRows.map(({ index, row }) => ({
+          line: index,
+          memberNumber: row.memberNumber,
+          fullName: row.fullName,
+        })),
+        identifierConflicts,
       },
       null,
       2,

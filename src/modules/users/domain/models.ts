@@ -5,6 +5,7 @@ export type PermissionId = string;
 export type MemberTypeId = string;
 export type UserProfileType = 'member' | 'employee' | 'none';
 export type MemberStatus = 'active' | 'inactive' | 'license' | 'suspended';
+export type MembershipRenewalStatus = 'current' | 'needs_renewal';
 export type EmployeeStatus = 'active' | 'inactive';
 export type EmployeeContractType = 'monthly' | 'seasonal' | 'daily' | 'honorarios' | 'eventual';
 export type HandicapStatus = 'active' | 'inactive' | 'expired';
@@ -26,10 +27,27 @@ export interface UserDocument extends AuditFields {
   primaryRoleId: RoleId;
   roleIds: RoleId[];
   profileType: UserProfileType;
-  profileId?: string;
+  profileId?: string | null;
   active: boolean;
   claimsVersion: number;
+  memberNumber?: string | null;
+  authProviderMode?: 'member_number_password';
+  mustChangePassword?: boolean;
+  passwordResetRequiredReason?: 'initial_default' | 'staff_reset' | null;
+  passwordUpdatedAt?: Timestamp;
   lastLoginAt?: Timestamp;
+}
+
+export interface PasswordResetRequestDocument extends AuditFields {
+  memberNumber: string;
+  normalizedMemberNumber: string;
+  memberId?: string | null;
+  uid?: string | null;
+  displayName?: string | null;
+  status: 'pending' | 'completed' | 'cancelled';
+  requestedAt: Timestamp;
+  resolvedAt?: Timestamp | null;
+  resolvedBy?: string | null;
 }
 
 export interface RoleDocument extends AuditFields {
@@ -95,7 +113,20 @@ export interface MemberDocument extends AuditFields {
   licenseEndAt?: Timestamp;
   currentHandicapId?: string;
   currentHandicapNumber?: number;
+  lastFeePaymentAt?: Timestamp;
+  membershipRenewalStatus?: MembershipRenewalStatus;
+  membershipRenewalDueAt?: Timestamp;
+  lastFeePaidAmountMinor?: number;
+  lastFeeDiscountPctBps?: number;
+  lastFeeDiscountAmountMinor?: number;
   notes?: string;
+}
+
+export interface MemberLoginIdentifierDocument extends AuditFields {
+  uid?: string | null;
+  memberId?: string | null;
+  memberNumber: string;
+  active: boolean;
 }
 
 export interface EmployeeDocument extends AuditFields {
@@ -170,12 +201,13 @@ export interface CreateFamilyGroupPayload {
 export interface FamilyGroupMembershipPayload {
   groupId: string;
   memberId: string;
+  replacementHolderMemberId?: string;
 }
 
 export interface StartLicensePayload {
   memberId: string;
   startAt: string;
-  endAt: string;
+  endAt?: string | null;
 }
 
 export interface EndLicensePayload {

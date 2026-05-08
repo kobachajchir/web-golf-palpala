@@ -1,24 +1,36 @@
 import type { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
-import { ROLES, type RoleType } from '../../constants/roles';
+import { Navigate, useLocation } from 'react-router-dom';
+import { ROLES } from '../../constants/roles';
 import { useAuth } from '../../hooks/useAuth';
 
 interface RouteProps {
   children: ReactNode;
 }
 
-function canAccess(userRoleId: string | undefined, allowedRoles: readonly RoleType[]) {
-  return allowedRoles.includes(userRoleId as RoleType);
+const ADMIN_ROUTE_MODES = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO] as const;
+const MEMBERS_ROUTE_MODES = [ROLES.EMPLEADO, ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO] as const;
+
+function RouteLoading() {
+  return (
+    <div className="loading-state">
+      <span className="loading-spinner" />
+      <strong>Obteniendo datos</strong>
+    </div>
+  );
 }
 
 export function PublicRoute({ children }: RouteProps) {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
 
   if (loading) {
-    return <div className="empty-state">Cargando...</div>;
+    return <RouteLoading />;
   }
 
   if (isAuthenticated) {
+    if (user?.mustChangePassword) {
+      return <Navigate to="/cambiar-contrasena" replace />;
+    }
+
     return <Navigate to="/home" replace />;
   }
 
@@ -26,17 +38,22 @@ export function PublicRoute({ children }: RouteProps) {
 }
 
 export function AdminRoute({ children }: RouteProps) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasAnyRole, interfaceMode, loading, user } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return <div className="empty-state">Cargando...</div>;
+    return <RouteLoading />;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!canAccess(user?.role_id, [ROLES.ADMIN])) {
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  if (!hasAnyRole(ADMIN_ROUTE_MODES) || !(ADMIN_ROUTE_MODES as readonly string[]).includes(interfaceMode)) {
     return <Navigate to="/home" replace />;
   }
 
@@ -44,17 +61,45 @@ export function AdminRoute({ children }: RouteProps) {
 }
 
 export function OwnerRoute({ children }: RouteProps) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasRole, interfaceMode, loading, user } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return <div className="empty-state">Cargando...</div>;
+    return <RouteLoading />;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!canAccess(user?.role_id, [ROLES.OWNER])) {
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  if (!hasRole(ROLES.DIRECTIVO) || interfaceMode !== ROLES.DIRECTIVO) {
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+}
+
+export function AccountingRoute({ children }: RouteProps) {
+  const { isAuthenticated, hasAnyRole, interfaceMode, loading, user } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <RouteLoading />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  if (!hasAnyRole(ADMIN_ROUTE_MODES) || !(ADMIN_ROUTE_MODES as readonly string[]).includes(interfaceMode)) {
     return <Navigate to="/home" replace />;
   }
 
@@ -62,17 +107,22 @@ export function OwnerRoute({ children }: RouteProps) {
 }
 
 export function EmployeeRoute({ children }: RouteProps) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasRole, interfaceMode, loading, user } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return <div className="empty-state">Cargando...</div>;
+    return <RouteLoading />;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!canAccess(user?.role_id, [ROLES.EMPLOYEE])) {
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  if (!hasRole(ROLES.EMPLEADO) || interfaceMode !== ROLES.EMPLEADO) {
     return <Navigate to="/home" replace />;
   }
 
@@ -80,17 +130,22 @@ export function EmployeeRoute({ children }: RouteProps) {
 }
 
 export function MembersRoute({ children }: RouteProps) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasAnyRole, interfaceMode, loading, user } = useAuth();
+  const location = useLocation();
 
   if (loading) {
-    return <div className="empty-state">Cargando...</div>;
+    return <RouteLoading />;
   }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!canAccess(user?.role_id, [ROLES.MEMBER, ROLES.ADMIN])) {
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  if (!hasAnyRole(MEMBERS_ROUTE_MODES) || !(MEMBERS_ROUTE_MODES as readonly string[]).includes(interfaceMode)) {
     return <Navigate to="/home" replace />;
   }
 
@@ -98,10 +153,29 @@ export function MembersRoute({ children }: RouteProps) {
 }
 
 export function ProtectedRoute({ children }: RouteProps) {
+  const { isAuthenticated, loading, user } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <RouteLoading />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  return children;
+}
+
+export function PasswordChangeRoute({ children }: RouteProps) {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return <div className="empty-state">Cargando...</div>;
+    return <RouteLoading />;
   }
 
   if (!isAuthenticated) {

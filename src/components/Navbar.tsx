@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { ROLE_LABELS, ROLES, type RoleType } from '../constants/roles';
 import type { ThemeMode } from '../context/AuthContext';
 import { useAuth } from '../hooks/useAuth';
+import { firestore } from '../lib/firebase';
+import type { PasswordResetRequestDocument } from '../modules/users/domain/models';
 import { getUserDisplayName, getUserInitial } from '../utils/user';
 
-const MODE_OPTIONS: RoleType[] = [ROLES.MEMBER, ROLES.EMPLOYEE, ROLES.ADMIN, ROLES.OWNER];
+const DEFAULT_MODE_OPTIONS: RoleType[] = [ROLES.SOCIO, ROLES.EMPLEADO, ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
+const STAFF_MODE_OPTIONS: readonly RoleType[] = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
 
 type NotificationItem = {
   id: string;
@@ -47,16 +51,16 @@ function MoonIcon() {
 
 function ModeIcon({ mode }: { mode: RoleType }) {
   const icons: Record<RoleType, ReactNode> = {
-    [ROLES.MEMBER]: (
+    [ROLES.SOCIO]: (
       <path d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12Zm0 2c-4.14 0-7.5 2.46-7.5 5.5a1 1 0 0 0 2 0c0-1.69 2.42-3.5 5.5-3.5s5.5 1.81 5.5 3.5a1 1 0 0 0 2 0c0-3.04-3.36-5.5-7.5-5.5Z" />
     ),
-    [ROLES.EMPLOYEE]: (
+    [ROLES.EMPLEADO]: (
       <path d="M7 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2h1.5A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-9A2.5 2.5 0 0 1 5.5 6H7V4Zm2 2h6V4H9v2Zm2 4v2H9a1 1 0 0 0 0 2h2v2a1 1 0 1 0 2 0v-2h2a1 1 0 1 0 0-2h-2v-2a1 1 0 1 0-2 0Z" />
     ),
-    [ROLES.ADMIN]: (
+    [ROLES.ADMINISTRATIVO]: (
       <path d="M12 2 4 5v6c0 5.25 3.44 9.74 8 11 4.56-1.26 8-5.75 8-11V5l-8-3Zm0 4 4 1.5V11a8.76 8.76 0 0 1-4 7.58A8.76 8.76 0 0 1 8 11V7.5L12 6Z" />
     ),
-    [ROLES.OWNER]: (
+    [ROLES.DIRECTIVO]: (
       <path d="M5 18h14a1 1 0 1 1 0 2H5a1 1 0 1 1 0-2Zm.83-3.45 1.57-8.62a1 1 0 0 1 1.53-.64L12 7.2l3.07-1.91a1 1 0 0 1 1.53.64l1.57 8.62a1 1 0 0 1-1.64.92L12 11.94l-4.53 3.53a1 1 0 0 1-1.64-.92Z" />
     ),
   };
@@ -83,37 +87,84 @@ export function Navbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
+  const [passwordResetNotifications, setPasswordResetNotifications] = useState<NotificationItem[]>([]);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const notificationsByMode: Record<RoleType, NotificationItem[]> = useMemo(
     () => ({
-      [ROLES.MEMBER]: [
+      [ROLES.SOCIO]: [
         { id: 'n1', title: 'Comprobante disponible', detail: 'Ya podes revisar el ultimo recibo emitido.' },
         { id: 'n2', title: 'Cuota proxima a vencer', detail: 'Tu cuota vence en 3 dias.' },
       ],
-      [ROLES.EMPLOYEE]: [
+      [ROLES.EMPLEADO]: [
         { id: 'n1', title: 'Ingreso por registrar', detail: 'Hay 2 cobros pendientes de carga.' },
         { id: 'n2', title: 'Caja pendiente', detail: 'Se registro un movimiento sin medio de pago.' },
         { id: 'n3', title: 'Egreso en espera', detail: 'Hay un pago manual pendiente de confirmacion.' },
         { id: 'n4', title: 'Gasto cargado', detail: 'Hay un ticket pendiente de revision.' },
       ],
-      [ROLES.ADMIN]: [
+      [ROLES.ADMINISTRATIVO]: [
         { id: 'n1', title: 'Gastos por aprobar', detail: 'Hay 4 gastos pendientes de validacion.' },
         { id: 'n2', title: 'Cobros conciliados', detail: 'Se acreditaron 3 pagos durante la manana.' },
         { id: 'n3', title: 'Auditoria disponible', detail: 'Se registraron cambios en caja y movimientos.' },
       ],
-      [ROLES.OWNER]: [
+      [ROLES.DIRECTIVO]: [
         { id: 'n1', title: 'Cierre financiero listo', detail: 'La Junta Directiva ya puede revisar el resumen del dia.' },
       ],
     }),
     [],
   );
 
-  const notifications = notificationsByMode[interfaceMode];
+  useEffect(() => {
+    if (!STAFF_MODE_OPTIONS.includes(interfaceMode) || !firestore) {
+      setPasswordResetNotifications([]);
+      return;
+    }
+
+    let mounted = true;
+
+    void getDocs(
+      query(
+        collection(firestore, 'password_reset_requests'),
+        where('status', '==', 'pending'),
+        limit(5),
+      ),
+    )
+      .then((snapshot) => {
+        if (!mounted) {
+          return;
+        }
+
+        setPasswordResetNotifications(
+          snapshot.docs.map((entry) => {
+            const request = entry.data() as PasswordResetRequestDocument;
+            return {
+              id: `password-reset-${entry.id}`,
+              title: 'Solicitud de contraseña',
+              detail: `${request.displayName ?? `Socio ${request.memberNumber}`} pidió restablecer su contraseña.`,
+            };
+          }),
+        );
+      })
+      .catch(() => {
+        if (mounted) {
+          setPasswordResetNotifications([]);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [interfaceMode]);
+
+  const notifications = [...passwordResetNotifications, ...notificationsByMode[interfaceMode]];
   const pendingNotifications = notifications.length;
   const displayName = getUserDisplayName(user);
-  const canManageMembers = user?.role_id === ROLES.ADMIN;
+  const modeOptions = user?.roleIds.length ? user.roleIds : DEFAULT_MODE_OPTIONS;
+  const hasRoleSelector = Boolean(user && user.roleIds.length > 1);
+  const canManageMembers = STAFF_MODE_OPTIONS.includes(interfaceMode);
+  const canViewMembers = canManageMembers || interfaceMode === ROLES.EMPLEADO;
+  const canAccessAccounting = STAFF_MODE_OPTIONS.includes(interfaceMode);
 
   useEffect(() => {
     setIsOpen(false);
@@ -150,34 +201,24 @@ export function Navbar() {
 
   const handleProfileClick = () => {
     setIsUserMenuOpen(false);
-    navigate(`/users/${user?.id || 'test'}`);
+    navigate('/perfil');
   };
 
   const handleLogout = () => {
-    console.log('Mock cerrar sesion', {
-      current_user_id: user?.id,
-    });
     setIsUserMenuOpen(false);
     setIsNotificationsOpen(false);
-    logout();
-    navigate('/login', { replace: true });
+    void logout().then(() => navigate('/login', { replace: true }));
   };
 
   const handleModeChange = (mode: RoleType) => {
-    console.log('Mock cambiar modo de interfaz', {
-      selected_mode: mode,
-      current_user_id: user?.id,
-    });
     setInterfaceMode(mode);
     setIsModeMenuOpen(false);
+    setIsUserMenuOpen(false);
+    navigate('/home', { replace: true });
   };
 
   const handleThemeToggle = () => {
     const nextThemeMode: ThemeMode = themeMode === 'light' ? 'dark' : 'light';
-    console.log('Mock cambiar tema', {
-      selected_theme: nextThemeMode,
-      current_user_id: user?.id,
-    });
     setThemeMode(nextThemeMode);
   };
 
@@ -196,12 +237,10 @@ export function Navbar() {
   };
 
   const handleViewAllNotifications = () => {
-    console.log('Mock ver todas las notificaciones', {
-      current_user_id: user?.id,
-      current_mode: interfaceMode,
-      items: notifications,
-    });
     setIsNotificationsOpen(false);
+    if (passwordResetNotifications.length > 0) {
+      navigate('/admin/members');
+    }
   };
 
   return (
@@ -213,10 +252,12 @@ export function Navbar() {
       <div className="navbar-center">
         <nav className={`navbar-links ${isOpen ? 'navbar-links--open' : ''}`}>
           <NavLink to="/home">Inicio</NavLink>
-          {canManageMembers && <NavLink to="/admin/members">Socios</NavLink>}
-          <button type="button" onClick={() => console.log('Mock navegacion a caja')}>
-            Caja
-          </button>
+          <NavLink to="/club">El Club</NavLink>
+          <NavLink to="/torneos">Torneos</NavLink>
+          {canViewMembers && <NavLink to="/admin/members">Socios</NavLink>}
+          {canAccessAccounting && (
+            <NavLink to="/accounting">Contabilidad</NavLink>
+          )}
         </nav>
       </div>
 
@@ -292,51 +333,53 @@ export function Navbar() {
             <div className="nav-popover nav-popover--user">
               <div className="nav-user-summary">
                 <strong>{displayName}</strong>
-                <small>{user ? `Usuario ${user.user_number}` : 'Sin usuario'}</small>
+                <small>{user ? `Socio ${user.memberNumber ?? user.id}` : 'Sin usuario'}</small>
               </div>
 
-              <div className="nav-settings-row">
-                <div className="nav-settings-copy">
-                  <strong>Modo de vista</strong>
-                  <small>{ROLE_LABELS[interfaceMode]}</small>
-                </div>
+              {hasRoleSelector && (
+                <div className="nav-settings-row">
+                  <div className="nav-settings-copy">
+                    <strong>Modo de vista</strong>
+                    <small>{ROLE_LABELS[interfaceMode]}</small>
+                  </div>
 
-                <div className="nav-inline-picker">
-                  <button
-                    type="button"
-                    className={`nav-inline-picker__trigger ${isModeMenuOpen ? 'nav-inline-picker__trigger--open' : ''}`}
-                    aria-label="Cambiar modo de vista"
-                    aria-expanded={isModeMenuOpen}
-                    onClick={handleModeMenuToggle}
-                  >
-                    <span className="nav-inline-picker__value">
-                      <ModeIcon mode={interfaceMode} />
-                      <span>{ROLE_LABELS[interfaceMode]}</span>
-                    </span>
-                    <ChevronIcon />
-                  </button>
+                  <div className="nav-inline-picker">
+                    <button
+                      type="button"
+                      className={`nav-inline-picker__trigger ${isModeMenuOpen ? 'nav-inline-picker__trigger--open' : ''}`}
+                      aria-label="Cambiar modo de vista"
+                      aria-expanded={isModeMenuOpen}
+                      onClick={handleModeMenuToggle}
+                    >
+                      <span className="nav-inline-picker__value">
+                        <ModeIcon mode={interfaceMode} />
+                        <span>{ROLE_LABELS[interfaceMode]}</span>
+                      </span>
+                      <ChevronIcon />
+                    </button>
 
-                  {isModeMenuOpen && (
-                    <div className="nav-inline-picker__menu" role="menu" aria-label="Opciones de modo de vista">
-                      {MODE_OPTIONS.map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={interfaceMode === mode}
-                          className={`nav-inline-picker__item ${interfaceMode === mode ? 'nav-inline-picker__item--active' : ''}`}
-                          onClick={() => handleModeChange(mode)}
-                        >
-                          <span className="nav-inline-picker__value">
-                            <ModeIcon mode={mode} />
-                            <span>{ROLE_LABELS[mode]}</span>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                    {isModeMenuOpen && (
+                      <div className="nav-inline-picker__menu" role="menu" aria-label="Opciones de modo de vista">
+                        {modeOptions.map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={interfaceMode === mode}
+                            className={`nav-inline-picker__item ${interfaceMode === mode ? 'nav-inline-picker__item--active' : ''}`}
+                            onClick={() => handleModeChange(mode)}
+                          >
+                            <span className="nav-inline-picker__value">
+                              <ModeIcon mode={mode} />
+                              <span>{ROLE_LABELS[mode]}</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="nav-settings-row">
                 <div className="nav-settings-copy">

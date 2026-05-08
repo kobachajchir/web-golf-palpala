@@ -1,0 +1,54 @@
+{
+  "ok": true,
+  "projectId": "demo-web-golf-palpala",
+  "emulator": true,
+  "requested": 5,
+  "linked": [],
+  "skipped": [
+    {
+      "holder": "Gomez, Luis",
+      "associated": "Santucho, Isabel",
+      "reason": "No encontrado en members.",
+      "matches": {
+        "holder": [],
+        "associated": []
+      }
+    },
+    {
+      "holder": "Ibarra, Horacio",
+      "associated": "Lokman, Maria Gabriela",
+      "reason": "No encontrado en members.",
+      "matches": {
+        "holder": [],
+        "associated": []
+      }
+    },
+    {
+      "holder": "Branca, Oscar",
+      "associated": "Delgado, Maria Fernanda",
+      "reason": "No encontrado en members.",
+      "matches": {
+        "holder": [],
+        "associated": []
+      }
+    },
+    {
+      "holder": "Boggione, Rene",
+      "associated": "Traversi, Patricia",
+      "reason": "No encontrado en members.",
+      "matches": {
+        "holder": [],
+        "associated": []
+      }
+    },
+    {
+      "holder": "Rodriguez Francile, Hector",
+      "associated": "Pedroso, Patricia",
+      "reason": "No encontrado en members.",
+      "matches": {
+        "holder": [],
+        "associated": []
+      }
+    }
+  ]
+}

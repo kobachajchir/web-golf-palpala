@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "projectId": "demo-web-golf-palpala",
+  "emulator": true,
+  "termId": "comision-ejecutiva-2026",
+  "linked": [
+    {
+      "positionCode": "presidente",
+      "fullNameSnapshot": "NOCETI, JORGE ANTONIO",
+      "memberId": "legacy-166-7-noceti-jorge-antonio",
+      "memberNumber": "000166",
+      "uid": "kJpICi91xcVVaAfGthwKvJiiYHHX",
+      "authUserCreated": false,
+      "generatedTemporaryPassword": false
+    },
+    {
+      "positionCode": "vicepresidente",
+      "fullNameSnapshot": "SOLER, JUAN MANUEL",
+      "memberId": "legacy-715-57-soler-juan-manuel",
+      "memberNumber": "000715",
+      "uid": "ED21zeujKzD0cEyB7b52LXMxceeB",
+      "authUserCreated": false,
+      "generatedTemporaryPassword": false
+    },
+    {
+      "positionCode": "tesorero",
+      "fullNameSnapshot": "SOLER, SEBASTIÁN",
+      "memberId": "legacy-829-89-soler-sebastian",
+      "memberNumber": "000829",
+      "uid": "HBzHpYL3ubjEOV51ogAIo7Ycracd",
+      "authUserCreated": false,
+      "generatedTemporaryPassword": false
+    },
+    {
+      "positionCode": "protesorero",
+      "fullNameSnapshot": "RODRÍGUEZ FRANCILE, HÉCTOR",
+      "memberId": "legacy-186-10-rodriguez-francile-hector",
+      "memberNumber": "000186",
+      "uid": "cf2dOynGdloTrxvRPcdZEUW7wTzM",
+      "authUserCreated": false,
+      "generatedTemporaryPassword": false
+    },
+    {
+      "positionCode": "capitan_cancha",
+      "fullNameSnapshot": "HINOJO, FRANCISCO JAVIER",
+      "memberId": "legacy-704-54-hinojo-francisco-javier",
+      "memberNumber": "000704",
+      "uid": "aPsiurAbanKrxykmZQC8CKLDG0rb",
+      "authUserCreated": false,
+      "generatedTemporaryPassword": false
+    },
+    {
+      "positionCode": "subcapitan_cancha",
+      "fullNameSnapshot": "NAZARIO, FEDERICO",
+      "memberId": "legacy-179-9-nazario-federico",
+      "memberNumber": "000179",
+      "uid": "nESJJX4cpVHitZ2hexLpZd2nnH1M",
+      "authUserCreated": false,
+      "generatedTemporaryPassword": false
+    }
+  ],
+  "unresolved": [],
+  "passwordMode": "env-default-password"
+}

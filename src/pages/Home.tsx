@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
@@ -23,46 +23,30 @@ type RoleAction = {
 
 type RoleView = {
   eyebrow: string;
-  description: string;
-  summaryTitle: string;
-  summaryDetail: string;
-  summaryCta: string;
   actions: RoleAction[];
 };
 
 const ROLE_VIEWS: Record<RoleType, RoleView> = {
-  [ROLES.MEMBER]: {
+  [ROLES.SOCIO]: {
     eyebrow: 'Tu cuenta',
-    description: 'Consulta tu estado de cuenta, cuotas y movimientos vinculados al club.',
-    summaryTitle: 'Tu estado de cuenta',
-    summaryDetail: 'Tenes una cuota pendiente y un comprobante nuevo disponible para revisar.',
-    summaryCta: 'Ver cuenta',
     actions: [
-      { id: 'account-status', label: 'Estado de cuenta', helper: 'Pendientes y saldo', icon: 'wallet' },
-      { id: 'payments', label: 'Mis pagos', helper: 'Cobros y acreditaciones', icon: 'calendar' },
-      { id: 'receipts', label: 'Comprobantes', helper: 'Recibos y respaldos', icon: 'flag' },
-      { id: 'profile', label: 'Actualizar mis datos', helper: 'Telefono y perfil', icon: 'badge' },
+      { id: 'profile', label: 'Mi perfil', helper: 'Datos personales', icon: 'badge' },
+      { id: 'membership', label: 'Mi membresia', helper: 'Estado de socio', icon: 'wallet' },
+      { id: 'courts', label: 'Solicitar cancha', helper: 'Fechas y horarios', icon: 'calendar' },
+      { id: 'tournaments', label: 'Inscribirme', helper: 'Torneos del club', icon: 'flag' },
     ],
   },
-  [ROLES.EMPLOYEE]: {
-    eyebrow: 'Operacion diaria',
-    description: 'Acciones rapidas para registrar ingresos, egresos y movimientos diarios.',
-    summaryTitle: 'Caja del dia',
-    summaryDetail: 'Hay 2 ingresos por registrar, 1 egreso pendiente y 3 movimientos para conciliar.',
-    summaryCta: 'Ir a caja',
+  [ROLES.EMPLEADO]: {
+    eyebrow: 'Acciones rapidas',
     actions: [
       { id: 'cash-income', label: 'Registrar ingresos', helper: 'Cobros y entradas', icon: 'wallet' },
       { id: 'cash-expense', label: 'Registrar egresos', helper: 'Pagos y salidas', icon: 'clipboard' },
-      { id: 'cash-close', label: 'Cierre de caja', helper: 'Resumen del turno', icon: 'chart' },
       { id: 'report-expense', label: 'Cargar gasto', helper: 'Tickets y rendiciones', icon: 'clipboard' },
+      { id: 'view-users', label: 'Ver socios', helper: 'Busqueda y consulta', icon: 'people' },
     ],
   },
-  [ROLES.ADMIN]: {
+  [ROLES.ADMINISTRATIVO]: {
     eyebrow: 'Gestion interna',
-    description: 'Control administrativo para usuarios, gastos, cobros y movimientos contables.',
-    summaryTitle: 'Pendientes contables',
-    summaryDetail: 'Hay 4 gastos por validar, 3 cobros sin conciliar y 1 ajuste de caja para revisar.',
-    summaryCta: 'Abrir panel',
     actions: [
       { id: 'manage-users', label: 'Gestionar usuarios', helper: 'Altas, bajas y perfiles', icon: 'people' },
       { id: 'expense-review', label: 'Validar gastos', helper: 'Revision y aprobacion', icon: 'clipboard' },
@@ -70,12 +54,8 @@ const ROLE_VIEWS: Record<RoleType, RoleView> = {
       { id: 'fees-admin', label: 'Cobros y cuotas', helper: 'Generacion y seguimiento', icon: 'wallet' },
     ],
   },
-  [ROLES.OWNER]: {
-    eyebrow: 'Seguimiento institucional',
-    description: 'Vision consolidada para decision contable y administrativa de la Junta Directiva.',
-    summaryTitle: 'Estado financiero',
-    summaryDetail: 'Hoy ingreso mas dinero del esperado, pero hay egresos extraordinarios pendientes de aprobacion.',
-    summaryCta: 'Ver tablero',
+  [ROLES.DIRECTIVO]: {
+    eyebrow: 'Acciones rápidas',
     actions: [
       { id: 'cash-flow', label: 'Flujo de caja', helper: 'Entradas y salidas', icon: 'chart' },
       { id: 'approvals', label: 'Aprobar gastos', helper: 'Control de egresos', icon: 'clipboard' },
@@ -123,40 +103,66 @@ function Icon({ type }: { type: ActionIconType }) {
 export function Home() {
   const { user, interfaceMode } = useAuth();
   const navigate = useNavigate();
+  const [notice, setNotice] = useState('');
   const displayName = getUserDisplayName(user);
   const roleView = ROLE_VIEWS[interfaceMode];
-  const isMemberView = interfaceMode === ROLES.MEMBER;
-
-  const handlePrimaryAction = () => {
-    if (interfaceMode === ROLES.ADMIN) {
-      navigate('/admin/members');
-      return;
-    }
-
-    if (interfaceMode === ROLES.MEMBER) {
-      navigate(`/users/${user?.id || 'test'}`);
-      return;
-    }
-
-    console.log('Mock accion destacada del home', {
-      role: interfaceMode,
-      action: roleView.summaryCta,
-      user_id: user?.id,
-    });
-  };
+  const reservationSummary = 'Sin reservas';
 
   const handleRoleAction = (action: RoleAction) => {
-    if (action.id === 'manage-users' && user?.role_id === ROLES.ADMIN) {
+    if (
+      action.id === 'manage-users' &&
+      (user?.roleIds.includes(ROLES.ADMINISTRATIVO) || user?.roleIds.includes(ROLES.DIRECTIVO))
+    ) {
       navigate('/admin/members');
+      return;
+    }
+
+    if (
+      [
+        'expense-review',
+        'cash-movements',
+        'fees-admin',
+        'cash-flow',
+        'approvals',
+        'monthly-reports',
+        'budget-followup',
+      ].includes(action.id)
+    ) {
+      navigate('/accounting');
       return;
     }
 
     if (action.id === 'profile') {
-      navigate(`/users/${user?.id || 'test'}`);
+      navigate('/perfil');
       return;
     }
 
-    console.log('Mock accion por rol', {
+    if (action.id === 'membership') {
+      navigate('/mi-membresia');
+      return;
+    }
+
+    if (action.id === 'view-users') {
+      navigate('/admin/members');
+      return;
+    }
+
+    if (action.id === 'cash-income' || action.id === 'cash-expense' || action.id === 'report-expense') {
+      setNotice('Esta accion operativa queda preparada para conectar desde el modulo contable.');
+      return;
+    }
+
+    if (action.id === 'courts') {
+      navigate('/canchas');
+      return;
+    }
+
+    if (action.id === 'tournaments') {
+      setNotice('No hay torneos abiertos.');
+      return;
+    }
+
+    console.log('Accion por rol pendiente de conectar', {
       role: interfaceMode,
       action_id: action.id,
       user_id: user?.id,
@@ -169,34 +175,18 @@ export function Home() {
         <section className="floating-card home-card">
           <p className="eyebrow">Bienvenido</p>
           <h1>Hola {displayName}</h1>
-
-          <div className="home-flex">
-            <div className="home-copy">
-              <p>{roleView.description}</p>
-            </div>
-            <div className="home-image" role="img" aria-label="Campo de golf" />
+          <div className="reservation-status">
+            <span>Reservas</span>
+            <strong>{reservationSummary}</strong>
           </div>
 
-          <div className={`role-highlight ${isMemberView ? 'role-highlight--member' : ''}`}>
-            <div>
-              <strong>{roleView.summaryTitle}</strong>
-              <p>{roleView.summaryDetail}</p>
-            </div>
-            <button
-              type="button"
-              className={isMemberView ? 'btn-secondary' : 'btn-primary'}
-              onClick={handlePrimaryAction}
-            >
-              {roleView.summaryCta}
-            </button>
-          </div>
+          {notice && <div className="accounting-success">{notice}</div>}
         </section>
 
         <section className="floating-card role-card">
           <div className="role-card__header">
             <div>
               <p className="eyebrow">{roleView.eyebrow}</p>
-              <h2>Acciones importantes</h2>
             </div>
           </div>
 

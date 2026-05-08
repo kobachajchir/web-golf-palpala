@@ -1,8 +1,6 @@
 import { Navigate } from 'react-router-dom';
+import { ROLES } from '../../constants/roles';
 import { useAuth } from '../../hooks/useAuth';
-
-// TODO: Cambiar roles de strings a constantes
-// ROLES_CONST = { ADMIN: 'admin', OWNER: 'owner', MEMBER: 'member', EMPLOYEE: 'employee' }
 
 export function PublicRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
@@ -19,7 +17,7 @@ export function PublicRoute({ children }) {
 }
 
 export function AdminRoute({ children }) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasAnyRole, loading } = useAuth();
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -29,8 +27,7 @@ export function AdminRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  // TODO: Cambiar a constante
-  if (user?.role !== 'admin') {
+  if (!hasAnyRole([ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO])) {
     return <Navigate to="/home" replace />;
   }
 
@@ -38,7 +35,7 @@ export function AdminRoute({ children }) {
 }
 
 export function OwnerRoute({ children }) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasRole, loading } = useAuth();
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -48,8 +45,25 @@ export function OwnerRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  // TODO: Cambiar a constante
-  if (user?.role !== 'owner') {
+  if (!hasRole(ROLES.DIRECTIVO)) {
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+}
+
+export function AccountingRoute({ children }) {
+  const { isAuthenticated, hasAnyRole, loading } = useAuth();
+
+  if (loading) {
+    return <div>Cargando...</div>;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!hasAnyRole([ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO])) {
     return <Navigate to="/home" replace />;
   }
 
@@ -57,7 +71,7 @@ export function OwnerRoute({ children }) {
 }
 
 export function EmployeeRoute({ children }) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasRole, loading } = useAuth();
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -67,8 +81,7 @@ export function EmployeeRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  // TODO: Cambiar a constante
-  if (user?.role !== 'employee') {
+  if (!hasRole(ROLES.EMPLEADO)) {
     return <Navigate to="/home" replace />;
   }
 
@@ -76,7 +89,7 @@ export function EmployeeRoute({ children }) {
 }
 
 export function MembersRoute({ children }) {
-  const { isAuthenticated, user, loading } = useAuth();
+  const { isAuthenticated, hasAnyRole, loading } = useAuth();
 
   if (loading) {
     return <div>Cargando...</div>;
@@ -86,10 +99,7 @@ export function MembersRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  // TODO: Cambiar a constante
-  // Acceso para members y admins
-  const allowedRoles = ['member', 'admin'];
-  if (!allowedRoles.includes(user?.role)) {
+  if (!hasAnyRole([ROLES.SOCIO, ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO])) {
     return <Navigate to="/home" replace />;
   }
 

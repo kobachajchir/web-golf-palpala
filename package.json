@@ -8,7 +8,15 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "seed:members": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-users-emulator.ps1",
+    "seed:accounting": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-accounting-emulator.ps1",
+    "seed:members": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-members-full-emulator.ps1",
+    "seed:members:registry": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-users-emulator.ps1",
+    "seed:member-auth-users": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-member-auth-users-emulator.ps1",
+    "import:members:dry-run": "powershell -ExecutionPolicy Bypass -Command \"Push-Location .\\functions; npm run import:palpala-members:dry-run; Pop-Location\"",
+    "seed:dev-directivo": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-dev-directivo-emulator.ps1",
+    "seed:executive-board": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-executive-board-emulator.ps1",
+    "seed:test-employees": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-test-employees-emulator.ps1",
+    "seed:requested-family-groups": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-requested-family-groups-emulator.ps1",
     "emulators:start:users": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-users-emulators.ps1"
   },
   "dependencies": {

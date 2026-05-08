@@ -1,6 +1,15 @@
 {
   "indexes": [
     {
+      "collectionGroup": "executive_board_members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "termId", "order": "ASCENDING" },
+        { "fieldPath": "active", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "users",
       "queryScope": "COLLECTION",
       "fields": [
@@ -77,6 +86,58 @@
       "collectionGroup": "members",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "typeId", "order": "ASCENDING" },
+        { "fieldPath": "lastName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyGroupId", "order": "ASCENDING" },
+        { "fieldPath": "lastName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "familyGroupId", "order": "ASCENDING" },
+        { "fieldPath": "lastName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "typeId", "order": "ASCENDING" },
+        { "fieldPath": "familyGroupId", "order": "ASCENDING" },
+        { "fieldPath": "lastName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "typeId", "order": "ASCENDING" },
+        { "fieldPath": "familyGroupId", "order": "ASCENDING" },
+        { "fieldPath": "lastName", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "members",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "familyGroupId", "order": "ASCENDING" },
         { "fieldPath": "isFamilyHolder", "order": "ASCENDING" }
       ]
@@ -127,7 +188,225 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "validTo", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "movementType", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "categoryCodeSnapshot", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "paymentMethodCodeSnapshot", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "thirdPartyType", "order": "ASCENDING" },
+        { "fieldPath": "thirdPartyId", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountingPeriod", "order": "ASCENDING" },
+        { "fieldPath": "movementType", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "settlementId", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bancarizado", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "payment_commission_rules",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "paymentMethodId", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "validFrom", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salary_configurations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "effectiveFrom", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salary_payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "period", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salary_payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "period", "order": "DESCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "expense_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "expenseDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "expense_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "employeeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "expenseDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "macro_debit_settlements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "month", "order": "DESCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "macro_debit_settlements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "externalBatchRef", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "handicap_charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "memberId", "order": "ASCENDING" },
+        { "fieldPath": "period", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "handicap_charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "period", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_fee_charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "memberId", "order": "ASCENDING" },
+        { "fieldPath": "period", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_fee_charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "familyGroupId", "order": "ASCENDING" },
+        { "fieldPath": "period", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_fee_charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "period", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_fee_charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "period", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "financial_movements",
+      "fieldPath": "notes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "fieldPath": "metadata",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "fieldPath": "voidReason",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "expense_submissions",
+      "fieldPath": "description",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "expense_submissions",
+      "fieldPath": "receiptFileUrl",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "macro_debit_settlements",
+      "fieldPath": "statementFileUrl",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "external_accounting_references",
+      "fieldPath": "attachmentUrl",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "concession_contracts",
+      "fieldPath": "notes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "advertising_contracts",
+      "fieldPath": "notes",
+      "indexes": []
+    }
+  ]
 }

@@ -1,7 +1,8 @@
 import { Timestamp } from 'firebase-admin/firestore';
+import { normalizeMemberNumber } from '../../../auth/member-number-auth.js';
 import { assertCondition } from '../../domain/errors.js';
 import type { Actor, MemberDocument, MemberStatus } from '../../domain/models.js';
-import type { UsersTransactionManager } from '../../domain/ports.js';
+import type { UsersDataAccess, UsersTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   ensureFamilyHolderEligibility,
@@ -16,6 +17,88 @@ import {
   syncProfileLink,
   validateLicenseRange,
 } from '../shared.js';
+
+async function reserveMemberNumber(params: {
+  dataAccess: UsersDataAccess;
+  actorUid: string;
+  memberId: string;
+  memberNumber: string;
+  linkedUserId?: string | null | undefined;
+}): Promise<void> {
+  const normalizedMemberNumber = normalizeMemberNumber(params.memberNumber);
+  const existingIdentifier = await params.dataAccess.memberLoginIdentifiers.getById(normalizedMemberNumber);
+
+  assertCondition(
+    !existingIdentifier ||
+      existingIdentifier.active === false ||
+      !existingIdentifier.memberId ||
+      existingIdentifier.memberId === params.memberId,
+    'already-exists',
+    'Ya existe un socio con ese numero.',
+  );
+
+  await params.dataAccess.memberLoginIdentifiers.set(
+    normalizedMemberNumber,
+    {
+      uid: params.linkedUserId === undefined ? existingIdentifier?.uid ?? null : params.linkedUserId,
+      memberId: params.memberId,
+      memberNumber: params.memberNumber,
+      active: true,
+    },
+    params.actorUid,
+  );
+}
+
+async function moveMemberNumberReservation(params: {
+  dataAccess: UsersDataAccess;
+  actorUid: string;
+  memberId: string;
+  previousMemberNumber: string;
+  nextMemberNumber: string;
+  linkedUserId?: string | null | undefined;
+}): Promise<void> {
+  const previousNormalized = normalizeMemberNumber(params.previousMemberNumber);
+  const nextNormalized = normalizeMemberNumber(params.nextMemberNumber);
+
+  if (previousNormalized === nextNormalized) {
+    await reserveMemberNumber({
+      dataAccess: params.dataAccess,
+      actorUid: params.actorUid,
+      memberId: params.memberId,
+      memberNumber: params.nextMemberNumber,
+      linkedUserId: params.linkedUserId,
+    });
+    return;
+  }
+
+  const previousIdentifier = await params.dataAccess.memberLoginIdentifiers.getById(previousNormalized);
+  assertCondition(
+    !previousIdentifier || !previousIdentifier.uid,
+    'failed-precondition',
+    'El numero de socio no puede modificarse porque esta vinculado al acceso de la app.',
+  );
+
+  await reserveMemberNumber({
+    dataAccess: params.dataAccess,
+    actorUid: params.actorUid,
+    memberId: params.memberId,
+    memberNumber: params.nextMemberNumber,
+    linkedUserId: params.linkedUserId,
+  });
+
+  if (previousIdentifier?.memberId === params.memberId) {
+    await params.dataAccess.memberLoginIdentifiers.set(
+      previousNormalized,
+      {
+        uid: null,
+        memberId: null,
+        active: false,
+        memberNumber: params.previousMemberNumber,
+      },
+      params.actorUid,
+    );
+  }
+}
 
 export interface CreateMemberInput {
   memberNumber: string;
@@ -54,7 +137,7 @@ export interface UpdateMemberInput {
 export interface StartLicenseInput {
   memberId: string;
   startAt: Date;
-  endAt: Date;
+  endAt?: Date | null | undefined;
 }
 
 export interface EndLicenseInput {
@@ -73,7 +156,25 @@ export async function createMemberUseCase(params: {
     assertCondition(memberType, 'not-found', `No existe member_types/${params.input.typeId}.`);
     assertCondition(memberType.active, 'failed-precondition', `El tipo ${params.input.typeId} está inactivo.`);
 
-    const memberId = await dataAccess.members.create(
+    const normalizedMemberNumber = normalizeMemberNumber(params.input.memberNumber);
+    const memberId = `member-${normalizedMemberNumber}`;
+    const [existingMember, existingIdentifier] = await Promise.all([
+      dataAccess.members.getById(memberId),
+      dataAccess.memberLoginIdentifiers.getById(normalizedMemberNumber),
+    ]);
+
+    assertCondition(!existingMember, 'already-exists', 'Ya existe un socio con ese numero.');
+    assertCondition(
+      !existingIdentifier ||
+        existingIdentifier.active === false ||
+        !existingIdentifier.memberId ||
+        existingIdentifier.memberId === memberId,
+      'already-exists',
+      'Ya existe un socio con ese numero.',
+    );
+
+    await dataAccess.members.createWithId(
+      memberId,
       {
         memberNumber: params.input.memberNumber,
         firstName: params.input.firstName,
@@ -90,6 +191,17 @@ export async function createMemberUseCase(params: {
         isFamilyHolder: false,
         joinedAt: Timestamp.fromDate(params.input.joinedAt),
         notes: params.input.notes,
+      },
+      actor.uid,
+    );
+
+    await dataAccess.memberLoginIdentifiers.set(
+      normalizedMemberNumber,
+      {
+        uid: params.input.linkedUserId ?? null,
+        memberId,
+        memberNumber: params.input.memberNumber,
+        active: true,
       },
       actor.uid,
     );
@@ -118,6 +230,12 @@ export async function updateMemberUseCase(params: {
   return params.transactions.runInTransaction(async (dataAccess) => {
     const existingMember = await dataAccess.members.getById(params.input.memberId);
     assertCondition(existingMember, 'not-found', `No existe members/${params.input.memberId}.`);
+
+    assertCondition(
+      !params.input.memberNumber || params.input.memberNumber === existingMember.memberNumber,
+      'failed-precondition',
+      'El numero de socio no puede modificarse una vez creado.',
+    );
 
     let nextTypeId = existingMember.typeId;
     let nextTypeCodeSnapshot = existingMember.typeCodeSnapshot;
@@ -175,14 +293,28 @@ export async function updateMemberUseCase(params: {
       actor.uid,
     );
 
-    await syncProfileLink({
-      dataAccess,
-      actorUid: actor.uid,
-      previousLinkedUserId: existingMember.linkedUserId,
-      nextLinkedUserId: params.input.linkedUserId === undefined ? existingMember.linkedUserId : params.input.linkedUserId ?? undefined,
-      profileId: params.input.memberId,
-      profileType: 'member',
-    });
+    if (params.input.memberNumber !== undefined || params.input.linkedUserId !== undefined) {
+      await moveMemberNumberReservation({
+        dataAccess,
+        actorUid: actor.uid,
+        memberId: params.input.memberId,
+        previousMemberNumber: existingMember.memberNumber,
+        nextMemberNumber: params.input.memberNumber ?? existingMember.memberNumber,
+        linkedUserId:
+          params.input.linkedUserId === undefined ? existingMember.linkedUserId : params.input.linkedUserId,
+      });
+    }
+
+    if (params.input.linkedUserId !== undefined) {
+      await syncProfileLink({
+        dataAccess,
+        actorUid: actor.uid,
+        previousLinkedUserId: existingMember.linkedUserId,
+        nextLinkedUserId: params.input.linkedUserId ?? undefined,
+        profileId: params.input.memberId,
+        profileType: 'member',
+      });
+    }
 
     return { memberId: params.input.memberId };
   });
@@ -194,7 +326,9 @@ export async function startLicenseUseCase(params: {
   transactions: UsersTransactionManager;
 }): Promise<{ memberId: string }> {
   const actor = ensureStaff(params.actor);
-  validateLicenseRange(params.input.startAt, params.input.endAt);
+  if (params.input.endAt) {
+    validateLicenseRange(params.input.startAt, params.input.endAt);
+  }
 
   return params.transactions.runInTransaction(async (dataAccess) => {
     const member = await dataAccess.members.getById(params.input.memberId);
@@ -205,7 +339,7 @@ export async function startLicenseUseCase(params: {
       {
         status: 'license',
         licenseStartAt: Timestamp.fromDate(params.input.startAt),
-        licenseEndAt: Timestamp.fromDate(params.input.endAt),
+        licenseEndAt: params.input.endAt ? Timestamp.fromDate(params.input.endAt) : null,
       },
       actor.uid,
     );
@@ -287,7 +421,7 @@ export function parseStartLicenseInput(payload: unknown): StartLicenseInput {
   return {
     memberId: parseRequiredString(data, 'memberId'),
     startAt: parseRequiredIsoDate(data, 'startAt'),
-    endAt: parseRequiredIsoDate(data, 'endAt'),
+    endAt: parseOptionalIsoDate(data, 'endAt') ?? null,
   };
 }
 

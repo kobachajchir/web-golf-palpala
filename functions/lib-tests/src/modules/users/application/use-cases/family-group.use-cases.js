@@ -1,5 +1,15 @@
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureFamilyHolderEligibility, ensureMinimumFamilyGroup, ensureStaff, parseOptionalString, parseRequiredString, parseRequiredStringArray, } from '../shared.js';
+import { MEMBER_TYPE_IDS } from '../../domain/constants.js';
+import { assertIsRecord, ensureAuthenticatedActor, ensureFamilyHolderEligibility, ensureMinimumFamilyGroup, ensureStaff, parseOptionalString, parseRequiredString, parseRequiredStringArray, } from '../shared.js';
+function actorHasStaffClaims(actor) {
+    const roleIds = new Set(actor.user.roleIds);
+    return (actor.user.active &&
+        (roleIds.has('directivo') || roleIds.has('administrativo')) &&
+        (actor.claims.directivo === true || actor.claims.administrativo === true));
+}
+function getActorMemberId(actor) {
+    return actor.user.profileType === 'member' ? actor.user.profileId ?? null : null;
+}
 export async function createFamilyGroupUseCase(params) {
     const actor = ensureStaff(params.actor);
     ensureMinimumFamilyGroup(params.input.memberIds);
@@ -25,6 +35,8 @@ export async function createFamilyGroupUseCase(params) {
         await Promise.all(members.map((member) => dataAccess.members.update(member.id, {
             familyGroupId,
             isFamilyHolder: member.id === params.input.holderMemberId,
+            typeId: member.id === params.input.holderMemberId ? 'grupo_familiar_titular' : 'grupo_familiar_asociado',
+            typeCodeSnapshot: member.id === params.input.holderMemberId ? 'grupo_familiar_titular' : 'grupo_familiar_asociado',
         }, actor.uid)));
         return { familyGroupId };
     });
@@ -48,26 +60,83 @@ export async function addMemberToFamilyGroupUseCase(params) {
         await dataAccess.members.update(params.input.memberId, {
             familyGroupId: params.input.groupId,
             isFamilyHolder: false,
+            typeId: 'grupo_familiar_asociado',
+            typeCodeSnapshot: 'grupo_familiar_asociado',
+        }, actor.uid);
+        await dataAccess.members.update(group.holderMemberId, {
+            isFamilyHolder: true,
+            typeId: 'grupo_familiar_titular',
+            typeCodeSnapshot: 'grupo_familiar_titular',
         }, actor.uid);
         return { familyGroupId: params.input.groupId };
     });
 }
 export async function removeMemberFromFamilyGroupUseCase(params) {
-    const actor = ensureStaff(params.actor);
+    const actor = ensureAuthenticatedActor(params.actor);
+    assertCondition(actor.user.active, 'permission-denied', 'El usuario no estÃ¡ activo.');
     return params.transactions.runInTransaction(async (dataAccess) => {
         const group = await dataAccess.familyGroups.getById(params.input.groupId);
         assertCondition(group, 'not-found', `No existe family_groups/${params.input.groupId}.`);
         assertCondition(group.memberIds.includes(params.input.memberId), 'failed-precondition', 'El socio no pertenece a ese grupo familiar.');
-        assertCondition(group.holderMemberId !== params.input.memberId, 'failed-precondition', 'Debes reasignar el titular antes de removerlo del grupo.');
+        const actorMemberId = getActorMemberId(actor);
+        const isStaffActor = actorHasStaffClaims(actor);
+        const isHolderManagingGroup = actorMemberId === group.holderMemberId && params.input.memberId !== actorMemberId;
+        const isAssociatedLeavingSelf = actorMemberId === params.input.memberId && group.holderMemberId !== params.input.memberId;
+        assertCondition(isStaffActor || isHolderManagingGroup || isAssociatedLeavingSelf, 'permission-denied', 'No tenÃ©s permisos para modificar este grupo familiar.');
         const nextMemberIds = group.memberIds.filter((memberId) => memberId !== params.input.memberId);
+        const isRemovingHolder = group.holderMemberId === params.input.memberId;
+        const nextHolderMemberId = isRemovingHolder ? params.input.replacementHolderMemberId : group.holderMemberId;
+        if (nextMemberIds.length < 2) {
+            const remainingMemberId = nextMemberIds[0];
+            await dataAccess.familyGroups.update(params.input.groupId, {
+                memberIds: nextMemberIds,
+                holderMemberId: remainingMemberId ?? group.holderMemberId,
+                active: false,
+            }, actor.uid);
+            await dataAccess.members.update(params.input.memberId, {
+                familyGroupId: null,
+                isFamilyHolder: false,
+                typeId: 'pleno',
+                typeCodeSnapshot: 'pleno',
+            }, actor.uid);
+            if (remainingMemberId) {
+                await dataAccess.members.update(remainingMemberId, {
+                    familyGroupId: null,
+                    isFamilyHolder: false,
+                    typeId: 'pleno',
+                    typeCodeSnapshot: 'pleno',
+                }, actor.uid);
+            }
+            return { familyGroupId: params.input.groupId };
+        }
         ensureMinimumFamilyGroup(nextMemberIds);
+        assertCondition(nextHolderMemberId && nextMemberIds.includes(nextHolderMemberId), 'failed-precondition', 'Debes indicar un titular de reemplazo que pertenezca al grupo.');
+        if (isRemovingHolder) {
+            const replacementHolder = await dataAccess.members.getById(nextHolderMemberId);
+            assertCondition(replacementHolder, 'not-found', `No existe members/${nextHolderMemberId}.`);
+            const replacementType = await dataAccess.memberTypes.getById(replacementHolder.typeId);
+            assertCondition(replacementType, 'not-found', `No existe member_types/${replacementHolder.typeId}.`);
+            if (replacementType.id !== MEMBER_TYPE_IDS.grupoFamiliarAsociado) {
+                ensureFamilyHolderEligibility(replacementHolder, replacementType);
+            }
+        }
         await dataAccess.familyGroups.update(params.input.groupId, {
             memberIds: nextMemberIds,
+            holderMemberId: nextHolderMemberId,
         }, actor.uid);
         await dataAccess.members.update(params.input.memberId, {
             familyGroupId: null,
             isFamilyHolder: false,
+            typeId: 'pleno',
+            typeCodeSnapshot: 'pleno',
         }, actor.uid);
+        if (isRemovingHolder) {
+            await dataAccess.members.update(nextHolderMemberId, {
+                isFamilyHolder: true,
+                typeId: 'grupo_familiar_titular',
+                typeCodeSnapshot: 'grupo_familiar_titular',
+            }, actor.uid);
+        }
         return { familyGroupId: params.input.groupId };
     });
 }
@@ -92,6 +161,7 @@ export function parseRemoveMemberFromFamilyGroupInput(payload) {
     return {
         groupId: parseRequiredString(data, 'groupId'),
         memberId: parseRequiredString(data, 'memberId'),
+        replacementHolderMemberId: parseOptionalString(data, 'replacementHolderMemberId'),
     };
 }
 //# sourceMappingURL=family-group.use-cases.js.map

@@ -1,118 +1,105 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { User } from '../context/AuthContext';
-import { useAuth } from '../hooks/useAuth';
-import { getDirectoryUserById } from '../mocks/userDirectory';
+import type { EntityWithId, MemberDocument, UserDocument } from '../modules/users/domain/models';
+import {
+  createMembersRepository,
+  createUsersRepository,
+} from '../modules/users/infrastructure/firestore/repositories';
 import { formatTimestamp, getRoleLabel, getUserDisplayName } from '../utils/user';
 
 const PROFILE_TYPE_LABELS = {
-  socio: 'Socio',
-  empleado: 'Empleado',
-  administrativo: 'Administrativo',
+  member: 'Socio',
+  employee: 'Empleado',
+  none: 'Sin perfil vinculado',
 } as const;
 
-const STATUS_LABELS = {
-  activo: 'Activo',
-  inactivo: 'Inactivo',
-  bloqueado: 'Bloqueado',
-} as const;
-
-type ProfileFormState = User & {
-  first_name: string;
-  last_name: string;
+type LoadedAdminProfile = {
+  user: EntityWithId<UserDocument>;
+  member: EntityWithId<MemberDocument> | null;
 };
-
-function toDatetimeLocal(date = new Date()) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function createProfileFormState(profile: User): ProfileFormState {
-  return {
-    ...profile,
-  };
-}
 
 export function AdminUserProfile() {
   const { id } = useParams();
-  const { user, updateUser } = useAuth();
-  const profile = getDirectoryUserById(id, user);
-  const [formData, setFormData] = useState<ProfileFormState | null>(
-    profile ? createProfileFormState(profile) : null,
-  );
-  const [isEditing, setIsEditing] = useState(false);
+  const [profile, setProfile] = useState<LoadedAdminProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const isOwnProfile = Boolean(user && profile && user.id === profile.id);
 
   useEffect(() => {
-    setFormData(profile ? createProfileFormState(profile) : null);
-    setIsEditing(false);
-    setError('');
-  }, [profile]);
+    let mounted = true;
 
-  if (!profile || !formData) {
+    async function loadProfile() {
+      setLoading(true);
+      setError('');
+
+      try {
+        if (!id) {
+          setProfile(null);
+          return;
+        }
+
+        const usersRepository = createUsersRepository();
+        const membersRepository = createMembersRepository();
+        let loadedUser = await usersRepository.getById(id);
+        let loadedMember =
+          loadedUser?.profileType === 'member' && loadedUser.profileId
+            ? await membersRepository.getById(loadedUser.profileId)
+            : null;
+
+        if (loadedUser && !loadedMember) {
+          const linkedMembers = await membersRepository.listByLinkedUserId(loadedUser.id);
+          loadedMember = linkedMembers[0] ?? null;
+        }
+
+        if (!loadedUser) {
+          const memberByRoute = await membersRepository.getById(id);
+          if (memberByRoute?.linkedUserId) {
+            loadedUser = await usersRepository.getById(memberByRoute.linkedUserId);
+            loadedMember = memberByRoute;
+          }
+        }
+
+        if (mounted) {
+          setProfile(loadedUser ? { user: loadedUser, member: loadedMember } : null);
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setError(loadError instanceof Error ? loadError.message : 'No pudimos cargar la ficha administrativa.');
+          setProfile(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="loading-state">
+        <span className="loading-spinner" />
+        <strong>Obteniendo datos</strong>
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="empty-state">{error}</div>;
+  }
+
+  if (!profile) {
     return <div className="empty-state">No encontramos ese perfil administrativo.</div>;
   }
 
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = event.target;
-
-    setFormData((current) => {
-      if (!current) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [name]: value,
-      };
-    });
-  };
-
-  const handleEdit = () => {
-    console.log('Mock edicion administrativa de perfil habilitada', { user_id: profile.id });
-    setError('');
-    setIsEditing(true);
-  };
-
-  const handleCancel = () => {
-    setFormData(createProfileFormState(profile));
-    setError('');
-    setIsEditing(false);
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const normalizedFirstName = formData.first_name.trim();
-    const normalizedLastName = formData.last_name.trim();
-
-    if (!normalizedFirstName || !normalizedLastName) {
-      setError('El nombre y el apellido no pueden quedar vacios.');
-      return;
-    }
-
-    const updatedProfile: User = {
-      ...formData,
-      first_name: normalizedFirstName,
-      last_name: normalizedLastName,
-      updated_at: toDatetimeLocal(),
-    };
-
-    console.log('Mock Firestore admin update users/{id}', {
-      user_id: updatedProfile.id,
-      first_name: updatedProfile.first_name,
-      last_name: updatedProfile.last_name,
-    });
-
-    if (isOwnProfile) {
-      updateUser(updatedProfile);
-    }
-
-    setFormData(createProfileFormState(updatedProfile));
-    setError('');
-    setIsEditing(false);
-  };
+  const displayName = profile.member
+    ? `${profile.member.firstName} ${profile.member.lastName}`
+    : getUserDisplayName(profile.user);
 
   return (
     <div className="page-container profile-page">
@@ -120,158 +107,81 @@ export function AdminUserProfile() {
         <div className="profile-header">
           <div>
             <p className="eyebrow">Ficha administrativa</p>
-            <h1>{getUserDisplayName(formData)}</h1>
+            <h1>{displayName}</h1>
           </div>
-          <span className={`status-pill status-pill--${formData.status}`}>{STATUS_LABELS[formData.status]}</span>
+          <span className={`status-pill ${profile.user.active ? '' : 'status-pill--bloqueado'}`}>
+            {profile.user.active ? 'Activo' : 'Inactivo'}
+          </span>
         </div>
 
         <p className="profile-note">
-          Esta vista incluye datos internos del sistema y trazabilidad. La informacion publica del usuario esta en
-          su perfil normal.
+          Esta vista muestra el documento users, roles reales y vinculo de perfil usados por Firebase Auth y reglas.
         </p>
 
         <div className="profile-actions">
-          <Link className="btn-secondary" to={`/users/${profile.id}`}>
+          <Link className="btn-secondary" to={`/users/${profile.user.id}`}>
             Ver perfil publico
           </Link>
         </div>
 
-        {error && <div className="error-message">{error}</div>}
-
-        <form className="profile-form" onSubmit={handleSubmit}>
-          <label className="form-field" htmlFor="profile-first_name">
-            <span>Nombre</span>
-            <input
-              id="profile-first_name"
-              name="first_name"
-              type="text"
-              value={formData.first_name}
-              onChange={handleChange}
-              disabled={!isEditing}
-            />
-          </label>
-
-          <label className="form-field" htmlFor="profile-last_name">
-            <span>Apellido</span>
-            <input
-              id="profile-last_name"
-              name="last_name"
-              type="text"
-              value={formData.last_name}
-              onChange={handleChange}
-              disabled={!isEditing}
-            />
-          </label>
-
-          <label className="form-field" htmlFor="profile-id">
-            <span>ID del documento</span>
-            <input id="profile-id" name="id" type="text" value={formData.id} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-auth_uid">
-            <span>UID de Firebase Auth</span>
-            <input id="profile-auth_uid" name="auth_uid" type="text" value={formData.auth_uid} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-user_number">
-            <span>Numero de usuario</span>
-            <input id="profile-user_number" name="user_number" type="text" value={formData.user_number} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-dni">
-            <span>DNI</span>
-            <input id="profile-dni" name="dni" type="text" value={formData.dni} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-role_id">
-            <span>Rol asignado</span>
-            <input id="profile-role_id" name="role_id" type="text" value={getRoleLabel(formData.role_id)} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-profile_type">
+        <div className="public-profile-grid membership-profile-grid">
+          <div className="public-profile-field">
+            <span>UID</span>
+            <strong>{profile.user.id}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Email interno</span>
+            <strong>{profile.user.email}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Numero de socio</span>
+            <strong>{profile.member?.memberNumber ?? profile.user.memberNumber ?? 'Sin vincular'}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Rol principal</span>
+            <strong>{getRoleLabel(profile.user.primaryRoleId)}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Roles</span>
+            <strong>{profile.user.roleIds.map(getRoleLabel).join(', ')}</strong>
+          </div>
+          <div className="public-profile-field">
             <span>Tipo de perfil</span>
-            <input
-              id="profile-profile_type"
-              name="profile_type"
-              type="text"
-              value={PROFILE_TYPE_LABELS[formData.profile_type]}
-              readOnly
-            />
-          </label>
-
-          <label className="form-field" htmlFor="profile-profile_id">
-            <span>ID del perfil vinculado</span>
-            <input id="profile-profile_id" name="profile_id" type="text" value={formData.profile_id} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-status">
-            <span>Estado del usuario</span>
-            <input id="profile-status" name="status" type="text" value={STATUS_LABELS[formData.status]} readOnly />
-          </label>
-
-          <label className="form-field" htmlFor="profile-must_change_password">
-            <span>Debe cambiar contrasena</span>
-            <input
-              id="profile-must_change_password"
-              name="must_change_password"
-              type="text"
-              value={formData.must_change_password ? 'Si' : 'No'}
-              readOnly
-            />
-          </label>
-
-          <label className="form-field" htmlFor="profile-last_login_at">
-            <span>Ultimo acceso conocido</span>
-            <input
-              id="profile-last_login_at"
-              name="last_login_at"
-              type="text"
-              value={formatTimestamp(formData.last_login_at)}
-              readOnly
-            />
-          </label>
-
-          <label className="form-field" htmlFor="profile-created_at">
-            <span>Fecha de creacion</span>
-            <input
-              id="profile-created_at"
-              name="created_at"
-              type="text"
-              value={formatTimestamp(formData.created_at)}
-              readOnly
-            />
-          </label>
-
-          <label className="form-field" htmlFor="profile-updated_at">
-            <span>Fecha de ultima modificacion</span>
-            <input
-              id="profile-updated_at"
-              name="updated_at"
-              type="text"
-              value={formatTimestamp(formData.updated_at)}
-              readOnly
-            />
-          </label>
-
-          {isOwnProfile && (
-            <div className="form-actions">
-              {isEditing ? (
-                <>
-                  <button type="button" className="btn-secondary" onClick={handleCancel}>
-                    Cancelar
-                  </button>
-                  <button type="submit" className="btn-primary">
-                    Guardar cambios
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="btn-primary" onClick={handleEdit}>
-                  Modificar datos personales
-                </button>
-              )}
-            </div>
-          )}
-        </form>
+            <strong>{PROFILE_TYPE_LABELS[profile.user.profileType]}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>ID perfil vinculado</span>
+            <strong>{profile.user.profileId ?? profile.member?.id ?? 'Sin vinculo'}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Estado socio</span>
+            <strong>{profile.member?.status ?? 'Sin socio vinculado'}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Tipo socio</span>
+            <strong>{profile.member?.typeCodeSnapshot ?? 'Sin socio vinculado'}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Vinculo Auth</span>
+            <strong>{profile.member?.linkedUserId === profile.user.id ? 'Vinculado' : 'Revisar vinculo'}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Claims version</span>
+            <strong>{profile.user.claimsVersion}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Ultimo acceso</span>
+            <strong>{formatTimestamp(profile.user.lastLoginAt)}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Creado</span>
+            <strong>{formatTimestamp(profile.user.createdAt)}</strong>
+          </div>
+          <div className="public-profile-field">
+            <span>Actualizado</span>
+            <strong>{formatTimestamp(profile.user.updatedAt)}</strong>
+          </div>
+        </div>
       </section>
     </div>
   );

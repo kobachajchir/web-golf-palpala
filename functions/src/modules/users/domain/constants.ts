@@ -8,6 +8,8 @@ export const USERS_COLLECTIONS = {
   members: 'members',
   employees: 'employees',
   handicaps: 'handicaps',
+  memberLoginIdentifiers: 'member_login_identifiers',
+  passwordResetRequests: 'password_reset_requests',
 } as const;
 
 export const SYSTEM_ACTOR_UID = 'system';

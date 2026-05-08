@@ -19,6 +19,7 @@ import type {
   EntityWithId,
   FamilyGroupDocument,
   HandicapDocument,
+  MemberLoginIdentifierDocument,
   MemberDocument,
   MemberTypeDocument,
   PermissionDocument,
@@ -32,6 +33,7 @@ import type {
   EmployeesStore,
   FamilyGroupsStore,
   HandicapsStore,
+  MemberLoginIdentifiersStore,
   MemberTypesStore,
   MembersStore,
   PermissionsStore,
@@ -432,11 +434,77 @@ class FirestoreMembersStore implements MembersStore {
     return createDocument(this.collection, createAuditedDocument(data, actorUid), this.transaction);
   }
 
+  public async createWithId(
+    memberId: string,
+    data: StoreCreate<Omit<MemberDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>>,
+    actorUid: string,
+  ): Promise<void> {
+    await writeSet(
+      this.collection.doc(memberId),
+      createAuditedDocument(data, actorUid),
+      this.transaction,
+    );
+  }
+
   public async update(memberId: string, patch: StorePatch<MemberDocument>, actorUid: string): Promise<void> {
     await writeUpdate(
       this.collection.doc(memberId),
       createAuditedPatch(patch, actorUid),
       this.transaction,
+    );
+  }
+}
+
+class FirestoreMemberLoginIdentifiersStore implements MemberLoginIdentifiersStore {
+  private readonly collection: CollectionReference<MemberLoginIdentifierDocument>;
+
+  public constructor(
+    private readonly db: Firestore,
+    private readonly transaction?: Transaction,
+  ) {
+    this.collection = getCollection<MemberLoginIdentifierDocument>(db, USERS_COLLECTIONS.memberLoginIdentifiers);
+  }
+
+  public async getById(normalizedMemberNumber: string): Promise<EntityWithId<MemberLoginIdentifierDocument> | null> {
+    const snapshot = await getSnapshot(this.collection.doc(normalizedMemberNumber), this.transaction);
+    return snapshot.exists ? withId(snapshot as QueryDocumentSnapshot<MemberLoginIdentifierDocument>) : null;
+  }
+
+  public async set(
+    normalizedMemberNumber: string,
+    data: StorePatch<MemberLoginIdentifierDocument>,
+    actorUid: string,
+  ): Promise<void> {
+    const docRef = this.collection.doc(normalizedMemberNumber);
+    const payload = {
+      uid: data.uid ?? null,
+      memberId: data.memberId ?? null,
+      memberNumber: data.memberNumber ?? normalizedMemberNumber,
+      active: data.active ?? true,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: actorUid,
+    };
+
+    if (this.transaction) {
+      this.transaction.set(
+        docRef,
+        {
+          ...payload,
+          createdAt: FieldValue.serverTimestamp(),
+          createdBy: actorUid,
+        } as never,
+        { merge: true },
+      );
+      return;
+    }
+
+    await docRef.set(
+      {
+        ...payload,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: actorUid,
+      } as never,
+      { merge: true },
     );
   }
 }
@@ -527,6 +595,7 @@ function createDataAccess(
     memberTypes: new FirestoreMemberTypesStore(db, transaction),
     familyGroups: new FirestoreFamilyGroupsStore(db, transaction),
     members: new FirestoreMembersStore(db, transaction),
+    memberLoginIdentifiers: new FirestoreMemberLoginIdentifiersStore(db, transaction),
     employees: new FirestoreEmployeesStore(db, transaction),
     handicaps: new FirestoreHandicapsStore(db, transaction),
   };

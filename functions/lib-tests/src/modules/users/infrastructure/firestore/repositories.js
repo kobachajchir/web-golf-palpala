@@ -267,8 +267,49 @@ class FirestoreMembersStore {
     async create(data, actorUid) {
         return createDocument(this.collection, createAuditedDocument(data, actorUid), this.transaction);
     }
+    async createWithId(memberId, data, actorUid) {
+        await writeSet(this.collection.doc(memberId), createAuditedDocument(data, actorUid), this.transaction);
+    }
     async update(memberId, patch, actorUid) {
         await writeUpdate(this.collection.doc(memberId), createAuditedPatch(patch, actorUid), this.transaction);
+    }
+}
+class FirestoreMemberLoginIdentifiersStore {
+    db;
+    transaction;
+    collection;
+    constructor(db, transaction) {
+        this.db = db;
+        this.transaction = transaction;
+        this.collection = getCollection(db, USERS_COLLECTIONS.memberLoginIdentifiers);
+    }
+    async getById(normalizedMemberNumber) {
+        const snapshot = await getSnapshot(this.collection.doc(normalizedMemberNumber), this.transaction);
+        return snapshot.exists ? withId(snapshot) : null;
+    }
+    async set(normalizedMemberNumber, data, actorUid) {
+        const docRef = this.collection.doc(normalizedMemberNumber);
+        const payload = {
+            uid: data.uid ?? null,
+            memberId: data.memberId ?? null,
+            memberNumber: data.memberNumber ?? normalizedMemberNumber,
+            active: data.active ?? true,
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: actorUid,
+        };
+        if (this.transaction) {
+            this.transaction.set(docRef, {
+                ...payload,
+                createdAt: FieldValue.serverTimestamp(),
+                createdBy: actorUid,
+            }, { merge: true });
+            return;
+        }
+        await docRef.set({
+            ...payload,
+            createdAt: FieldValue.serverTimestamp(),
+            createdBy: actorUid,
+        }, { merge: true });
     }
 }
 class FirestoreEmployeesStore {
@@ -329,6 +370,7 @@ function createDataAccess(db, clock, transaction) {
         memberTypes: new FirestoreMemberTypesStore(db, transaction),
         familyGroups: new FirestoreFamilyGroupsStore(db, transaction),
         members: new FirestoreMembersStore(db, transaction),
+        memberLoginIdentifiers: new FirestoreMemberLoginIdentifiersStore(db, transaction),
         employees: new FirestoreEmployeesStore(db, transaction),
         handicaps: new FirestoreHandicapsStore(db, transaction),
     };

@@ -1,28 +1,22 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { DEV_USER_NUMBER, DEV_USER_PASSWORD } from '../mocks/devUser';
-import { findUserByLogin, updateMockUserTimestamps } from '../mocks/userDirectory';
 import '../styles/pages.css';
 
 type LoginFormState = {
-  user_number: string;
+  memberNumber: string;
   password: string;
 };
-
-function toDatetimeLocal(date = new Date()) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
-}
 
 export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState<LoginFormState>({
-    user_number: '',
+    memberNumber: '',
     password: '',
   });
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -32,40 +26,25 @@ export function Login() {
     }));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setError('');
+    setIsSubmitting(true);
 
-    if (!formData.user_number || !formData.password) {
-      setError('Por favor completa numero de usuario y contrasena.');
+    if (!formData.memberNumber || !formData.password) {
+      setError('Por favor completa numero de socio y contrasena.');
+      setIsSubmitting(false);
       return;
     }
 
-    const now = toDatetimeLocal();
-    const normalizedUserNumber = formData.user_number.trim();
-    const foundUser = findUserByLogin(normalizedUserNumber, formData.password);
-
-    if (!foundUser) {
-      setError('El numero de usuario o la contrasena no coinciden.');
-      return;
+    try {
+      await login(formData.memberNumber, formData.password);
+      navigate('/home', { replace: true });
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'No pudimos iniciar sesion.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const userData =
-      updateMockUserTimestamps(foundUser.id, now) || {
-        ...foundUser,
-        last_login_at: now,
-        updated_at: now,
-      };
-
-    console.log('Mock Firebase Auth login', {
-      user_number: normalizedUserNumber,
-      is_dev_user: normalizedUserNumber === DEV_USER_NUMBER && formData.password === DEV_USER_PASSWORD,
-      role_id: userData.role_id,
-    });
-    console.log('Mock Firestore users document', userData);
-
-    login(userData);
-    navigate('/home', { replace: true });
   };
 
   return (
@@ -74,25 +53,22 @@ export function Login() {
         <div className="auth-card__intro">
           <p className="eyebrow">Golf Palpala</p>
           <h1>Ingreso</h1>
-          <p>Ingresa con tu numero de usuario y contrasena.</p>
-          <p className="auth-dev-note">
-            Dev: <strong>{DEV_USER_NUMBER}</strong> / <strong>{DEV_USER_PASSWORD}</strong>
-          </p>
+          <p>Ingresa con tu numero de socio y contrasena.</p>
         </div>
 
         {error && <div className="error-message">{error}</div>}
 
         <form className="auth-form" onSubmit={handleSubmit}>
-          <label className="form-field" htmlFor="user_number">
-            <span>Numero de usuario</span>
+          <label className="form-field" htmlFor="memberNumber">
+            <span>Numero de socio</span>
             <input
-              id="user_number"
-              name="user_number"
+              id="memberNumber"
+              name="memberNumber"
               type="text"
               autoComplete="username"
-              value={formData.user_number}
+              value={formData.memberNumber}
               onChange={handleChange}
-              placeholder="Ej. 100001"
+              placeholder="Ej. 123"
             />
           </label>
 
@@ -109,16 +85,22 @@ export function Login() {
             />
           </label>
 
-          <button type="submit" className="btn-primary form-submit">
-            Entrar
+          <button type="submit" className="btn-primary form-submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Ingresando...' : 'Entrar'}
           </button>
         </form>
 
         <div className="auth-card__footer">
+          <Link to="/olvide-contrasena" className="auth-link">
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
+
+        <div className="auth-card__footer">
           <p>
-            No tenes usuario?{' '}
+            Necesitas una cuenta?{' '}
             <Link to="/signup" className="auth-link">
-              Registrarte
+              Solicitar alta
             </Link>
           </p>
         </div>
