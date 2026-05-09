@@ -446,20 +446,33 @@ export function EmployeesAdmin() {
     <div className="page page-members-admin">
       <div className="page-gradient" />
 
-      <section className="directory-shell">
-        <section className="floating-card directory-hero">
+      <section
+        className="directory-shell w-100"
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          marginTop: "3vh",
+          marginBottom: "3vh",
+        }}
+      >
+        <section className="floating-card directory-hero employee-directory-card" style={{width: "80%"}}>
           <div className="directory-hero__header">
             <div>
               <p className="eyebrow">Administracion de personal</p>
               <h1>Legajos de empleados</h1>
               <p className="profile-note">
-                Alta, baja y modificacion de empleados con busqueda y filtros operativos.
+                Alta, baja y modificacion de empleados con busqueda y filtros
+                operativos.
               </p>
             </div>
 
             {canManageEmployees && (
               <div className="directory-hero__actions">
-                <button type="button" className="btn-primary" onClick={openCreateModal}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={openCreateModal}
+                >
                   Nuevo empleado
                 </button>
               </div>
@@ -467,10 +480,38 @@ export function EmployeesAdmin() {
           </div>
 
           <div className="summary-grid">
-            <SummaryCard label="Empleados cargados" value={String(stats?.totalEmployees ?? employees.length)} helper="Legajos registrados" />
-            <SummaryCard label="Activos" value={String(stats?.activeEmployees ?? employees.filter((employee) => employee.status === 'active').length)} helper="Disponibles para operar" />
-            <SummaryCard label="Inactivos" value={String(stats?.inactiveEmployees ?? employees.filter((employee) => employee.status === 'inactive').length)} helper="Bajas administrativas" />
-            <SummaryCard label="Rinden gastos" value={String(stats?.canSubmitExpenses ?? employees.filter((employee) => employee.canSubmitExpenses).length)} helper="Habilitados para rendiciones" />
+            <SummaryCard
+              label="Empleados cargados"
+              value={String(stats?.totalEmployees ?? employees.length)}
+              helper="Legajos registrados"
+            />
+            <SummaryCard
+              label="Activos"
+              value={String(
+                stats?.activeEmployees ??
+                  employees.filter((employee) => employee.status === "active")
+                    .length,
+              )}
+              helper="Disponibles para operar"
+            />
+            <SummaryCard
+              label="Inactivos"
+              value={String(
+                stats?.inactiveEmployees ??
+                  employees.filter((employee) => employee.status === "inactive")
+                    .length,
+              )}
+              helper="Bajas administrativas"
+            />
+            <SummaryCard
+              label="Rinden gastos"
+              value={String(
+                stats?.canSubmitExpenses ??
+                  employees.filter((employee) => employee.canSubmitExpenses)
+                    .length,
+              )}
+              helper="Habilitados para rendiciones"
+            />
           </div>
 
           <div className="member-toolbar">
@@ -488,7 +529,9 @@ export function EmployeesAdmin() {
                 <span>Estado</span>
                 <select
                   value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as EmployeeStatusFilter)}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as EmployeeStatusFilter)
+                  }
                 >
                   {STATUS_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -501,13 +544,17 @@ export function EmployeesAdmin() {
               <div className="member-toolbar__actions" ref={filtersRef}>
                 <button
                   type="button"
-                  className={`icon-button icon-button--ghost ${isFiltersOpen ? 'icon-button--active' : ''}`}
+                  className={`icon-button icon-button--ghost ${isFiltersOpen ? "icon-button--active" : ""}`}
                   aria-label="Otros filtros"
                   aria-expanded={isFiltersOpen}
                   onClick={() => setIsFiltersOpen((current) => !current)}
                 >
                   <MoreIcon />
-                  {activeFilterCount > 0 && <span className="notification-badge">{activeFilterCount}</span>}
+                  {activeFilterCount > 0 && (
+                    <span className="notification-badge">
+                      {activeFilterCount}
+                    </span>
+                  )}
                 </button>
 
                 {isFiltersOpen && (
@@ -520,7 +567,11 @@ export function EmployeesAdmin() {
                       <span>Contrato</span>
                       <select
                         value={contractFilter}
-                        onChange={(event) => setContractFilter(event.target.value as EmployeeContractFilter)}
+                        onChange={(event) =>
+                          setContractFilter(
+                            event.target.value as EmployeeContractFilter,
+                          )
+                        }
                       >
                         <option value="all">Todos</option>
                         {CONTRACT_OPTIONS.map((option) => (
@@ -535,7 +586,11 @@ export function EmployeesAdmin() {
                       <span>Rendiciones</span>
                       <select
                         value={expenseAccessFilter}
-                        onChange={(event) => setExpenseAccessFilter(event.target.value as EmployeeExpenseFilter)}
+                        onChange={(event) =>
+                          setExpenseAccessFilter(
+                            event.target.value as EmployeeExpenseFilter,
+                          )
+                        }
                       >
                         {EXPENSE_ACCESS_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
@@ -562,7 +617,10 @@ export function EmployeesAdmin() {
             <>
               <div className="directory-results">
                 <strong>{employees.length} empleados en vista</strong>
-                <small>Ordenado por apellido y nombre. Usa filtros para acotar el listado.</small>
+                <small>
+                  Ordenado por apellido y nombre. Usa filtros para acotar el
+                  listado.
+                </small>
               </div>
 
               <div className="member-table employee-table">
@@ -584,33 +642,58 @@ export function EmployeesAdmin() {
                     employees.map((employee) => (
                       <article
                         key={employee.id}
-                        className={`member-row employee-row ${openEmployeeActionsId === employee.id ? 'member-row--menu-open' : ''}`}
+                        className={`member-row employee-row ${openEmployeeActionsId === employee.id ? "member-row--menu-open" : ""}`}
                       >
                         <div className="member-cell">
-                          <strong>{employee.employeeCode || 'Sin codigo'}</strong>
+                          <strong>
+                            {employee.employeeCode || "Sin codigo"}
+                          </strong>
                           <small>{employee.id}</small>
                         </div>
 
                         <div className="member-cell">
                           <strong>{getEmployeeDisplayName(employee)}</strong>
-                          <small>{employee.dni ? `DNI ${employee.dni}` : 'DNI pendiente'}</small>
+                          <small>
+                            {employee.dni
+                              ? `DNI ${employee.dni}`
+                              : "DNI pendiente"}
+                          </small>
                         </div>
 
                         <div className="member-cell">
                           <strong>{employee.position}</strong>
-                          <small>{getContractLabel(employee.contractType)} | desde {formatDate(employee.startDate as TimestampLike)}</small>
+                          <small>
+                            {getContractLabel(employee.contractType)} | desde{" "}
+                            {formatDate(employee.startDate as TimestampLike)}
+                          </small>
                         </div>
 
                         <div className="member-cell">
-                          <span className="member-type-badge">{employee.canSubmitExpenses ? 'Habilitado' : 'No habilitado'}</span>
-                          <small>{employee.canSubmitExpenses ? 'Puede cargar gastos' : 'Sin carga de gastos'}</small>
-                        </div>
-
-                        <div className="member-cell">
-                          <span className={`status-pill ${employee.status === 'active' ? '' : 'status-pill--bloqueado'}`}>
-                            {employee.status === 'active' ? 'Activo' : 'Inactivo'}
+                          <span className="member-type-badge">
+                            {employee.canSubmitExpenses
+                              ? "Habilitado"
+                              : "No habilitado"}
                           </span>
-                          <small>{employee.endDate ? `Baja ${formatDate(employee.endDate as TimestampLike)}` : 'Sin fecha de baja'}</small>
+                          <small>
+                            {employee.canSubmitExpenses
+                              ? "Puede cargar gastos"
+                              : "Sin carga de gastos"}
+                          </small>
+                        </div>
+
+                        <div className="member-cell">
+                          <span
+                            className={`status-pill ${employee.status === "active" ? "" : "status-pill--bloqueado"}`}
+                          >
+                            {employee.status === "active"
+                              ? "Activo"
+                              : "Inactivo"}
+                          </span>
+                          <small>
+                            {employee.endDate
+                              ? `Baja ${formatDate(employee.endDate as TimestampLike)}`
+                              : "Sin fecha de baja"}
+                          </small>
                         </div>
 
                         <div className="member-actions">
@@ -628,31 +711,42 @@ export function EmployeesAdmin() {
                           {canManageEmployees && (
                             <button
                               type="button"
-                              className={`icon-button member-icon-button ${openEmployeeActionsId === employee.id ? 'icon-button--active' : ''}`}
+                              className={`icon-button member-icon-button ${openEmployeeActionsId === employee.id ? "icon-button--active" : ""}`}
                               aria-label={`Mas acciones para ${getEmployeeDisplayName(employee)}`}
-                              aria-expanded={openEmployeeActionsId === employee.id}
+                              aria-expanded={
+                                openEmployeeActionsId === employee.id
+                              }
                               onClick={() =>
-                                setOpenEmployeeActionsId((current) => (current === employee.id ? null : employee.id))
+                                setOpenEmployeeActionsId((current) =>
+                                  current === employee.id ? null : employee.id,
+                                )
                               }
                             >
                               <MoreIcon />
                             </button>
                           )}
 
-                          {canManageEmployees && openEmployeeActionsId === employee.id && (
-                            <div className="member-actions-menu">
-                              <button
-                                type="button"
-                                className={employee.status === 'active' ? 'member-actions-menu__item member-actions-menu__item--danger' : 'member-actions-menu__item'}
-                                onClick={() => {
-                                  setOpenEmployeeActionsId(null);
-                                  setEmployeePendingStatusChange(employee);
-                                }}
-                              >
-                                {employee.status === 'active' ? 'Dar de baja empleado' : 'Reactivar empleado'}
-                              </button>
-                            </div>
-                          )}
+                          {canManageEmployees &&
+                            openEmployeeActionsId === employee.id && (
+                              <div className="member-actions-menu">
+                                <button
+                                  type="button"
+                                  className={
+                                    employee.status === "active"
+                                      ? "member-actions-menu__item member-actions-menu__item--danger"
+                                      : "member-actions-menu__item"
+                                  }
+                                  onClick={() => {
+                                    setOpenEmployeeActionsId(null);
+                                    setEmployeePendingStatusChange(employee);
+                                  }}
+                                >
+                                  {employee.status === "active"
+                                    ? "Dar de baja empleado"
+                                    : "Reactivar empleado"}
+                                </button>
+                              </div>
+                            )}
                         </div>
                       </article>
                     ))
@@ -662,8 +756,13 @@ export function EmployeesAdmin() {
 
               {hasMoreEmployees && (
                 <div className="directory-results">
-                  <button type="button" className="btn-secondary" disabled={isLoadingMore} onClick={handleLoadMore}>
-                    {isLoadingMore ? 'Cargando...' : 'Cargar mas empleados'}
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={isLoadingMore}
+                    onClick={handleLoadMore}
+                  >
+                    {isLoadingMore ? "Cargando..." : "Cargar mas empleados"}
                   </button>
                 </div>
               )}
@@ -674,21 +773,40 @@ export function EmployeesAdmin() {
 
       {isEditorOpen && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
-          <section className="floating-card member-modal-card" role="dialog" aria-modal="true">
+          <section
+            className="floating-card member-modal-card"
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="member-modal__header">
               <div className="member-modal__title">
-                <p className="eyebrow">{selectedEmployee ? 'Modificacion de empleado' : 'Alta de empleado'}</p>
-                {selectedEmployee ? <h2>Actualizar legajo</h2> : <h2>Nuevo legajo</h2>}
+                <p className="eyebrow">
+                  {selectedEmployee
+                    ? "Modificacion de empleado"
+                    : "Alta de empleado"}
+                </p>
+                {selectedEmployee ? (
+                  <h2>Actualizar legajo</h2>
+                ) : (
+                  <h2>Nuevo legajo</h2>
+                )}
               </div>
 
               <div className="member-modal__header-actions">
                 {selectedEmployee && (
-                  <span className={`status-pill ${editorState.status === 'active' ? '' : 'status-pill--bloqueado'}`}>
-                    {editorState.status === 'active' ? 'Activo' : 'Inactivo'}
+                  <span
+                    className={`status-pill ${editorState.status === "active" ? "" : "status-pill--bloqueado"}`}
+                  >
+                    {editorState.status === "active" ? "Activo" : "Inactivo"}
                   </span>
                 )}
 
-                <button type="button" className="icon-button" aria-label="Cerrar formulario" onClick={closeEditor}>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Cerrar formulario"
+                  onClick={closeEditor}
+                >
                   <CloseIcon />
                 </button>
               </div>
@@ -753,7 +871,10 @@ export function EmployeesAdmin() {
                   <strong>Trabajo</strong>
                 </div>
                 <div className="employee-form-section__grid">
-                  <label className="form-field employee-form-section__wide" htmlFor="position">
+                  <label
+                    className="form-field employee-form-section__wide"
+                    htmlFor="position"
+                  >
                     <span>Puesto o funcion</span>
                     <input
                       id="position"
@@ -824,7 +945,10 @@ export function EmployeesAdmin() {
                     />
                   </label>
 
-                  <label className="check-field employee-form-section__wide" htmlFor="canSubmitExpenses">
+                  <label
+                    className="check-field employee-form-section__wide"
+                    htmlFor="canSubmitExpenses"
+                  >
                     <input
                       id="canSubmitExpenses"
                       name="canSubmitExpenses"
@@ -837,7 +961,10 @@ export function EmployeesAdmin() {
                 </div>
               </div>
 
-              <label className="form-field member-editor-form__wide" htmlFor="notes">
+              <label
+                className="form-field member-editor-form__wide"
+                htmlFor="notes"
+              >
                 <span>Observaciones</span>
                 <textarea
                   id="notes"
@@ -849,11 +976,23 @@ export function EmployeesAdmin() {
               </label>
 
               <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={closeEditor}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={closeEditor}
+                >
                   Cerrar
                 </button>
-                <button type="submit" className="btn-primary" disabled={isSaving}>
-                  {isSaving ? 'Guardando...' : selectedEmployee ? 'Guardar cambios' : 'Dar de alta empleado'}
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isSaving}
+                >
+                  {isSaving
+                    ? "Guardando..."
+                    : selectedEmployee
+                      ? "Guardar cambios"
+                      : "Dar de alta empleado"}
                 </button>
               </div>
             </form>
@@ -863,17 +1002,33 @@ export function EmployeesAdmin() {
 
       <ConfirmDialog
         open={Boolean(employeePendingStatusChange)}
-        title={employeePendingStatusChange?.status === 'active' ? 'Dar de baja empleado' : 'Reactivar empleado'}
+        title={
+          employeePendingStatusChange?.status === "active"
+            ? "Dar de baja empleado"
+            : "Reactivar empleado"
+        }
         description={
           employeePendingStatusChange ? (
             <>
-              Vas a {employeePendingStatusChange.status === 'active' ? 'dar de baja' : 'reactivar'} a{' '}
-              {getEmployeeDisplayName(employeePendingStatusChange)}. El legajo y los movimientos vinculados se conservan.
+              Vas a{" "}
+              {employeePendingStatusChange.status === "active"
+                ? "dar de baja"
+                : "reactivar"}{" "}
+              a {getEmployeeDisplayName(employeePendingStatusChange)}. El legajo
+              y los movimientos vinculados se conservan.
             </>
           ) : null
         }
-        confirmLabel={employeePendingStatusChange?.status === 'active' ? 'Dar de baja' : 'Reactivar'}
-        tone={employeePendingStatusChange?.status === 'active' ? 'danger' : 'default'}
+        confirmLabel={
+          employeePendingStatusChange?.status === "active"
+            ? "Dar de baja"
+            : "Reactivar"
+        }
+        tone={
+          employeePendingStatusChange?.status === "active"
+            ? "danger"
+            : "default"
+        }
         loading={isSaving}
         onCancel={() => setEmployeePendingStatusChange(null)}
         onConfirm={() => void handleConfirmStatusChange()}

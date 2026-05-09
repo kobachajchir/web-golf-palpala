@@ -35,6 +35,8 @@ export async function updateEmployeeUseCase(params) {
     return params.transactions.runInTransaction(async (dataAccess) => {
         const existingEmployee = await dataAccess.employees.getById(params.input.employeeId);
         assertCondition(existingEmployee, 'not-found', `No existe employees/${params.input.employeeId}.`);
+        const nextLinkedUserId = params.input.linkedUserId === undefined ? existingEmployee.linkedUserId : params.input.linkedUserId ?? undefined;
+        const shouldSyncProfileLink = params.input.linkedUserId !== undefined && existingEmployee.linkedUserId !== nextLinkedUserId;
         await dataAccess.employees.update(params.input.employeeId, {
             employeeCode: params.input.employeeCode === undefined ? undefined : params.input.employeeCode,
             firstName: params.input.firstName,
@@ -53,14 +55,16 @@ export async function updateEmployeeUseCase(params) {
             canSubmitExpenses: params.input.canSubmitExpenses,
             notes: params.input.notes === undefined ? undefined : params.input.notes,
         }, actor.uid);
-        await syncProfileLink({
-            dataAccess,
-            actorUid: actor.uid,
-            previousLinkedUserId: existingEmployee.linkedUserId,
-            nextLinkedUserId: params.input.linkedUserId === undefined ? existingEmployee.linkedUserId : params.input.linkedUserId ?? undefined,
-            profileId: params.input.employeeId,
-            profileType: 'employee',
-        });
+        if (shouldSyncProfileLink) {
+            await syncProfileLink({
+                dataAccess,
+                actorUid: actor.uid,
+                previousLinkedUserId: existingEmployee.linkedUserId,
+                nextLinkedUserId,
+                profileId: params.input.employeeId,
+                profileType: 'employee',
+            });
+        }
         return { employeeId: params.input.employeeId };
     });
 }
