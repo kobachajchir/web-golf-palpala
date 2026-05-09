@@ -1713,6 +1713,9 @@ export function AccountingDashboard() {
                   <p className="eyebrow">Empleados</p>
                   <h2>Legajos, recibos y horas extra</h2>
                 </div>
+                <Link className="btn-secondary" to="/admin/employees">
+                  Administrar empleados
+                </Link>
               </div>
 
               <div className="accounting-list">

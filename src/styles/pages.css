@@ -630,6 +630,16 @@
   text-align: left;
 }
 
+.success-message {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 122, 90, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-strong);
+  text-align: left;
+}
+
 .btn-primary,
 .btn-secondary {
   min-height: 46px;
@@ -1426,6 +1436,28 @@
 }
 
 .member-editor-form__wide {
+  grid-column: 1 / -1;
+}
+
+.employee-form-section {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.employee-form-section__title {
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.employee-form-section__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.employee-form-section__wide {
   grid-column: 1 / -1;
 }
 
@@ -2487,6 +2519,7 @@ button.accounting-hub-card:hover {
   .member-table__head,
   .member-row,
   .member-editor-form,
+  .employee-form-section__grid,
   .membership-profile-grid,
   .membership-grid {
     grid-template-columns: 1fr;

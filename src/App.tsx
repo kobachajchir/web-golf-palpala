@@ -13,6 +13,7 @@ import { Index } from './pages/Index';
 import { Login } from './pages/Login';
 import { MemberMembershipProfile } from './pages/MemberMembershipProfile';
 import { MembersAdmin } from './pages/MembersAdmin';
+import { EmployeesAdmin } from './pages/EmployeesAdmin';
 import { NotFound } from './pages/NotFound';
 import { Profile } from './pages/Profile';
 import { SignUp } from './pages/SignUp';
@@ -160,6 +161,15 @@ function App() {
               <MembersRoute>
                 <MemberMembershipProfile />
               </MembersRoute>
+            }
+          />
+
+          <Route
+            path="/admin/employees"
+            element={
+              <AccountingRoute>
+                <EmployeesAdmin />
+              </AccountingRoute>
             }
           />
 

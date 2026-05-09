@@ -165,6 +165,7 @@ export function Navbar() {
   const canManageMembers = STAFF_MODE_OPTIONS.includes(interfaceMode);
   const canViewMembers = canManageMembers || interfaceMode === ROLES.EMPLEADO;
   const canAccessAccounting = STAFF_MODE_OPTIONS.includes(interfaceMode);
+  const canAccessEmployees = STAFF_MODE_OPTIONS.includes(interfaceMode);
 
   useEffect(() => {
     setIsOpen(false);
@@ -255,6 +256,7 @@ export function Navbar() {
           <NavLink to="/club">El Club</NavLink>
           <NavLink to="/torneos">Torneos</NavLink>
           {canViewMembers && <NavLink to="/admin/members">Socios</NavLink>}
+          {canAccessEmployees && <NavLink to="/admin/employees">Empleados</NavLink>}
           {canAccessAccounting && (
             <NavLink to="/accounting">Contabilidad</NavLink>
           )}
