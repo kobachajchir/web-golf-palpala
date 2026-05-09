@@ -7,7 +7,7 @@
       "employeeId": "test-empleado-1",
       "employeeCode": "E001",
       "normalizedLoginCode": "e001",
-      "uid": "S3TUXjlNQnrvfCCj3unytDG9IAQY",
+      "uid": "zQtcIqyctUsE0ReVFmvJIOD9BshT",
       "displayName": "Test Empleado 1",
       "roleIds": [
         "empleado"
@@ -20,7 +20,7 @@
       "employeeId": "test-empleado-2",
       "employeeCode": "E002",
       "normalizedLoginCode": "e002",
-      "uid": "4ffo6PKttsG9VlAv7FbYnrnOMBw3",
+      "uid": "QqgtJ3OvjcxtuvsCAke4Fvq6nvoE",
       "displayName": "Test Empleado 2",
       "roleIds": [
         "empleado"
@@ -33,7 +33,7 @@
       "employeeId": "test-empleado-3",
       "employeeCode": "E003",
       "normalizedLoginCode": "e003",
-      "uid": "YoTpPwLfS5eyVLfLbmq7suu5Njyv",
+      "uid": "ufpYa9SYLIu8FAmpJfOB0RtGEdPP",
       "displayName": "Test Empleado 3",
       "roleIds": [
         "empleado"
