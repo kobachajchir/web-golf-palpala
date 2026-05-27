@@ -92,7 +92,7 @@ export function createEmployeesRepository(db: Firestore = requireFirestore()) {
         (params.contractType ?? 'all') !== 'all' ||
         (params.expenseAccess ?? 'all') !== 'all';
       const fetchSize = needsClientFiltering ? Math.min(pageSize * 4, 100) : pageSize;
-      const baseConstraints: QueryConstraint[] = [orderBy('lastName', 'asc'), orderBy('firstName', 'asc')];
+      const baseConstraints: QueryConstraint[] = [orderBy('lastName', 'asc')];
       const acceptedEmployees: Array<EntityWithId<EmployeeDocument>> = [];
       let nextCursor = params.cursor ?? null;
       let hasMore = false;
@@ -135,7 +135,12 @@ export function createEmployeesRepository(db: Firestore = requireFirestore()) {
       }
 
       return {
-        employees: acceptedEmployees.slice(0, pageSize),
+        employees: acceptedEmployees
+          .slice(0, pageSize)
+          .sort((left, right) => {
+            const lastNameOrder = left.lastName.localeCompare(right.lastName, 'es-AR');
+            return lastNameOrder || left.firstName.localeCompare(right.firstName, 'es-AR');
+          }),
         nextCursor,
         hasMore,
       };

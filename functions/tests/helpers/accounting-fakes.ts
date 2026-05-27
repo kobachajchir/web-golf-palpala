@@ -2,7 +2,11 @@ import { Timestamp } from 'firebase-admin/firestore';
 import type {
   Actor,
   AdvertisingContractDocument,
+  CashClosureDocument,
   ConcessionContractDocument,
+  EmployeeAccountingLinkDocument,
+  EmployeeCertificateDocument,
+  EmployeePayrollCycleDocument,
   EntityWithId,
   ExpenseSubmissionDocument,
   ExternalAccountingReferenceDocument,
@@ -13,6 +17,10 @@ import type {
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
   MemberFeeChargeDocument,
+  MercadoPagoCheckoutSessionDocument,
+  MercadoPagoEventDocument,
+  OvertimeEntryDocument,
+  PayrollConfigDocument,
   PaymentCommissionRuleDocument,
   PaymentMethodDocument,
   ReferencedEmployeeDocument,
@@ -23,12 +31,21 @@ import type {
   SalaryConfigurationDocument,
   SalaryPaymentDocument,
 } from '../../src/modules/accounting/domain/models.js';
+import type { TournamentRegistrationDocument } from '../../src/modules/tournaments/domain/models.js';
 import type {
   AccountingDataAccess,
   AccountingTransactionManager,
   AdvertisingContractsStore,
+  CashClosureFilters,
+  CashClosuresStore,
   ConcessionContractsStore,
   CursorPage,
+  EmployeeAccountingLinkFilters,
+  EmployeeAccountingLinksStore,
+  EmployeeCertificateFilters,
+  EmployeeCertificatesStore,
+  EmployeePayrollCycleFilters,
+  EmployeePayrollCyclesStore,
   EmployeesReferenceStore,
   ExpenseSubmissionsStore,
   ExternalAccountingReferencesStore,
@@ -45,13 +62,21 @@ import type {
   MacroDebitSettlementsStore,
   MemberFeeChargeFilters,
   MemberFeeChargesStore,
+  MemberReferenceFilters,
   MembersReferenceStore,
+  MercadoPagoCheckoutSessionFilters,
+  MercadoPagoCheckoutSessionsStore,
+  MercadoPagoEventsStore,
+  OvertimeEntriesStore,
+  OvertimeEntryFilters,
+  PayrollConfigsStore,
   PaymentCommissionRulesStore,
   PaymentMethodsStore,
   SalaryConfigurationsStore,
   SalaryPaymentsFilters,
   SalaryPaymentsStore,
   StorePatch,
+  TournamentRegistrationsReferenceStore,
   UsersReferenceStore,
 } from '../../src/modules/accounting/domain/ports.js';
 
@@ -126,6 +151,15 @@ class InMemoryMembersReferenceStore implements MembersReferenceStore {
       updatedBy: actorUid,
     });
   }
+
+  public async listPage(filters: MemberReferenceFilters): Promise<CursorPage<EntityWithId<ReferencedMemberDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.status) {
+      items = items.filter((item) => item.status === filters.status);
+    }
+    items.sort((left, right) => left.id.localeCompare(right.id));
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
 }
 
 class InMemoryFamilyGroupsReferenceStore implements FamilyGroupsReferenceStore {
@@ -149,6 +183,27 @@ class InMemoryHandicapsReferenceStore implements HandicapsReferenceStore {
 
   public async getById(handicapId: string): Promise<EntityWithId<ReferencedHandicapDocument> | null> {
     return this.items.get(handicapId) ?? null;
+  }
+}
+
+class InMemoryTournamentRegistrationsReferenceStore implements TournamentRegistrationsReferenceStore {
+  public constructor(private readonly items: Map<string, EntityWithId<TournamentRegistrationDocument>>) {}
+
+  public async getById(registrationId: string): Promise<EntityWithId<TournamentRegistrationDocument> | null> {
+    return this.items.get(registrationId) ?? null;
+  }
+
+  public async update(registrationId: string, patch: StorePatch<TournamentRegistrationDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(registrationId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(registrationId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
   }
 }
 
@@ -507,6 +562,303 @@ class InMemorySalaryPaymentsStore implements SalaryPaymentsStore {
   }
 }
 
+class InMemoryPayrollConfigsStore implements PayrollConfigsStore {
+  public constructor(private readonly items: Map<string, EntityWithId<PayrollConfigDocument>>) {}
+
+  public async getCurrent(): Promise<EntityWithId<PayrollConfigDocument> | null> {
+    return this.items.get('current') ?? null;
+  }
+
+  public async setCurrent(
+    data: Omit<PayrollConfigDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<void> {
+    const existing = this.items.get('current');
+    this.items.set('current', {
+      id: 'current',
+      ...(existing ?? {}),
+      ...data,
+      createdAt: existing?.createdAt ?? timestampNow(),
+      createdBy: existing?.createdBy ?? actorUid,
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+}
+
+class InMemoryOvertimeEntriesStore implements OvertimeEntriesStore {
+  public constructor(
+    private readonly items: Map<string, EntityWithId<OvertimeEntryDocument>>,
+    private readonly nextId: () => string,
+  ) {}
+
+  public async getById(overtimeEntryId: string): Promise<EntityWithId<OvertimeEntryDocument> | null> {
+    return this.items.get(overtimeEntryId) ?? null;
+  }
+
+  public async create(
+    data: Omit<OvertimeEntryDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<string> {
+    const id = this.nextId();
+    this.items.set(id, { id, ...data, ...createAudit(actorUid) });
+    return id;
+  }
+
+  public async update(overtimeEntryId: string, patch: StorePatch<OvertimeEntryDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(overtimeEntryId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(overtimeEntryId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+
+  public async listApprovedByEmployeeAndPeriod(employeeId: string, period: string): Promise<Array<EntityWithId<OvertimeEntryDocument>>> {
+    return Array.from(this.items.values())
+      .filter((item) => item.employeeId === employeeId && item.period === period && item.status === 'approved')
+      .sort((a, b) => a.workDate.toMillis() - b.workDate.toMillis());
+  }
+
+  public async listPage(filters: OvertimeEntryFilters): Promise<CursorPage<EntityWithId<OvertimeEntryDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.employeeId) {
+      items = items.filter((item) => item.employeeId === filters.employeeId);
+    }
+    if (filters.period) {
+      items = items.filter((item) => item.period === filters.period);
+    }
+    if (filters.status) {
+      items = items.filter((item) => item.status === filters.status);
+    }
+    items.sort((a, b) => b.workDate.toMillis() - a.workDate.toMillis());
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
+}
+
+class InMemoryEmployeePayrollCyclesStore implements EmployeePayrollCyclesStore {
+  public constructor(
+    private readonly items: Map<string, EntityWithId<EmployeePayrollCycleDocument>>,
+    private readonly nextId: () => string,
+  ) {}
+
+  public async getById(cycleId: string): Promise<EntityWithId<EmployeePayrollCycleDocument> | null> {
+    return this.items.get(cycleId) ?? null;
+  }
+
+  public async findByEmployeeAndPeriod(employeeId: string, period: string): Promise<EntityWithId<EmployeePayrollCycleDocument> | null> {
+    return Array.from(this.items.values()).find((item) => item.employeeId === employeeId && item.period === period) ?? null;
+  }
+
+  public async create(
+    data: Omit<EmployeePayrollCycleDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<string> {
+    const id = this.nextId();
+    this.items.set(id, { id, ...data, ...createAudit(actorUid) });
+    return id;
+  }
+
+  public async update(cycleId: string, patch: StorePatch<EmployeePayrollCycleDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(cycleId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(cycleId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+
+  public async listPage(filters: EmployeePayrollCycleFilters): Promise<CursorPage<EntityWithId<EmployeePayrollCycleDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.employeeId) {
+      items = items.filter((item) => item.employeeId === filters.employeeId);
+    }
+    if (filters.period) {
+      items = items.filter((item) => item.period === filters.period);
+    }
+    if (filters.status) {
+      items = items.filter((item) => item.status === filters.status);
+    }
+    items.sort((a, b) => b.period.localeCompare(a.period));
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
+}
+
+class InMemoryEmployeeAccountingLinksStore implements EmployeeAccountingLinksStore {
+  public constructor(
+    private readonly items: Map<string, EntityWithId<EmployeeAccountingLinkDocument>>,
+    private readonly nextId: () => string,
+  ) {}
+
+  public async getById(linkId: string): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null> {
+    return this.items.get(linkId) ?? null;
+  }
+
+  public async findDuplicate(params: {
+    employeeId: string;
+    period: string;
+    referenceId: string;
+  }): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null> {
+    return Array.from(this.items.values()).find((item) =>
+      item.employeeId === params.employeeId && item.period === params.period && item.referenceId === params.referenceId,
+    ) ?? null;
+  }
+
+  public async findByEmployeePeriodAndReferenceType(params: {
+    employeeId: string;
+    period: string;
+    referenceType: EmployeeAccountingLinkDocument['referenceType'];
+  }): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null> {
+    return Array.from(this.items.values()).find((item) =>
+      item.employeeId === params.employeeId && item.period === params.period && item.referenceType === params.referenceType,
+    ) ?? null;
+  }
+
+  public async create(
+    data: Omit<EmployeeAccountingLinkDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<string> {
+    const id = this.nextId();
+    this.items.set(id, { id, ...data, ...createAudit(actorUid) });
+    return id;
+  }
+
+  public async update(linkId: string, patch: StorePatch<EmployeeAccountingLinkDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(linkId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(linkId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+
+  public async listPage(filters: EmployeeAccountingLinkFilters): Promise<CursorPage<EntityWithId<EmployeeAccountingLinkDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.employeeId) {
+      items = items.filter((item) => item.employeeId === filters.employeeId);
+    }
+    if (filters.period) {
+      items = items.filter((item) => item.period === filters.period);
+    }
+    if (filters.referenceId) {
+      items = items.filter((item) => item.referenceId === filters.referenceId);
+    }
+    if (filters.referenceType) {
+      items = items.filter((item) => item.referenceType === filters.referenceType);
+    }
+    items.sort((a, b) => b.period.localeCompare(a.period));
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
+}
+
+class InMemoryEmployeeCertificatesStore implements EmployeeCertificatesStore {
+  public constructor(
+    private readonly items: Map<string, EntityWithId<EmployeeCertificateDocument>>,
+    private readonly nextId: () => string,
+  ) {}
+
+  public async getById(certificateId: string): Promise<EntityWithId<EmployeeCertificateDocument> | null> {
+    return this.items.get(certificateId) ?? null;
+  }
+
+  public async create(
+    data: Omit<EmployeeCertificateDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<string> {
+    const id = this.nextId();
+    this.items.set(id, { id, ...data, ...createAudit(actorUid) });
+    return id;
+  }
+
+  public async update(certificateId: string, patch: StorePatch<EmployeeCertificateDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(certificateId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(certificateId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+
+  public async listPage(filters: EmployeeCertificateFilters): Promise<CursorPage<EntityWithId<EmployeeCertificateDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.employeeId) {
+      items = items.filter((item) => item.employeeId === filters.employeeId);
+    }
+    if (filters.period) {
+      items = items.filter((item) => item.period === filters.period);
+    }
+    if (filters.certificateType) {
+      items = items.filter((item) => item.certificateType === filters.certificateType);
+    }
+    if (filters.status) {
+      items = items.filter((item) => item.status === filters.status);
+    }
+    items.sort((a, b) => b.period.localeCompare(a.period));
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
+}
+
+class InMemoryCashClosuresStore implements CashClosuresStore {
+  public constructor(
+    private readonly items: Map<string, EntityWithId<CashClosureDocument>>,
+    private readonly nextId: () => string,
+  ) {}
+
+  public async getById(cashClosureId: string): Promise<EntityWithId<CashClosureDocument> | null> {
+    return this.items.get(cashClosureId) ?? null;
+  }
+
+  public async create(
+    data: Omit<CashClosureDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<string> {
+    const id = this.nextId();
+    this.items.set(id, { id, ...data, ...createAudit(actorUid) });
+    return id;
+  }
+
+  public async update(cashClosureId: string, patch: StorePatch<CashClosureDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(cashClosureId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(cashClosureId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+
+  public async listPage(filters: CashClosureFilters): Promise<CursorPage<EntityWithId<CashClosureDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.period) {
+      items = items.filter((item) => item.period === filters.period);
+    }
+    if (filters.status) {
+      items = items.filter((item) => item.status === filters.status);
+    }
+    items.sort((a, b) => b.closureDate.toMillis() - a.closureDate.toMillis());
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
+}
+
 class InMemoryExternalAccountingReferencesStore implements ExternalAccountingReferencesStore {
   public constructor(
     private readonly items: Map<string, EntityWithId<ExternalAccountingReferenceDocument>>,
@@ -515,6 +867,16 @@ class InMemoryExternalAccountingReferencesStore implements ExternalAccountingRef
 
   public async getById(referenceId: string): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null> {
     return this.items.get(referenceId) ?? null;
+  }
+
+  public async findByEmployeePeriodAndReferenceType(params: {
+    employeeId: string;
+    period: string;
+    referenceType: ExternalAccountingReferenceDocument['referenceType'];
+  }): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null> {
+    return Array.from(this.items.values()).find((item) =>
+      item.employeeId === params.employeeId && item.period === params.period && item.referenceType === params.referenceType,
+    ) ?? null;
   }
 
   public async create(
@@ -766,12 +1128,91 @@ class InMemoryMemberFeeChargesStore implements MemberFeeChargesStore {
   }
 }
 
+class InMemoryMercadoPagoCheckoutSessionsStore implements MercadoPagoCheckoutSessionsStore {
+  public constructor(private readonly items: Map<string, EntityWithId<MercadoPagoCheckoutSessionDocument>>) {}
+
+  public async getById(sessionId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
+    return this.items.get(sessionId) ?? null;
+  }
+
+  public async getByExternalReference(externalReference: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
+    return Array.from(this.items.values()).find((item) => item.externalReference === externalReference) ?? null;
+  }
+
+  public async getByPaymentId(paymentId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
+    return Array.from(this.items.values()).find((item) => item.paymentId === paymentId) ?? null;
+  }
+
+  public async set(
+    sessionId: string,
+    data: Omit<MercadoPagoCheckoutSessionDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<void> {
+    this.items.set(sessionId, { id: sessionId, ...data, ...createAudit(actorUid) });
+  }
+
+  public async update(sessionId: string, patch: StorePatch<MercadoPagoCheckoutSessionDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(sessionId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(sessionId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+
+  public async listPage(filters: MercadoPagoCheckoutSessionFilters): Promise<CursorPage<EntityWithId<MercadoPagoCheckoutSessionDocument>>> {
+    let items = Array.from(this.items.values());
+    if (filters.status) {
+      items = items.filter((item) => item.status === filters.status);
+    }
+    if (filters.createdByUid) {
+      items = items.filter((item) => item.createdByUid === filters.createdByUid);
+    }
+    items.sort((left, right) => right.updatedAt.toDate().getTime() - left.updatedAt.toDate().getTime());
+    return pageFromItems(items, filters.limit, filters.cursorId);
+  }
+}
+
+class InMemoryMercadoPagoEventsStore implements MercadoPagoEventsStore {
+  public constructor(private readonly items: Map<string, EntityWithId<MercadoPagoEventDocument>>) {}
+
+  public async getById(eventId: string): Promise<EntityWithId<MercadoPagoEventDocument> | null> {
+    return this.items.get(eventId) ?? null;
+  }
+
+  public async set(
+    eventId: string,
+    data: Omit<MercadoPagoEventDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<void> {
+    this.items.set(eventId, { id: eventId, ...data, ...createAudit(actorUid) });
+  }
+
+  public async update(eventId: string, patch: StorePatch<MercadoPagoEventDocument>, actorUid: string): Promise<void> {
+    const existing = this.items.get(eventId);
+    if (!existing) {
+      return;
+    }
+    this.items.set(eventId, {
+      id: existing.id,
+      ...applyPatch(existing, patch),
+      updatedAt: timestampNow(),
+      updatedBy: actorUid,
+    });
+  }
+}
+
 export class InMemoryAccountingTransactionManager implements AccountingTransactionManager {
   public readonly users = new Map<string, EntityWithId<ReferencedUserDocument>>();
   public readonly members = new Map<string, EntityWithId<ReferencedMemberDocument>>();
   public readonly familyGroups = new Map<string, EntityWithId<ReferencedFamilyGroupDocument>>();
   public readonly employees = new Map<string, EntityWithId<ReferencedEmployeeDocument>>();
   public readonly handicaps = new Map<string, EntityWithId<ReferencedHandicapDocument>>();
+  public readonly tournamentRegistrations = new Map<string, EntityWithId<TournamentRegistrationDocument>>();
   public readonly financialConfigs = new Map<string, EntityWithId<FinancialConfigDocument>>();
   public readonly paymentMethods = new Map<string, EntityWithId<PaymentMethodDocument>>();
   public readonly paymentCommissionRules = new Map<string, EntityWithId<PaymentCommissionRuleDocument>>();
@@ -781,12 +1222,20 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
   public readonly macroDebitSettlements = new Map<string, EntityWithId<MacroDebitSettlementDocument>>();
   public readonly salaryConfigurations = new Map<string, EntityWithId<SalaryConfigurationDocument>>();
   public readonly salaryPayments = new Map<string, EntityWithId<SalaryPaymentDocument>>();
+  public readonly payrollConfigs = new Map<string, EntityWithId<PayrollConfigDocument>>();
+  public readonly overtimeEntries = new Map<string, EntityWithId<OvertimeEntryDocument>>();
+  public readonly employeePayrollCycles = new Map<string, EntityWithId<EmployeePayrollCycleDocument>>();
+  public readonly employeeAccountingLinks = new Map<string, EntityWithId<EmployeeAccountingLinkDocument>>();
+  public readonly employeeCertificates = new Map<string, EntityWithId<EmployeeCertificateDocument>>();
+  public readonly cashClosures = new Map<string, EntityWithId<CashClosureDocument>>();
   public readonly externalAccountingReferences = new Map<string, EntityWithId<ExternalAccountingReferenceDocument>>();
   public readonly expenseSubmissions = new Map<string, EntityWithId<ExpenseSubmissionDocument>>();
   public readonly concessionContracts = new Map<string, EntityWithId<ConcessionContractDocument>>();
   public readonly advertisingContracts = new Map<string, EntityWithId<AdvertisingContractDocument>>();
   public readonly handicapCharges = new Map<string, EntityWithId<HandicapChargeDocument>>();
   public readonly memberFeeCharges = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
+  public readonly mercadoPagoCheckoutSessions = new Map<string, EntityWithId<MercadoPagoCheckoutSessionDocument>>();
+  public readonly mercadoPagoEvents = new Map<string, EntityWithId<MercadoPagoEventDocument>>();
 
   private counters = {
     financialConfig: 0,
@@ -795,6 +1244,11 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
     settlement: 0,
     salaryConfiguration: 0,
     salaryPayment: 0,
+    overtimeEntry: 0,
+    employeePayrollCycle: 0,
+    employeeAccountingLink: 0,
+    employeeCertificate: 0,
+    cashClosure: 0,
     externalReference: 0,
     expenseSubmission: 0,
     concessionContract: 0,
@@ -809,6 +1263,7 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
     familyGroups: new InMemoryFamilyGroupsReferenceStore(this.familyGroups),
     employees: new InMemoryEmployeesReferenceStore(this.employees),
     handicaps: new InMemoryHandicapsReferenceStore(this.handicaps),
+    tournamentRegistrations: new InMemoryTournamentRegistrationsReferenceStore(this.tournamentRegistrations),
     financialConfigs: new InMemoryFinancialConfigsStore(this.financialConfigs, () => `financial-config-${++this.counters.financialConfig}`),
     paymentMethods: new InMemoryPaymentMethodsStore(this.paymentMethods),
     paymentCommissionRules: new InMemoryPaymentCommissionRulesStore(this.paymentCommissionRules, () => `commission-rule-${++this.counters.commissionRule}`),
@@ -818,12 +1273,20 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
     macroDebitSettlements: new InMemoryMacroDebitSettlementsStore(this.macroDebitSettlements, () => `settlement-${++this.counters.settlement}`),
     salaryConfigurations: new InMemorySalaryConfigurationsStore(this.salaryConfigurations, () => `salary-configuration-${++this.counters.salaryConfiguration}`),
     salaryPayments: new InMemorySalaryPaymentsStore(this.salaryPayments, () => `salary-payment-${++this.counters.salaryPayment}`),
+    payrollConfigs: new InMemoryPayrollConfigsStore(this.payrollConfigs),
+    overtimeEntries: new InMemoryOvertimeEntriesStore(this.overtimeEntries, () => `overtime-entry-${++this.counters.overtimeEntry}`),
+    employeePayrollCycles: new InMemoryEmployeePayrollCyclesStore(this.employeePayrollCycles, () => `employee-payroll-cycle-${++this.counters.employeePayrollCycle}`),
+    employeeAccountingLinks: new InMemoryEmployeeAccountingLinksStore(this.employeeAccountingLinks, () => `employee-accounting-link-${++this.counters.employeeAccountingLink}`),
+    employeeCertificates: new InMemoryEmployeeCertificatesStore(this.employeeCertificates, () => `employee-certificate-${++this.counters.employeeCertificate}`),
+    cashClosures: new InMemoryCashClosuresStore(this.cashClosures, () => `cash-closure-${++this.counters.cashClosure}`),
     externalAccountingReferences: new InMemoryExternalAccountingReferencesStore(this.externalAccountingReferences, () => `external-reference-${++this.counters.externalReference}`),
     expenseSubmissions: new InMemoryExpenseSubmissionsStore(this.expenseSubmissions, () => `expense-submission-${++this.counters.expenseSubmission}`),
     concessionContracts: new InMemoryConcessionContractsStore(this.concessionContracts, () => `concession-contract-${++this.counters.concessionContract}`),
     advertisingContracts: new InMemoryAdvertisingContractsStore(this.advertisingContracts, () => `advertising-contract-${++this.counters.advertisingContract}`),
     handicapCharges: new InMemoryHandicapChargesStore(this.handicapCharges, () => `handicap-charge-${++this.counters.handicapCharge}`),
     memberFeeCharges: new InMemoryMemberFeeChargesStore(this.memberFeeCharges, () => `member-fee-charge-${++this.counters.memberFeeCharge}`),
+    mercadoPagoCheckoutSessions: new InMemoryMercadoPagoCheckoutSessionsStore(this.mercadoPagoCheckoutSessions),
+    mercadoPagoEvents: new InMemoryMercadoPagoEventsStore(this.mercadoPagoEvents),
   };
 
   public async runInTransaction<T>(handler: (dataAccess: AccountingDataAccess) => Promise<T>): Promise<T> {
@@ -856,9 +1319,11 @@ export function createAccountingActor(
     uid,
     user,
     claims: {
-      directivo: roleIds.includes('directivo'),
+      comite_ejecutivo: roleIds.includes('comite_ejecutivo') || roleIds.includes('directivo'),
+      directivo: roleIds.includes('comite_ejecutivo') || roleIds.includes('directivo'),
       administrativo: roleIds.includes('administrativo'),
       empleado: roleIds.includes('empleado'),
+      comision_directiva: roleIds.includes('comision_directiva'),
       socio: roleIds.includes('socio'),
       claimsVersion: 1,
       ...claims,
@@ -984,6 +1449,8 @@ export function seedActiveFinancialConfig(
     licensePctBps: 0,
     maxLicenseMonths: 6,
     creditCommissionPctBps: 300,
+    earlyPaymentDiscountPctBps: 1_000,
+    earlyPaymentDiscountDayOfMonth: 10,
     familyGroupBillingMode: 'per_member',
     allowStandaloneMinor: true,
     membershipChargePersistenceMode: 'member_fee_charges',

@@ -8,14 +8,23 @@ import type {
   FinancialIncomeCategoryDocument,
   FinancialExpenseCategoryDocument,
   MacroDebitSettlementDocument,
+  MercadoPagoCheckoutSessionDocument,
+  MercadoPagoCheckoutSessionStatus,
+  MercadoPagoEventDocument,
   SalaryConfigurationDocument,
   SalaryPaymentDocument,
   ExternalAccountingReferenceDocument,
   ExpenseSubmissionDocument,
   ConcessionContractDocument,
+  CashClosureDocument,
+  EmployeeAccountingLinkDocument,
+  EmployeeCertificateDocument,
+  EmployeePayrollCycleDocument,
   AdvertisingContractDocument,
   HandicapChargeDocument,
   MemberFeeChargeDocument,
+  OvertimeEntryDocument,
+  PayrollConfigDocument,
   AccountingPeriod,
   EntityWithId,
   ReferencedEmployeeDocument,
@@ -25,6 +34,7 @@ import type {
   ReferencedUserDocument,
   ThirdPartyType,
 } from './models.js';
+import type { TournamentRegistrationDocument } from '../../tournaments/domain/models.js';
 
 export type StorePatch<T extends object> = {
   [K in keyof T]?: T[K] | null | undefined;
@@ -44,6 +54,10 @@ export interface PageInput {
   cursorId?: string;
 }
 
+export interface MemberReferenceFilters extends PageInput {
+  status?: ReferencedMemberDocument['status'];
+}
+
 export interface UsersReferenceStore {
   getById(uid: string): Promise<EntityWithId<ReferencedUserDocument> | null>;
 }
@@ -51,6 +65,7 @@ export interface UsersReferenceStore {
 export interface MembersReferenceStore {
   getById(memberId: string): Promise<EntityWithId<ReferencedMemberDocument> | null>;
   update(memberId: string, patch: StorePatch<ReferencedMemberDocument>, actorUid: string): Promise<void>;
+  listPage(filters: MemberReferenceFilters): Promise<CursorPage<EntityWithId<ReferencedMemberDocument>>>;
 }
 
 export interface FamilyGroupsReferenceStore {
@@ -63,6 +78,11 @@ export interface EmployeesReferenceStore {
 
 export interface HandicapsReferenceStore {
   getById(handicapId: string): Promise<EntityWithId<ReferencedHandicapDocument> | null>;
+}
+
+export interface TournamentRegistrationsReferenceStore {
+  getById(registrationId: string): Promise<EntityWithId<TournamentRegistrationDocument> | null>;
+  update(registrationId: string, patch: StorePatch<TournamentRegistrationDocument>, actorUid: string): Promise<void>;
 }
 
 export interface FinancialConfigsStore {
@@ -180,8 +200,114 @@ export interface SalaryPaymentsStore {
   listPage(filters: SalaryPaymentsFilters): Promise<CursorPage<EntityWithId<SalaryPaymentDocument>>>;
 }
 
+export interface PayrollConfigsStore {
+  getCurrent(): Promise<EntityWithId<PayrollConfigDocument> | null>;
+  setCurrent(
+    data: StoreCreate<Omit<PayrollConfigDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void>;
+}
+
+export interface OvertimeEntryFilters extends PageInput {
+  employeeId?: string;
+  period?: AccountingPeriod;
+  status?: OvertimeEntryDocument['status'];
+}
+
+export interface OvertimeEntriesStore {
+  getById(overtimeEntryId: string): Promise<EntityWithId<OvertimeEntryDocument> | null>;
+  create(
+    data: StoreCreate<Omit<OvertimeEntryDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string>;
+  update(overtimeEntryId: string, patch: StorePatch<OvertimeEntryDocument>, actorUid: string): Promise<void>;
+  listPage(filters: OvertimeEntryFilters): Promise<CursorPage<EntityWithId<OvertimeEntryDocument>>>;
+  listApprovedByEmployeeAndPeriod(employeeId: string, period: AccountingPeriod): Promise<Array<EntityWithId<OvertimeEntryDocument>>>;
+}
+
+export interface EmployeePayrollCycleFilters extends PageInput {
+  employeeId?: string;
+  period?: AccountingPeriod;
+  status?: EmployeePayrollCycleDocument['status'];
+}
+
+export interface EmployeePayrollCyclesStore {
+  getById(cycleId: string): Promise<EntityWithId<EmployeePayrollCycleDocument> | null>;
+  findByEmployeeAndPeriod(employeeId: string, period: AccountingPeriod): Promise<EntityWithId<EmployeePayrollCycleDocument> | null>;
+  create(
+    data: StoreCreate<Omit<EmployeePayrollCycleDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string>;
+  update(cycleId: string, patch: StorePatch<EmployeePayrollCycleDocument>, actorUid: string): Promise<void>;
+  listPage(filters: EmployeePayrollCycleFilters): Promise<CursorPage<EntityWithId<EmployeePayrollCycleDocument>>>;
+}
+
+export interface EmployeeAccountingLinkFilters extends PageInput {
+  employeeId?: string;
+  period?: AccountingPeriod;
+  referenceId?: string;
+  referenceType?: EmployeeAccountingLinkDocument['referenceType'];
+}
+
+export interface EmployeeAccountingLinksStore {
+  getById(linkId: string): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null>;
+  findDuplicate(params: {
+    employeeId: string;
+    period: AccountingPeriod;
+    referenceId: string;
+  }): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null>;
+  findByEmployeePeriodAndReferenceType(params: {
+    employeeId: string;
+    period: AccountingPeriod;
+    referenceType: EmployeeAccountingLinkDocument['referenceType'];
+  }): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null>;
+  create(
+    data: StoreCreate<Omit<EmployeeAccountingLinkDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string>;
+  update(linkId: string, patch: StorePatch<EmployeeAccountingLinkDocument>, actorUid: string): Promise<void>;
+  listPage(filters: EmployeeAccountingLinkFilters): Promise<CursorPage<EntityWithId<EmployeeAccountingLinkDocument>>>;
+}
+
+export interface EmployeeCertificateFilters extends PageInput {
+  employeeId?: string;
+  period?: AccountingPeriod;
+  certificateType?: string;
+  status?: EmployeeCertificateDocument['status'];
+}
+
+export interface EmployeeCertificatesStore {
+  getById(certificateId: string): Promise<EntityWithId<EmployeeCertificateDocument> | null>;
+  create(
+    data: StoreCreate<Omit<EmployeeCertificateDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string>;
+  update(certificateId: string, patch: StorePatch<EmployeeCertificateDocument>, actorUid: string): Promise<void>;
+  listPage(filters: EmployeeCertificateFilters): Promise<CursorPage<EntityWithId<EmployeeCertificateDocument>>>;
+}
+
+export interface CashClosureFilters extends PageInput {
+  period?: AccountingPeriod;
+  status?: CashClosureDocument['status'];
+}
+
+export interface CashClosuresStore {
+  getById(cashClosureId: string): Promise<EntityWithId<CashClosureDocument> | null>;
+  create(
+    data: StoreCreate<Omit<CashClosureDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string>;
+  update(cashClosureId: string, patch: StorePatch<CashClosureDocument>, actorUid: string): Promise<void>;
+  listPage(filters: CashClosureFilters): Promise<CursorPage<EntityWithId<CashClosureDocument>>>;
+}
+
 export interface ExternalAccountingReferencesStore {
   getById(referenceId: string): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null>;
+  findByEmployeePeriodAndReferenceType(params: {
+    employeeId: string;
+    period: AccountingPeriod;
+    referenceType: ExternalAccountingReferenceDocument['referenceType'];
+  }): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null>;
   create(
     data: StoreCreate<Omit<ExternalAccountingReferenceDocument, keyof import('./models.js').AuditFields>>,
     actorUid: string,
@@ -261,12 +387,41 @@ export interface MemberFeeChargesStore {
   listPage(filters: MemberFeeChargeFilters): Promise<CursorPage<EntityWithId<MemberFeeChargeDocument>>>;
 }
 
+export interface MercadoPagoCheckoutSessionFilters extends PageInput {
+  status?: MercadoPagoCheckoutSessionStatus;
+  createdByUid?: string;
+}
+
+export interface MercadoPagoCheckoutSessionsStore {
+  getById(sessionId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null>;
+  getByExternalReference(externalReference: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null>;
+  getByPaymentId(paymentId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null>;
+  set(
+    sessionId: string,
+    data: StoreCreate<Omit<MercadoPagoCheckoutSessionDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void>;
+  update(sessionId: string, patch: StorePatch<MercadoPagoCheckoutSessionDocument>, actorUid: string): Promise<void>;
+  listPage(filters: MercadoPagoCheckoutSessionFilters): Promise<CursorPage<EntityWithId<MercadoPagoCheckoutSessionDocument>>>;
+}
+
+export interface MercadoPagoEventsStore {
+  getById(eventId: string): Promise<EntityWithId<MercadoPagoEventDocument> | null>;
+  set(
+    eventId: string,
+    data: StoreCreate<Omit<MercadoPagoEventDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void>;
+  update(eventId: string, patch: StorePatch<MercadoPagoEventDocument>, actorUid: string): Promise<void>;
+}
+
 export interface AccountingDataAccess {
   users: UsersReferenceStore;
   members: MembersReferenceStore;
   familyGroups: FamilyGroupsReferenceStore;
   employees: EmployeesReferenceStore;
   handicaps: HandicapsReferenceStore;
+  tournamentRegistrations: TournamentRegistrationsReferenceStore;
   financialConfigs: FinancialConfigsStore;
   paymentMethods: PaymentMethodsStore;
   paymentCommissionRules: PaymentCommissionRulesStore;
@@ -276,12 +431,20 @@ export interface AccountingDataAccess {
   macroDebitSettlements: MacroDebitSettlementsStore;
   salaryConfigurations: SalaryConfigurationsStore;
   salaryPayments: SalaryPaymentsStore;
+  payrollConfigs: PayrollConfigsStore;
+  overtimeEntries: OvertimeEntriesStore;
+  employeePayrollCycles: EmployeePayrollCyclesStore;
+  employeeAccountingLinks: EmployeeAccountingLinksStore;
+  employeeCertificates: EmployeeCertificatesStore;
+  cashClosures: CashClosuresStore;
   externalAccountingReferences: ExternalAccountingReferencesStore;
   expenseSubmissions: ExpenseSubmissionsStore;
   concessionContracts: ConcessionContractsStore;
   advertisingContracts: AdvertisingContractsStore;
   handicapCharges: HandicapChargesStore;
   memberFeeCharges: MemberFeeChargesStore;
+  mercadoPagoCheckoutSessions: MercadoPagoCheckoutSessionsStore;
+  mercadoPagoEvents: MercadoPagoEventsStore;
 }
 
 export interface AccountingTransactionManager {

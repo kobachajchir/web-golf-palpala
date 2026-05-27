@@ -1,13 +1,13 @@
 {
   "ok": true,
-  "projectId": "demo-web-golf-palpala",
-  "emulator": true,
+  "projectId": "webgolfclub",
+  "emulator": false,
   "seeded": [
     {
       "employeeId": "test-empleado-1",
       "employeeCode": "E001",
       "normalizedLoginCode": "e001",
-      "uid": "zQtcIqyctUsE0ReVFmvJIOD9BshT",
+      "uid": "ZUouFlNNbEYact1vl2q2OOs2TDM2",
       "displayName": "Test Empleado 1",
       "roleIds": [
         "empleado"
@@ -20,7 +20,7 @@
       "employeeId": "test-empleado-2",
       "employeeCode": "E002",
       "normalizedLoginCode": "e002",
-      "uid": "QqgtJ3OvjcxtuvsCAke4Fvq6nvoE",
+      "uid": "OV7OKai1oyR4AsuW7mFvOrI7tIw2",
       "displayName": "Test Empleado 2",
       "roleIds": [
         "empleado"
@@ -33,7 +33,7 @@
       "employeeId": "test-empleado-3",
       "employeeCode": "E003",
       "normalizedLoginCode": "e003",
-      "uid": "ufpYa9SYLIu8FAmpJfOB0RtGEdPP",
+      "uid": "9oGOQUpDjePw9L7uzkFClC1W0S12",
       "displayName": "Test Empleado 3",
       "roleIds": [
         "empleado"

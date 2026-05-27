@@ -8,8 +8,11 @@ import {
   type ChangeEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
+import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import type {
@@ -51,6 +54,13 @@ type EmployeeStats = {
   canSubmitExpenses: number;
 };
 
+type EmployeeAccessState = {
+  employee: EntityWithId<EmployeeDocument>;
+  email: string;
+  inviteLink: string;
+  isSubmitting: boolean;
+};
+
 type TimestampLike = { toDate: () => Date } | Date | string | number | null | undefined;
 
 const CONTRACT_OPTIONS: Array<{ value: EmployeeContractType; label: string }> = [
@@ -72,6 +82,67 @@ const EXPENSE_ACCESS_OPTIONS: Array<{ value: EmployeeExpenseFilter; label: strin
   { value: 'enabled', label: 'Puede rendir' },
   { value: 'disabled', label: 'Sin rendicion' },
 ];
+
+type IconType =
+  | "calendar"
+  | "check"
+  | "clock"
+  | "chevron"
+  | "flag"
+  | "list"
+  | "plus"
+  | "search"
+  | "settings"
+  | "score"
+  | "trophy"
+  | "users";
+
+function Icon({ type }: { type: IconType }) {
+  const icons: Record<IconType, ReactNode> = {
+    calendar: (
+      <path d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1.5A2.5 2.5 0 0 1 22 6.5v12A2.5 2.5 0 0 1 19.5 21h-15A2.5 2.5 0 0 1 2 18.5v-12A2.5 2.5 0 0 1 4.5 4H6V3a1 1 0 0 1 1-1Zm12.5 8h-15v8.5a.5.5 0 0 0 .5.5h14a.5.5 0 0 0 .5-.5V10ZM5 6a.5.5 0 0 0-.5.5V8h15V6.5A.5.5 0 0 0 19 6H5Z" />
+    ),
+    check: (
+      <path d="M9.2 16.6 4.8 12.2a1 1 0 0 1 1.4-1.4l3 3 8.6-8.6a1 1 0 0 1 1.4 1.4l-9.3 9.3a1 1 0 0 1-1.4 0Z" />
+    ),
+    clock: (
+      <path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm1 5a1 1 0 1 0-2 0v5a1 1 0 0 0 .45.83l3.5 2.3a1 1 0 0 0 1.1-1.66L13 11.47V7Z" />
+    ),
+    chevron: (
+      <path d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.88a1 1 0 1 1 1.4 1.42l-4.6 4.58a1 1 0 0 1-1.4 0L6.7 10.7a1 1 0 0 1 0-1.42Z" />
+    ),
+    flag: (
+      <path d="M5 3a1 1 0 0 1 2 0v1h8.7a1 1 0 0 1 .86 1.5L15 8l1.56 2.5A1 1 0 0 1 15.7 12H7v8a1 1 0 1 1-2 0V3Z" />
+    ),
+    list: (
+      <path d="M5 6.5A1.5 1.5 0 1 1 2 6.5a1.5 1.5 0 0 1 3 0ZM8 5.5h13a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2ZM5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm3-1h13a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2Zm-3 6.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm3-1h13a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2Z" />
+    ),
+    plus: (
+      <path d="M11 5a1 1 0 1 1 2 0v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5Z" />
+    ),
+    search: (
+      <path d="M10.5 4a6.5 6.5 0 0 1 5.15 10.47l4.44 4.44a1 1 0 0 1-1.42 1.42l-4.44-4.44A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" />
+    ),
+    settings: (
+      <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm8.7 3.2-.93-.54a7.8 7.8 0 0 0-.7-1.7l.28-1.04a1 1 0 0 0-.26-.98l-1.03-1.03a1 1 0 0 0-.98-.26l-1.04.28a7.8 7.8 0 0 0-1.7-.7l-.54-.93A1 1 0 0 0 13.03 3h-2.06a1 1 0 0 0-.87.5l-.54.93a7.8 7.8 0 0 0-1.7.7l-1.04-.28a1 1 0 0 0-.98.26L4.81 6.14a1 1 0 0 0-.26.98l.28 1.04a7.8 7.8 0 0 0-.7 1.7l-.93.54a1 1 0 0 0-.5.87v2.06a1 1 0 0 0 .5.87l.93.54c.17.6.4 1.17.7 1.7l-.28 1.04a1 1 0 0 0 .26.98l1.03 1.03a1 1 0 0 0 .98.26l1.04-.28c.53.3 1.1.53 1.7.7l.54.93a1 1 0 0 0 .87.5h2.06a1 1 0 0 0 .87-.5l.54-.93c.6-.17 1.17-.4 1.7-.7l1.04.28a1 1 0 0 0 .98-.26l1.03-1.03a1 1 0 0 0 .26-.98l-.28-1.04c.3-.53.53-1.1.7-1.7l.93-.54a1 1 0 0 0 .5-.87v-2.06a1 1 0 0 0-.5-.87Z" />
+    ),
+    score: (
+      <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h4v-2H7Zm6 0v2h4v-2h-4Zm-6 4v2h4v-2H7Zm6 0v2h4v-2h-4Z" />
+    ),
+    trophy: (
+      <path d="M7 3h10v2h3a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5h-.28A5 5 0 0 1 13 15.9V19h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-3.1A5 5 0 0 1 8.28 13H8a5 5 0 0 1-5-5V6a1 1 0 0 1 1-1h3V3Zm0 4H5v1a3 3 0 0 0 2.25 2.9A7.5 7.5 0 0 1 7 9V7Zm10 0v2c0 .66-.09 1.3-.25 1.9A3 3 0 0 0 19 8V7h-2Z" />
+    ),
+    users: (
+      <path d="M9 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm7 1a3 3 0 1 1 0-6 3 3 0 0 1 0 6ZM2 20a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1H2v-1Zm15 1a4 4 0 0 0-2.15-3.54A4.96 4.96 0 0 1 20 21h-3Z" />
+    ),
+  };
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      {icons[type]}
+    </svg>
+  );
+}
 
 function createEmptyEditorState(): EmployeeEditorState {
   return {
@@ -132,6 +203,14 @@ function getEmployeeDisplayName(employee: EntityWithId<EmployeeDocument>): strin
   return `${employee.lastName}, ${employee.firstName}`.trim();
 }
 
+function getCurrentAccountingPeriod(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date());
+}
+
 function createEditorState(employee: EntityWithId<EmployeeDocument>): EmployeeEditorState {
   return {
     id: employee.id,
@@ -183,9 +262,27 @@ function MoreIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M10.5 4a6.5 6.5 0 0 1 5.15 10.47l4.44 4.44a1 1 0 0 1-1.42 1.42l-4.44-4.44A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.88a1 1 0 1 1 1.4 1.42l-4.6 4.58a1 1 0 0 1-1.4 0L6.7 10.7a1 1 0 0 1 0-1.42Z" />
+    </svg>
+  );
+}
+
 export function EmployeesAdmin() {
   const { interfaceMode } = useAuth();
   const canManageEmployees = interfaceMode === ROLES.ADMINISTRATIVO || interfaceMode === ROLES.DIRECTIVO;
+  const canConfigureSalaries = interfaceMode === ROLES.DIRECTIVO;
+  const currentAccountingPeriod = useMemo(() => getCurrentAccountingPeriod(), []);
   const usersCallables = useMemo(() => createUsersCallables(), []);
   const employeesRepository = useMemo(() => createEmployeesRepository(), []);
   const [employees, setEmployees] = useState<Array<EntityWithId<EmployeeDocument>>>([]);
@@ -208,6 +305,7 @@ export function EmployeesAdmin() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [openEmployeeActionsId, setOpenEmployeeActionsId] = useState<string | null>(null);
   const [employeePendingStatusChange, setEmployeePendingStatusChange] = useState<EntityWithId<EmployeeDocument> | null>(null);
+  const [employeeAccessState, setEmployeeAccessState] = useState<EmployeeAccessState | null>(null);
   const filtersRef = useRef<HTMLDivElement | null>(null);
 
   const selectedEmployee = useMemo(
@@ -281,6 +379,7 @@ export function EmployeesAdmin() {
 
   const activeFilterCount =
     Number(statusFilter !== 'all') + Number(contractFilter !== 'all') + Number(expenseAccessFilter !== 'all');
+  const activeSearchCount = activeFilterCount + Number(searchQuery.trim().length > 0);
 
   const openCreateModal = () => {
     setSelectedEmployeeId(null);
@@ -298,15 +397,32 @@ export function EmployeesAdmin() {
     setIsEditorOpen(true);
   };
 
+  const openEmployeeAccessModal = (employee: EntityWithId<EmployeeDocument>) => {
+    setEmployeeAccessState({
+      employee,
+      email: '',
+      inviteLink: '',
+      isSubmitting: false,
+    });
+    setOpenEmployeeActionsId(null);
+    setNotice('');
+    setError('');
+  };
+
   const closeEditor = () => {
     setIsEditorOpen(false);
     setSelectedEmployeeId(null);
     setEditorState(createEmptyEditorState());
   };
 
+  const closeEmployeeAccessModal = () => {
+    setEmployeeAccessState(null);
+  };
+
   const handleOverlayClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       closeEditor();
+      closeEmployeeAccessModal();
     }
   };
 
@@ -442,128 +558,208 @@ export function EmployeesAdmin() {
     }
   };
 
-  return (
-    <div className="page page-members-admin">
-      <div className="page-gradient" />
+  const handleLinkEmployeeAccess = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!employeeAccessState) {
+      return;
+    }
 
-      <section
-        className="directory-shell w-100"
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          marginTop: "3vh",
-          marginBottom: "3vh",
-        }}
-      >
-        <section className="floating-card directory-hero employee-directory-card" style={{width: "80%"}}>
-          <div className="directory-hero__header">
+    const email = employeeAccessState.email.trim().toLowerCase();
+    if (!email) {
+      setError('Ingresa un email para vincular el acceso del empleado.');
+      return;
+    }
+
+    setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: true, inviteLink: '' } : current));
+    setError('');
+
+    try {
+      const result = await usersCallables.linkEmployeeAuthUser({
+        employeeId: employeeAccessState.employee.id,
+        email,
+        displayName: `${employeeAccessState.employee.firstName} ${employeeAccessState.employee.lastName}`.trim(),
+      });
+      setEmployeeAccessState((current) => (current ? {
+        ...current,
+        inviteLink: result.inviteLink,
+        email: result.email,
+        isSubmitting: false,
+      } : current));
+      setNotice('Acceso vinculado. El link permite que el empleado cree o restablezca su contraseña.');
+      await loadEmployees();
+    } catch (accessError) {
+      setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: false } : current));
+      setError(accessError instanceof Error ? accessError.message : 'No pudimos vincular el acceso del empleado.');
+    }
+  };
+
+  const handleInviteEmployeeAccess = async () => {
+    if (!employeeAccessState) {
+      return;
+    }
+
+    setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: true, inviteLink: '' } : current));
+    setError('');
+
+    try {
+      const result = await usersCallables.inviteEmployeeUser({ employeeId: employeeAccessState.employee.id });
+      setEmployeeAccessState((current) => (current ? {
+        ...current,
+        inviteLink: result.inviteLink,
+        email: result.email,
+        isSubmitting: false,
+      } : current));
+      setNotice('Invitacion generada para el empleado.');
+    } catch (accessError) {
+      setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: false } : current));
+      setError(accessError instanceof Error ? accessError.message : 'No pudimos generar la invitacion.');
+    }
+  };
+
+  const isEmployeeEditorSubmitDisabled = isSaving || Boolean(validateEditor());
+
+  return (
+    <div className="page-container member-directory-page directory-workbench-page">
+      <div className="directory-shell directory-workbench-shell">
+        <section className="floating-card tournament-hero directory-workbench-hero">
+          <div className="tournament-hero__copy">
+            <p className="eyebrow">Administracion de personal</p>
+            <h1>Legajos de empleados</h1>
+            <p>
+              Alta, baja, acceso al sistema y trazabilidad contable laboral
+              desde una vista operativa unificada.
+            </p>
+          </div>
+
+          {canManageEmployees && (
+            <div className="tournament-hero__actions">
+              <button
+                type="button"
+                className="ui-action-button ui-action-button--positive"
+                onClick={openCreateModal}
+              >
+                <Icon type="plus" />
+                <span>Nuevo empleado</span>
+              </button>
+            </div>
+          )}
+        </section>
+
+        <section
+          className="tournament-summary-grid directory-summary-grid"
+          aria-label="Resumen de empleados"
+        >
+          <SummaryCard
+            label="Empleados cargados"
+            value={String(stats?.totalEmployees ?? employees.length)}
+            helper="Legajos registrados"
+          />
+          <SummaryCard
+            label="Activos"
+            value={String(
+              stats?.activeEmployees ??
+                employees.filter((employee) => employee.status === "active")
+                  .length,
+            )}
+            helper="Disponibles para operar"
+          />
+          <SummaryCard
+            label="Inactivos"
+            value={String(
+              stats?.inactiveEmployees ??
+                employees.filter((employee) => employee.status === "inactive")
+                  .length,
+            )}
+            helper="Bajas administrativas"
+          />
+          <SummaryCard
+            label="Rinden gastos"
+            value={String(
+              stats?.canSubmitExpenses ??
+                employees.filter((employee) => employee.canSubmitExpenses)
+                  .length,
+            )}
+            helper="Habilitados para rendiciones"
+          />
+        </section>
+
+        <section className="floating-card tournament-main-panel directory-workbench-panel">
+          <div className="tournament-section-header directory-panel-header">
             <div>
-              <p className="eyebrow">Administracion de personal</p>
-              <h1>Legajos de empleados</h1>
+              <p className="eyebrow">Listado operativo</p>
+              <h2>Empleados, permisos y contabilidad mensual</h2>
               <p className="profile-note">
-                Alta, baja y modificacion de empleados con busqueda y filtros
-                operativos.
+                Filtra legajos, entra a la contabilidad de cada empleado y
+                gestiona acciones administrativas.
               </p>
             </div>
-
-            {canManageEmployees && (
-              <div className="directory-hero__actions">
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={openCreateModal}
-                >
-                  Nuevo empleado
-                </button>
-              </div>
-            )}
           </div>
 
-          <div className="summary-grid">
-            <SummaryCard
-              label="Empleados cargados"
-              value={String(stats?.totalEmployees ?? employees.length)}
-              helper="Legajos registrados"
-            />
-            <SummaryCard
-              label="Activos"
-              value={String(
-                stats?.activeEmployees ??
-                  employees.filter((employee) => employee.status === "active")
-                    .length,
-              )}
-              helper="Disponibles para operar"
-            />
-            <SummaryCard
-              label="Inactivos"
-              value={String(
-                stats?.inactiveEmployees ??
-                  employees.filter((employee) => employee.status === "inactive")
-                    .length,
-              )}
-              helper="Bajas administrativas"
-            />
-            <SummaryCard
-              label="Rinden gastos"
-              value={String(
-                stats?.canSubmitExpenses ??
-                  employees.filter((employee) => employee.canSubmitExpenses)
-                    .length,
-              )}
-              helper="Habilitados para rendiciones"
-            />
-          </div>
+          <div
+            className={`search-collapse ${isFiltersOpen ? "search-collapse--open" : ""}`}
+            ref={filtersRef}
+          >
+            <button
+              type="button"
+              className="search-collapse__trigger"
+              aria-expanded={isFiltersOpen}
+              onClick={() => setIsFiltersOpen((current) => !current)}
+            >
+              <span className="search-collapse__title">
+                <span className="search-collapse__icon">
+                  <SearchIcon />
+                </span>
+                <span>
+                  <strong>Busqueda y filtros</strong>
+                  <small>
+                    {activeSearchCount > 0
+                      ? `${activeSearchCount} criterio${activeSearchCount === 1 ? "" : "s"} activo${activeSearchCount === 1 ? "" : "s"}`
+                      : "Buscar por legajo, nombre, estado, contrato o rendiciones"}
+                  </small>
+                </span>
+              </span>
+              <span className="search-collapse__meta">
+                {activeSearchCount > 0 && (
+                  <span className="status-chip">{activeSearchCount}</span>
+                )}
+                <span className="search-collapse__chevron">
+                  <ChevronIcon />
+                </span>
+              </span>
+            </button>
 
-          <div className="member-toolbar">
-            <div className="member-toolbar__row">
-              <label className="member-search member-search--wide">
-                <span>Busqueda rapida</span>
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-              </label>
+            {isFiltersOpen && (
+              <div className="search-collapse__body">
+                <div className="member-toolbar">
+                  <div className="member-toolbar__row">
+                    <label className="member-search member-search--wide">
+                      <span>Busqueda rapida</span>
+                      <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                      />
+                    </label>
 
-              <label className="form-field member-filter">
-                <span>Estado</span>
-                <select
-                  value={statusFilter}
-                  onChange={(event) =>
-                    setStatusFilter(event.target.value as EmployeeStatusFilter)
-                  }
-                >
-                  {STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                    <label className="form-field member-filter">
+                      <span>Estado</span>
+                      <select
+                        value={statusFilter}
+                        onChange={(event) =>
+                          setStatusFilter(
+                            event.target.value as EmployeeStatusFilter,
+                          )
+                        }
+                      >
+                        {STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-              <div className="member-toolbar__actions" ref={filtersRef}>
-                <button
-                  type="button"
-                  className={`icon-button icon-button--ghost ${isFiltersOpen ? "icon-button--active" : ""}`}
-                  aria-label="Otros filtros"
-                  aria-expanded={isFiltersOpen}
-                  onClick={() => setIsFiltersOpen((current) => !current)}
-                >
-                  <MoreIcon />
-                  {activeFilterCount > 0 && (
-                    <span className="notification-badge">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-
-                {isFiltersOpen && (
-                  <div className="filter-popover">
-                    <div className="filter-popover__header">
-                      <strong>Otros filtros</strong>
-                    </div>
-
-                    <div className="filter-popover__row">
+                    <label className="form-field member-filter">
                       <span>Contrato</span>
                       <select
                         value={contractFilter}
@@ -580,9 +776,9 @@ export function EmployeesAdmin() {
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </label>
 
-                    <div className="filter-popover__row">
+                    <label className="form-field member-filter">
                       <span>Rendiciones</span>
                       <select
                         value={expenseAccessFilter}
@@ -598,11 +794,11 @@ export function EmployeesAdmin() {
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </label>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {notice && <div className="success-message">{notice}</div>}
@@ -679,11 +875,16 @@ export function EmployeesAdmin() {
                               ? "Puede cargar gastos"
                               : "Sin carga de gastos"}
                           </small>
+                          <small>
+                            {employee.linkedUserId
+                              ? "Con acceso al sistema"
+                              : "Sin usuario vinculado"}
+                          </small>
                         </div>
 
                         <div className="member-cell">
                           <span
-                            className={`status-pill ${employee.status === "active" ? "" : "status-pill--bloqueado"}`}
+                            className={`status-pill ${employee.status === "active" ? "status-pill-green" : "status-pill--bloqueado"}`}
                           >
                             {employee.status === "active"
                               ? "Activo"
@@ -729,6 +930,42 @@ export function EmployeesAdmin() {
                           {canManageEmployees &&
                             openEmployeeActionsId === employee.id && (
                               <div className="member-actions-menu">
+                                <Link
+                                  className="member-actions-menu__item"
+                                  to={`/accounting/employees/${employee.id}?period=${currentAccountingPeriod}`}
+                                  onClick={() => setOpenEmployeeActionsId(null)}
+                                >
+                                  Ver contabilidad
+                                </Link>
+                                <Link
+                                  className="member-actions-menu__item"
+                                  to={`/accounting/employees/${employee.id}?period=${currentAccountingPeriod}&section=references`}
+                                  onClick={() => setOpenEmployeeActionsId(null)}
+                                >
+                                  Cargar comprobante / rendición
+                                </Link>
+                                {canConfigureSalaries && (
+                                  <Link
+                                    className="member-actions-menu__item"
+                                    to={`/accounting/employees/${employee.id}?period=${currentAccountingPeriod}&section=salary`}
+                                    onClick={() =>
+                                      setOpenEmployeeActionsId(null)
+                                    }
+                                  >
+                                    Configurar sueldo
+                                  </Link>
+                                )}
+                                <button
+                                  type="button"
+                                  className="member-actions-menu__item"
+                                  onClick={() =>
+                                    openEmployeeAccessModal(employee)
+                                  }
+                                >
+                                  {employee.linkedUserId
+                                    ? "Enviar invitación"
+                                    : "Vincular acceso al sistema"}
+                                </button>
                                 <button
                                   type="button"
                                   className={
@@ -769,7 +1006,7 @@ export function EmployeesAdmin() {
             </>
           )}
         </section>
-      </section>
+      </div>
 
       {isEditorOpen && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
@@ -795,7 +1032,7 @@ export function EmployeesAdmin() {
               <div className="member-modal__header-actions">
                 {selectedEmployee && (
                   <span
-                    className={`status-pill ${editorState.status === "active" ? "" : "status-pill--bloqueado"}`}
+                    className={`status-pill ${editorState.status === "active" ? "status-pill-green" : "status-pill--bloqueado"}`}
                   >
                     {editorState.status === "active" ? "Activo" : "Inactivo"}
                   </span>
@@ -962,7 +1199,7 @@ export function EmployeesAdmin() {
               </div>
 
               <label
-                className="form-field member-editor-form__wide"
+                className="form-field member-editor-form__wide member-editor-form__notes"
                 htmlFor="notes"
               >
                 <span>Observaciones</span>
@@ -975,27 +1212,153 @@ export function EmployeesAdmin() {
                 />
               </label>
 
-              <div className="form-actions">
-                <button
+              <div className="form-actions form-actions--split member-editor-actions">
+                <UiActionButton
                   type="button"
-                  className="btn-secondary"
+                  variant="secondary"
                   onClick={closeEditor}
                 >
                   Cerrar
-                </button>
-                <button
+                </UiActionButton>
+                <UiActionButton
                   type="submit"
-                  className="btn-primary"
-                  disabled={isSaving}
+                  variant="positive"
+                  disabled={isEmployeeEditorSubmitDisabled}
                 >
                   {isSaving
                     ? "Guardando..."
                     : selectedEmployee
                       ? "Guardar cambios"
                       : "Dar de alta empleado"}
-                </button>
+                </UiActionButton>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {employeeAccessState && (
+        <div className="modal-overlay" onClick={handleOverlayClick}>
+          <section
+            className="floating-card member-modal-card"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="member-modal__header">
+              <div className="member-modal__title">
+                <p className="eyebrow">Acceso del empleado</p>
+                <h2>{getEmployeeDisplayName(employeeAccessState.employee)}</h2>
+                <p className="profile-note">
+                  El ingreso se gestiona con Firebase Authentication. No se
+                  guarda ninguna contraseña en Firestore.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Cerrar acceso del empleado"
+                onClick={closeEmployeeAccessModal}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            {error && <div className="error-message">{error}</div>}
+
+            <div className="summary-grid">
+              <SummaryCard
+                label="Estado"
+                value={
+                  employeeAccessState.employee.linkedUserId
+                    ? "Vinculado"
+                    : "Sin usuario"
+                }
+                helper={
+                  employeeAccessState.employee.linkedUserId
+                    ? employeeAccessState.employee.linkedUserId
+                    : "Pendiente de crear o vincular"
+                }
+              />
+              <SummaryCard
+                label="Rol"
+                value="empleado"
+                helper="Solo puede cargar y ver sus propias rendiciones"
+              />
+            </div>
+
+            {employeeAccessState.employee.linkedUserId ? (
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={closeEmployeeAccessModal}
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={employeeAccessState.isSubmitting}
+                  onClick={() => void handleInviteEmployeeAccess()}
+                >
+                  {employeeAccessState.isSubmitting
+                    ? "Generando..."
+                    : "Generar invitación / reset"}
+                </button>
+              </div>
+            ) : (
+              <form
+                className="member-editor-form"
+                onSubmit={handleLinkEmployeeAccess}
+              >
+                <label className="form-field member-editor-form__wide">
+                  <span>Email de acceso</span>
+                  <input
+                    type="email"
+                    value={employeeAccessState.email}
+                    onChange={(event) =>
+                      setEmployeeAccessState((current) =>
+                        current
+                          ? { ...current, email: event.target.value }
+                          : current,
+                      )
+                    }
+                    placeholder="empleado@club.com"
+                  />
+                </label>
+
+                <div className="form-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={closeEmployeeAccessModal}
+                  >
+                    Cerrar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={employeeAccessState.isSubmitting}
+                  >
+                    {employeeAccessState.isSubmitting
+                      ? "Vinculando..."
+                      : "Crear / vincular usuario"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {employeeAccessState.inviteLink && (
+              <div className="success-message">
+                <strong>Link seguro generado</strong>
+                <p>
+                  Compartilo por un canal confiable para que el empleado defina
+                  su contraseña.
+                </p>
+                <input readOnly value={employeeAccessState.inviteLink} />
+              </div>
+            )}
           </section>
         </div>
       )}

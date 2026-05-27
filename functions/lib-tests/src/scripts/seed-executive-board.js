@@ -9,7 +9,7 @@ import { buildCustomClaims, pickPrimaryRoleId } from '../modules/users/applicati
 import { buildSyntheticAuthEmail, normalizeMemberNumber } from '../modules/auth/member-number-auth.js';
 const DEFAULT_PROJECT_ID = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? 'demo-web-golf-palpala';
 const TERM_ID = process.env.EXECUTIVE_BOARD_TERM_ID ?? 'comision-ejecutiva-2026';
-const TERM_LABEL = process.env.EXECUTIVE_BOARD_TERM_LABEL ?? 'Comisión Ejecutiva 2026';
+const TERM_LABEL = process.env.EXECUTIVE_BOARD_TERM_LABEL ?? 'Comisión Directiva 2026';
 const DEFAULT_PASSWORD = process.env.EXECUTIVE_BOARD_DEFAULT_PASSWORD;
 const REPORT_PATH = resolve(process.env.EXECUTIVE_BOARD_SEED_REPORT_PATH ?? resolve(process.cwd(), 'seed-reports', 'executive-board-seed-report.json'));
 const BOARD_TARGETS = [
@@ -74,7 +74,7 @@ function normalizeMemberName(member) {
 async function seedReferenceData() {
     const firestore = getFirestore();
     const batch = firestore.batch();
-    const roleIds = ['directivo', 'administrativo', 'empleado', 'socio'];
+    const roleIds = ['comite_ejecutivo', 'directivo', 'administrativo', 'empleado', 'comision_directiva', 'socio'];
     DEFAULT_ROLES.forEach((role, index) => {
         batch.set(firestore.collection(USERS_COLLECTIONS.roles).doc(roleIds[index] ?? role.name.toLowerCase()), {
             ...role,
@@ -193,7 +193,7 @@ async function run() {
         const userRef = firestore.collection(USERS_COLLECTIONS.users).doc(authUserResult.user.uid);
         const userSnapshot = await userRef.get();
         const existingUser = userSnapshot.exists ? userSnapshot.data() : null;
-        const roleIds = Array.from(new Set([...(existingUser?.roleIds ?? []), 'socio', 'directivo']));
+        const roleIds = Array.from(new Set([...(existingUser?.roleIds ?? []), 'socio', 'comision_directiva']));
         const claimsVersion = (existingUser?.claimsVersion ?? 0) + 1;
         const userPayload = {
             email,

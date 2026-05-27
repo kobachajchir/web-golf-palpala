@@ -4,7 +4,6 @@ import {
   getDoc,
   getDocs,
   limit,
-  orderBy,
   query,
   startAfter,
   where,
@@ -45,8 +44,6 @@ export function createFamilyGroupsRepository(db: Firestore = requireFirestore())
         constraints.push(where('holderMemberId', '==', params.holderMemberId));
       }
 
-      constraints.push(orderBy('holderMemberId', 'asc'));
-
       if (params.cursor) {
         constraints.push(startAfter(params.cursor));
       }
@@ -55,9 +52,12 @@ export function createFamilyGroupsRepository(db: Firestore = requireFirestore())
 
       const snapshot = await getDocs(query(familyGroupsRef, ...constraints));
       const docs = snapshot.docs;
+      const familyGroups = docs
+        .map((entry) => withId(entry))
+        .sort((left, right) => left.holderMemberId.localeCompare(right.holderMemberId, 'es-AR'));
 
       return {
-        familyGroups: docs.map((entry) => withId(entry)),
+        familyGroups,
         nextCursor: docs[docs.length - 1] ?? null,
         hasMore: docs.length === pageSize,
       };

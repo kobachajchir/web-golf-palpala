@@ -8,6 +8,7 @@ import {
   ensureFamilyHolderEligibility,
   ensureMinimumFamilyGroup,
   ensureStaff,
+  hasExecutiveAccess,
   parseOptionalString,
   parseRequiredString,
   parseRequiredStringArray,
@@ -17,8 +18,8 @@ function actorHasStaffClaims(actor: Actor): boolean {
   const roleIds = new Set(actor.user.roleIds);
   return (
     actor.user.active &&
-    (roleIds.has('directivo') || roleIds.has('administrativo')) &&
-    (actor.claims.directivo === true || actor.claims.administrativo === true)
+    (hasExecutiveAccess(actor) ||
+      (roleIds.has('administrativo') && actor.claims.administrativo === true))
   );
 }
 

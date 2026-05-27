@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { FINANCIAL_EXPENSE_CATEGORY_IDS, PAYMENT_METHOD_IDS, } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureDirectivo, parseOptionalAccountingPeriod, parseOptionalAmountMinor, parseOptionalBoolean, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalStringArray, parseRequiredAccountingPeriod, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
+import { assertIsRecord, ensureDirectivo, hasExecutiveAccess, parseOptionalAccountingPeriod, parseOptionalAmountMinor, parseOptionalBoolean, parseOptionalFiniteNumber, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalStringArray, parseRequiredAccountingPeriod, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
 import { createPostedMovement } from '../movement-helpers.js';
 export async function upsertSalaryConfigurationUseCase(params) {
     const actor = ensureDirectivo(params.actor);
@@ -110,7 +110,7 @@ export async function postSalaryPaymentUseCase(params) {
         if (overtimeAmountMinor > 0) {
             const activeConfig = await dataAccess.financialConfigs.getActive();
             assertCondition(activeConfig, 'failed-precondition', 'No existe una configuración financiera activa.');
-            assertCondition(!activeConfig.requireApprovalForOvertimePosting || actor.claims.directivo === true, 'permission-denied', 'Las horas extra requieren aprobación de directivo.');
+            assertCondition(!activeConfig.requireApprovalForOvertimePosting || hasExecutiveAccess(actor), 'permission-denied', 'Las horas extra requieren aprobación del Comité Ejecutivo.');
             const overtimeMovement = await createPostedMovement({
                 dataAccess,
                 actorUid: actor.uid,
@@ -187,7 +187,7 @@ export function parsePostSalaryPaymentInput(payload) {
         period: parseOptionalAccountingPeriod(data, 'period') ?? parseRequiredAccountingPeriod(data, 'period'),
         salaryConfigurationId: parseOptionalNullableString(data, 'salaryConfigurationId'),
         salaryGrossMinor: parseOptionalAmountMinor(data, 'salaryGrossMinor'),
-        overtimeHours: parseOptionalAmountMinor(data, 'overtimeHours') ?? null,
+        overtimeHours: parseOptionalFiniteNumber(data, 'overtimeHours') ?? null,
         overtimeAmountMinor: parseOptionalAmountMinor(data, 'overtimeAmountMinor') ?? null,
         bankedAmountMinor: parseOptionalAmountMinor(data, 'bankedAmountMinor'),
         nonBankedAmountMinor: parseOptionalAmountMinor(data, 'nonBankedAmountMinor'),

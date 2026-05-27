@@ -10,6 +10,7 @@ export type EmployeeStatus = 'active' | 'inactive';
 export type EmployeeContractType = 'monthly' | 'seasonal' | 'daily' | 'honorarios' | 'eventual';
 export type HandicapStatus = 'active' | 'inactive' | 'expired';
 export type BillingConfigKey = 'FULL' | 'FAMILY_ASSOC' | 'LIFETIME' | 'MINOR' | 'LICENSE';
+export type QuickActionPreferences = Record<string, string[]>;
 
 export interface AuditFields {
   createdAt: Timestamp;
@@ -36,6 +37,7 @@ export interface UserDocument extends AuditFields {
   passwordResetRequiredReason?: 'initial_default' | 'staff_reset' | null;
   passwordUpdatedAt?: Timestamp;
   lastLoginAt?: Timestamp;
+  quickActionIdsByRole?: QuickActionPreferences;
 }
 
 export interface PasswordResetRequestDocument extends AuditFields {
@@ -160,9 +162,11 @@ export type EntityWithId<T extends object> = T & {
 };
 
 export interface CustomClaims {
+  comite_ejecutivo: boolean;
   directivo: boolean;
   administrativo: boolean;
   empleado: boolean;
+  comision_directiva: boolean;
   socio: boolean;
   claimsVersion: number;
 }

@@ -3,7 +3,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { USERS_COLLECTIONS } from '../users/domain/constants.js';
+import { EXECUTIVE_ACCESS_ROLE_IDS, USERS_COLLECTIONS } from '../users/domain/constants.js';
 import { assertCondition } from '../users/domain/errors.js';
 import { assertIsRecord, buildCustomClaims, ensureDirectivo, ensureStaff, parseOptionalBoolean, parseRequiredString, parseRequiredStringArray, pickPrimaryRoleId, resolveActor, toHttpsError, } from '../users/application/shared.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../users/infrastructure/firestore/repositories.js';
@@ -52,13 +52,13 @@ async function getOrCreateAuthUser(params) {
     });
 }
 function ensureRoleAssignmentAllowed(actor, roleIds) {
-    if (roleIds.includes('directivo')) {
+    if (EXECUTIVE_ACCESS_ROLE_IDS.some((roleId) => roleIds.includes(roleId))) {
         return ensureDirectivo(actor);
     }
     return ensureStaff(actor);
 }
 function ensureAuthUserMutationAllowed(actor, targetUser) {
-    if (targetUser?.roleIds.includes('directivo')) {
+    if (targetUser && EXECUTIVE_ACCESS_ROLE_IDS.some((roleId) => targetUser.roleIds.includes(roleId))) {
         return ensureDirectivo(actor);
     }
     return ensureStaff(actor);

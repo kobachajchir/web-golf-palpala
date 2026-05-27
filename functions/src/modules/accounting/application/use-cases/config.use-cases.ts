@@ -15,6 +15,7 @@ import {
   assertIsRecord,
   ensureDirectivo,
   ensureStaff,
+  hasExecutiveAccess,
   parseOptionalBoolean,
   parseOptionalBps,
   parseOptionalInteger,
@@ -56,14 +57,14 @@ export interface SetCreditCommissionRuleInput {
 }
 
 function isDirectivoActor(actor: Actor): boolean {
-  return actor.user.roleIds.includes('directivo') && actor.claims.directivo === true;
+  return hasExecutiveAccess(actor);
 }
 
 function assertConfigValueUnchanged(field: string, nextValue: unknown, currentValue: unknown): void {
   assertCondition(
     Object.is(nextValue, currentValue),
     'permission-denied',
-    `Administración solo puede modificar precio base y descuentos por tipo de socio. El campo ${field} requiere Junta Directiva.`,
+    `Administración solo puede modificar precio base y descuentos por tipo de socio. El campo ${field} requiere Comité Ejecutivo.`,
   );
 }
 

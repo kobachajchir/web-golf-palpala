@@ -33,11 +33,20 @@ import {
   updateMemberUseCase,
 } from '../application/use-cases/member.use-cases.js';
 import { assignRoleUseCase, parseAssignRoleInput } from '../application/use-cases/role.use-cases.js';
-import { buildCustomClaims, ensureStaff, pickPrimaryRoleId, resolveActor, toHttpsError } from '../application/shared.js';
+import {
+  assertIsRecord,
+  buildCustomClaims,
+  ensureStaff,
+  parseOptionalString,
+  parseRequiredString,
+  pickPrimaryRoleId,
+  resolveActor,
+  toHttpsError,
+} from '../application/shared.js';
 import { FirebaseAuthGateway } from '../infrastructure/firestore/auth-gateway.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../infrastructure/firestore/repositories.js';
 import { USERS_COLLECTIONS } from '../domain/constants.js';
-import type { MemberDocument, UserDocument } from '../domain/models.js';
+import type { EmployeeDocument, MemberDocument, UserDocument } from '../domain/models.js';
 import {
   buildSyntheticAuthEmail,
   generateMemberTemporaryPassword,
@@ -102,6 +111,194 @@ async function getOrCreateMemberAuthUser(params: {
     displayName: params.displayName,
     disabled: !params.active,
   });
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function parseLinkEmployeeAuthUserInput(payload: unknown): {
+  employeeId: string;
+  email: string;
+  displayName?: string | undefined;
+} {
+  const data = assertIsRecord(payload);
+  return {
+    employeeId: parseRequiredString(data, 'employeeId'),
+    email: normalizeEmail(parseRequiredString(data, 'email')),
+    displayName: parseOptionalString(data, 'displayName'),
+  };
+}
+
+function parseInviteEmployeeUserInput(payload: unknown): { employeeId: string } {
+  const data = assertIsRecord(payload);
+  return {
+    employeeId: parseRequiredString(data, 'employeeId'),
+  };
+}
+
+async function getOrCreateEmployeeAuthUser(params: {
+  email: string;
+  displayName: string;
+}) {
+  const auth = getAuth(getOrInitializeApp());
+
+  try {
+    const existingUser = await auth.getUserByEmail(params.email);
+    return {
+      userRecord: await auth.updateUser(existingUser.uid, {
+        displayName: params.displayName,
+        disabled: false,
+      }),
+      created: false,
+    };
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code !== 'auth/user-not-found') {
+      throw error;
+    }
+  }
+
+  return {
+    userRecord: await auth.createUser({
+      email: params.email,
+      displayName: params.displayName,
+      disabled: false,
+    }),
+    created: true,
+  };
+}
+
+async function linkEmployeeAuthUser(params: {
+  actorUid: string;
+  employeeId: string;
+  email: string;
+  displayName?: string | undefined;
+}) {
+  const db = getFirestore(getOrInitializeApp());
+  const auth = getAuth(getOrInitializeApp());
+  const employeeRef = db.collection(USERS_COLLECTIONS.employees).doc(params.employeeId);
+  const employeeSnapshot = await employeeRef.get();
+
+  if (!employeeSnapshot.exists) {
+    throw new Error(`No existe employees/${params.employeeId}.`);
+  }
+
+  const employee = employeeSnapshot.data() as EmployeeDocument;
+  const displayName = params.displayName?.trim()
+    || `${employee.firstName} ${employee.lastName}`.trim()
+    || params.email;
+  const { userRecord, created } = await getOrCreateEmployeeAuthUser({
+    email: params.email,
+    displayName,
+  });
+  const roleIds = ['empleado'];
+  let claimRoleIds = roleIds;
+  let claimsVersion = 1;
+
+  await db.runTransaction(async (transaction) => {
+    const freshEmployeeSnapshot = await transaction.get(employeeRef);
+    if (!freshEmployeeSnapshot.exists) {
+      throw new Error(`No existe employees/${params.employeeId}.`);
+    }
+
+    const freshEmployee = freshEmployeeSnapshot.data() as EmployeeDocument;
+    if (freshEmployee.linkedUserId && freshEmployee.linkedUserId !== userRecord.uid) {
+      throw new Error('El empleado ya esta vinculado a otro usuario.');
+    }
+
+    const userRef = db.collection(USERS_COLLECTIONS.users).doc(userRecord.uid);
+    const userSnapshot = await transaction.get(userRef);
+    const existingUser = userSnapshot.exists ? (userSnapshot.data() as UserDocument) : null;
+    const isSameProfile = existingUser?.profileType === 'employee' && existingUser.profileId === params.employeeId;
+    const isAvailableProfile =
+      !existingUser
+      || existingUser.profileType === 'none'
+      || existingUser.profileId === undefined
+      || existingUser.profileId === null;
+
+    if (!isSameProfile && !isAvailableProfile) {
+      throw new Error('El usuario Auth ya esta vinculado a otro perfil.');
+    }
+
+    const mergedRoleIds = Array.from(new Set([...(existingUser?.roleIds ?? []), ...roleIds]));
+    claimRoleIds = mergedRoleIds;
+    claimsVersion = (existingUser?.claimsVersion ?? 0) + 1;
+
+    transaction.set(
+      userRef,
+      {
+        email: params.email,
+        displayName,
+        primaryRoleId: 'empleado',
+        roleIds: mergedRoleIds,
+        profileType: 'employee',
+        profileId: params.employeeId,
+        active: true,
+        claimsVersion,
+        createdAt: FieldValue.serverTimestamp(),
+        createdBy: params.actorUid,
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: params.actorUid,
+      },
+      { merge: true },
+    );
+
+    transaction.update(employeeRef, {
+      linkedUserId: userRecord.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: params.actorUid,
+    });
+  });
+
+  await auth.setCustomUserClaims(userRecord.uid, buildCustomClaims(claimRoleIds, claimsVersion, true));
+  const inviteLink = await auth.generatePasswordResetLink(params.email);
+
+  return {
+    uid: userRecord.uid,
+    employeeId: params.employeeId,
+    email: params.email,
+    inviteLink,
+    createdAuthUser: created,
+    claimsVersion,
+  };
+}
+
+async function inviteEmployeeUser(params: {
+  actorUid: string;
+  employeeId: string;
+}) {
+  void params.actorUid;
+  const db = getFirestore(getOrInitializeApp());
+  const auth = getAuth(getOrInitializeApp());
+  const employeeSnapshot = await db.collection(USERS_COLLECTIONS.employees).doc(params.employeeId).get();
+
+  if (!employeeSnapshot.exists) {
+    throw new Error(`No existe employees/${params.employeeId}.`);
+  }
+
+  const employee = employeeSnapshot.data() as EmployeeDocument;
+  if (!employee.linkedUserId) {
+    throw new Error('El empleado todavia no tiene usuario Auth vinculado.');
+  }
+
+  const [authUser, userSnapshot] = await Promise.all([
+    auth.getUser(employee.linkedUserId),
+    db.collection(USERS_COLLECTIONS.users).doc(employee.linkedUserId).get(),
+  ]);
+  const userDocument = userSnapshot.exists ? (userSnapshot.data() as UserDocument) : null;
+  const email = normalizeEmail(authUser.email ?? userDocument?.email ?? '');
+  if (!email) {
+    throw new Error('El usuario vinculado no tiene email para enviar invitacion.');
+  }
+
+  const inviteLink = await auth.generatePasswordResetLink(email);
+
+  return {
+    uid: employee.linkedUserId,
+    employeeId: params.employeeId,
+    email,
+    inviteLink,
+  };
 }
 
 async function createDefaultAccessForMember(params: {
@@ -370,6 +567,40 @@ export const usersUpdateEmployee = onCall(async (request) => {
   }
 });
 
+export const usersLinkEmployeeAuthUser = onCall(async (request) => {
+  try {
+    const actor = ensureStaff(
+      await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined),
+    );
+    const input = parseLinkEmployeeAuthUserInput(request.data);
+
+    return linkEmployeeAuthUser({
+      actorUid: actor.uid,
+      employeeId: input.employeeId,
+      email: input.email,
+      displayName: input.displayName,
+    });
+  } catch (error) {
+    withCallableLogging('usersLinkEmployeeAuthUser', error);
+  }
+});
+
+export const usersInviteEmployeeUser = onCall(async (request) => {
+  try {
+    const actor = ensureStaff(
+      await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined),
+    );
+    const input = parseInviteEmployeeUserInput(request.data);
+
+    return inviteEmployeeUser({
+      actorUid: actor.uid,
+      employeeId: input.employeeId,
+    });
+  } catch (error) {
+    withCallableLogging('usersInviteEmployeeUser', error);
+  }
+});
+
 export const usersAssignRole = onCall(async (request) => {
   try {
     const actor = await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined);
@@ -425,6 +656,8 @@ export const users = {
   endLicense: usersEndLicense,
   createEmployee: usersCreateEmployee,
   updateEmployee: usersUpdateEmployee,
+  linkEmployeeAuthUser: usersLinkEmployeeAuthUser,
+  inviteEmployeeUser: usersInviteEmployeeUser,
   assignRole: usersAssignRole,
   syncCustomClaims: usersSyncCustomClaims,
   recordHandicap: usersRecordHandicap,

@@ -18,7 +18,7 @@ function ensureAdminApp() {
 async function seedReferenceData() {
     const firestore = getFirestore();
     const batch = firestore.batch();
-    const roleIds = ['directivo', 'administrativo', 'empleado', 'socio'];
+    const roleIds = ['comite_ejecutivo', 'directivo', 'administrativo', 'empleado', 'comision_directiva', 'socio'];
     DEFAULT_ROLES.forEach((role, index) => {
         batch.set(firestore.collection(USERS_COLLECTIONS.roles).doc(roleIds[index] ?? role.name.toLowerCase()), {
             ...role,

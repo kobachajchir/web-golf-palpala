@@ -1,5 +1,6 @@
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import {
+  FieldPath,
   FieldValue,
   getFirestore,
   type CollectionReference,
@@ -18,7 +19,11 @@ import {
 import { assertCondition } from '../../domain/errors.js';
 import type {
   AdvertisingContractDocument,
+  CashClosureDocument,
   ConcessionContractDocument,
+  EmployeeAccountingLinkDocument,
+  EmployeeCertificateDocument,
+  EmployeePayrollCycleDocument,
   EntityWithId,
   ExpenseSubmissionDocument,
   ExternalAccountingReferenceDocument,
@@ -28,7 +33,11 @@ import type {
   FinancialMovementDocument,
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
+  MercadoPagoCheckoutSessionDocument,
+  MercadoPagoEventDocument,
   MemberFeeChargeDocument,
+  OvertimeEntryDocument,
+  PayrollConfigDocument,
   PaymentCommissionRuleDocument,
   PaymentMethodDocument,
   ReferencedEmployeeDocument,
@@ -43,9 +52,17 @@ import type {
   AccountingDataAccess,
   AccountingTransactionManager,
   AdvertisingContractsStore,
+  CashClosureFilters,
+  CashClosuresStore,
   Clock,
   ConcessionContractsStore,
   CursorPage,
+  EmployeeAccountingLinkFilters,
+  EmployeeAccountingLinksStore,
+  EmployeeCertificateFilters,
+  EmployeeCertificatesStore,
+  EmployeePayrollCycleFilters,
+  EmployeePayrollCyclesStore,
   EmployeesReferenceStore,
   ExpenseSubmissionsStore,
   ExternalAccountingReferencesStore,
@@ -60,9 +77,16 @@ import type {
   HandicapChargesStore,
   MacroDebitSettlementFilters,
   MacroDebitSettlementsStore,
+  MemberReferenceFilters,
   MemberFeeChargeFilters,
   MemberFeeChargesStore,
   MembersReferenceStore,
+  MercadoPagoCheckoutSessionFilters,
+  MercadoPagoCheckoutSessionsStore,
+  MercadoPagoEventsStore,
+  OvertimeEntriesStore,
+  OvertimeEntryFilters,
+  PayrollConfigsStore,
   PaymentCommissionRulesStore,
   PaymentMethodsStore,
   SalaryConfigurationsStore,
@@ -71,8 +95,11 @@ import type {
   StoreCreate,
   StorePatch,
   UsersReferenceStore,
+  TournamentRegistrationsReferenceStore,
 } from '../../domain/ports.js';
 import { USERS_COLLECTIONS } from '../../../users/domain/constants.js';
+import { TOURNAMENTS_COLLECTIONS } from '../../../tournaments/domain/constants.js';
+import type { TournamentRegistrationDocument } from '../../../tournaments/domain/models.js';
 import { createAdminConverter } from '../../../users/infrastructure/firestore/converters.js';
 
 function getOrInitializeApp() {
@@ -288,6 +315,16 @@ class FirestoreMembersReferenceStore extends FirestoreCollectionStore<Referenced
   public update(memberId: string, patch: StorePatch<ReferencedMemberDocument>, actorUid: string): Promise<void> {
     return this.updateInternal(memberId, patch, actorUid);
   }
+
+  public async listPage(filters: MemberReferenceFilters): Promise<CursorPage<EntityWithId<ReferencedMemberDocument>>> {
+    let query: Query<ReferencedMemberDocument> = this.collection;
+    if (filters.status) {
+      query = query.where('status', '==', filters.status);
+    }
+    query = query.orderBy(FieldPath.documentId());
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
 }
 
 class FirestoreFamilyGroupsReferenceStore extends FirestoreCollectionStore<ReferencedFamilyGroupDocument> implements FamilyGroupsReferenceStore {
@@ -317,6 +354,20 @@ class FirestoreHandicapsReferenceStore extends FirestoreCollectionStore<Referenc
 
   public getById(handicapId: string): Promise<EntityWithId<ReferencedHandicapDocument> | null> {
     return this.getByIdInternal(handicapId);
+  }
+}
+
+class FirestoreTournamentRegistrationsReferenceStore extends FirestoreCollectionStore<TournamentRegistrationDocument> implements TournamentRegistrationsReferenceStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<TournamentRegistrationDocument>(db, TOURNAMENTS_COLLECTIONS.registrations), transaction);
+  }
+
+  public getById(registrationId: string): Promise<EntityWithId<TournamentRegistrationDocument> | null> {
+    return this.getByIdInternal(registrationId);
+  }
+
+  public update(registrationId: string, patch: StorePatch<TournamentRegistrationDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(registrationId, patch, actorUid);
   }
 }
 
@@ -626,6 +677,261 @@ class FirestoreSalaryPaymentsStore extends FirestoreCollectionStore<SalaryPaymen
   }
 }
 
+class FirestorePayrollConfigsStore extends FirestoreCollectionStore<PayrollConfigDocument> implements PayrollConfigsStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<PayrollConfigDocument>(db, ACCOUNTING_COLLECTIONS.payrollConfigs), transaction);
+  }
+
+  public getCurrent(): Promise<EntityWithId<PayrollConfigDocument> | null> {
+    return this.getByIdInternal('current');
+  }
+
+  public setCurrent(
+    data: StoreCreate<Omit<PayrollConfigDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void> {
+    return this.setInternal('current', data, actorUid);
+  }
+}
+
+class FirestoreOvertimeEntriesStore extends FirestoreCollectionStore<OvertimeEntryDocument> implements OvertimeEntriesStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<OvertimeEntryDocument>(db, ACCOUNTING_COLLECTIONS.overtimeEntries), transaction);
+  }
+
+  public getById(overtimeEntryId: string): Promise<EntityWithId<OvertimeEntryDocument> | null> {
+    return this.getByIdInternal(overtimeEntryId);
+  }
+
+  public create(
+    data: StoreCreate<Omit<OvertimeEntryDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string> {
+    return this.createInternal(data, actorUid);
+  }
+
+  public update(overtimeEntryId: string, patch: StorePatch<OvertimeEntryDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(overtimeEntryId, patch, actorUid);
+  }
+
+  public async listApprovedByEmployeeAndPeriod(employeeId: string, period: string): Promise<Array<EntityWithId<OvertimeEntryDocument>>> {
+    return this.listFromQuery(
+      this.collection
+        .where('employeeId', '==', employeeId)
+        .where('period', '==', period)
+        .where('status', '==', 'approved')
+        .orderBy('workDate', 'asc'),
+    );
+  }
+
+  public async listPage(filters: OvertimeEntryFilters): Promise<CursorPage<EntityWithId<OvertimeEntryDocument>>> {
+    let query: Query<OvertimeEntryDocument> = this.collection;
+    if (filters.employeeId) {
+      query = query.where('employeeId', '==', filters.employeeId);
+    }
+    if (filters.period) {
+      query = query.where('period', '==', filters.period);
+    }
+    if (filters.status) {
+      query = query.where('status', '==', filters.status);
+    }
+    query = query.orderBy('workDate', 'desc');
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
+}
+
+class FirestoreEmployeePayrollCyclesStore extends FirestoreCollectionStore<EmployeePayrollCycleDocument> implements EmployeePayrollCyclesStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<EmployeePayrollCycleDocument>(db, ACCOUNTING_COLLECTIONS.employeePayrollCycles), transaction);
+  }
+
+  public getById(cycleId: string): Promise<EntityWithId<EmployeePayrollCycleDocument> | null> {
+    return this.getByIdInternal(cycleId);
+  }
+
+  public async findByEmployeeAndPeriod(employeeId: string, period: string): Promise<EntityWithId<EmployeePayrollCycleDocument> | null> {
+    const snapshot = await getQuerySnapshot(
+      this.collection.where('employeeId', '==', employeeId).where('period', '==', period).limit(1),
+      this.transaction,
+    );
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+  }
+
+  public create(
+    data: StoreCreate<Omit<EmployeePayrollCycleDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string> {
+    return this.createInternal(data, actorUid);
+  }
+
+  public update(cycleId: string, patch: StorePatch<EmployeePayrollCycleDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(cycleId, patch, actorUid);
+  }
+
+  public async listPage(filters: EmployeePayrollCycleFilters): Promise<CursorPage<EntityWithId<EmployeePayrollCycleDocument>>> {
+    let query: Query<EmployeePayrollCycleDocument> = this.collection;
+    if (filters.employeeId) {
+      query = query.where('employeeId', '==', filters.employeeId);
+    }
+    if (filters.period) {
+      query = query.where('period', '==', filters.period);
+    }
+    if (filters.status) {
+      query = query.where('status', '==', filters.status);
+    }
+    query = query.orderBy('period', 'desc');
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
+}
+
+class FirestoreEmployeeAccountingLinksStore extends FirestoreCollectionStore<EmployeeAccountingLinkDocument> implements EmployeeAccountingLinksStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<EmployeeAccountingLinkDocument>(db, ACCOUNTING_COLLECTIONS.employeeAccountingLinks), transaction);
+  }
+
+  public getById(linkId: string): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null> {
+    return this.getByIdInternal(linkId);
+  }
+
+  public async findDuplicate(params: {
+    employeeId: string;
+    period: string;
+    referenceId: string;
+  }): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null> {
+    const snapshot = await getQuerySnapshot(
+      this.collection
+        .where('employeeId', '==', params.employeeId)
+        .where('period', '==', params.period)
+        .where('referenceId', '==', params.referenceId)
+        .limit(1),
+      this.transaction,
+    );
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+  }
+
+  public async findByEmployeePeriodAndReferenceType(params: {
+    employeeId: string;
+    period: string;
+    referenceType: EmployeeAccountingLinkDocument['referenceType'];
+  }): Promise<EntityWithId<EmployeeAccountingLinkDocument> | null> {
+    const snapshot = await getQuerySnapshot(
+      this.collection
+        .where('employeeId', '==', params.employeeId)
+        .where('period', '==', params.period)
+        .where('referenceType', '==', params.referenceType)
+        .limit(1),
+      this.transaction,
+    );
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+  }
+
+  public create(
+    data: StoreCreate<Omit<EmployeeAccountingLinkDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string> {
+    return this.createInternal(data, actorUid);
+  }
+
+  public update(linkId: string, patch: StorePatch<EmployeeAccountingLinkDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(linkId, patch, actorUid);
+  }
+
+  public async listPage(filters: EmployeeAccountingLinkFilters): Promise<CursorPage<EntityWithId<EmployeeAccountingLinkDocument>>> {
+    let query: Query<EmployeeAccountingLinkDocument> = this.collection;
+    if (filters.employeeId) {
+      query = query.where('employeeId', '==', filters.employeeId);
+    }
+    if (filters.period) {
+      query = query.where('period', '==', filters.period);
+    }
+    if (filters.referenceId) {
+      query = query.where('referenceId', '==', filters.referenceId);
+    }
+    if (filters.referenceType) {
+      query = query.where('referenceType', '==', filters.referenceType);
+    }
+    query = query.orderBy('period', 'desc');
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
+}
+
+class FirestoreEmployeeCertificatesStore extends FirestoreCollectionStore<EmployeeCertificateDocument> implements EmployeeCertificatesStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<EmployeeCertificateDocument>(db, ACCOUNTING_COLLECTIONS.employeeCertificates), transaction);
+  }
+
+  public getById(certificateId: string): Promise<EntityWithId<EmployeeCertificateDocument> | null> {
+    return this.getByIdInternal(certificateId);
+  }
+
+  public create(
+    data: StoreCreate<Omit<EmployeeCertificateDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string> {
+    return this.createInternal(data, actorUid);
+  }
+
+  public update(certificateId: string, patch: StorePatch<EmployeeCertificateDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(certificateId, patch, actorUid);
+  }
+
+  public async listPage(filters: EmployeeCertificateFilters): Promise<CursorPage<EntityWithId<EmployeeCertificateDocument>>> {
+    let query: Query<EmployeeCertificateDocument> = this.collection;
+    if (filters.employeeId) {
+      query = query.where('employeeId', '==', filters.employeeId);
+    }
+    if (filters.period) {
+      query = query.where('period', '==', filters.period);
+    }
+    if (filters.certificateType) {
+      query = query.where('certificateType', '==', filters.certificateType);
+    }
+    if (filters.status) {
+      query = query.where('status', '==', filters.status);
+    }
+    query = query.orderBy('period', 'desc');
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
+}
+
+class FirestoreCashClosuresStore extends FirestoreCollectionStore<CashClosureDocument> implements CashClosuresStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<CashClosureDocument>(db, ACCOUNTING_COLLECTIONS.cashClosures), transaction);
+  }
+
+  public getById(cashClosureId: string): Promise<EntityWithId<CashClosureDocument> | null> {
+    return this.getByIdInternal(cashClosureId);
+  }
+
+  public create(
+    data: StoreCreate<Omit<CashClosureDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<string> {
+    return this.createInternal(data, actorUid);
+  }
+
+  public update(cashClosureId: string, patch: StorePatch<CashClosureDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(cashClosureId, patch, actorUid);
+  }
+
+  public async listPage(filters: CashClosureFilters): Promise<CursorPage<EntityWithId<CashClosureDocument>>> {
+    let query: Query<CashClosureDocument> = this.collection;
+    if (filters.period) {
+      query = query.where('period', '==', filters.period);
+    }
+    if (filters.status) {
+      query = query.where('status', '==', filters.status);
+    }
+    query = query.orderBy('closureDate', 'desc');
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
+}
+
 class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStore<ExternalAccountingReferenceDocument> implements ExternalAccountingReferencesStore {
   public constructor(db: Firestore, transaction?: Transaction) {
     super(getCollection<ExternalAccountingReferenceDocument>(db, ACCOUNTING_COLLECTIONS.externalAccountingReferences), transaction);
@@ -633,6 +939,22 @@ class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStor
 
   public getById(referenceId: string): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null> {
     return this.getByIdInternal(referenceId);
+  }
+
+  public async findByEmployeePeriodAndReferenceType(params: {
+    employeeId: string;
+    period: string;
+    referenceType: ExternalAccountingReferenceDocument['referenceType'];
+  }): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null> {
+    const snapshot = await getQuerySnapshot(
+      this.collection
+        .where('employeeId', '==', params.employeeId)
+        .where('period', '==', params.period)
+        .where('referenceType', '==', params.referenceType)
+        .limit(1),
+      this.transaction,
+    );
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
   }
 
   public create(
@@ -825,7 +1147,74 @@ class FirestoreMemberFeeChargesStore extends FirestoreCollectionStore<MemberFeeC
   }
 }
 
-function createDataAccess(
+class FirestoreMercadoPagoCheckoutSessionsStore extends FirestoreCollectionStore<MercadoPagoCheckoutSessionDocument> implements MercadoPagoCheckoutSessionsStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<MercadoPagoCheckoutSessionDocument>(db, ACCOUNTING_COLLECTIONS.mercadoPagoCheckoutSessions), transaction);
+  }
+
+  public getById(sessionId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
+    return this.getByIdInternal(sessionId);
+  }
+
+  public async getByExternalReference(externalReference: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
+    const snapshot = await getQuerySnapshot(this.collection.where('externalReference', '==', externalReference).limit(1), this.transaction);
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+  }
+
+  public async getByPaymentId(paymentId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
+    const snapshot = await getQuerySnapshot(this.collection.where('paymentId', '==', paymentId).limit(1), this.transaction);
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+  }
+
+  public set(
+    sessionId: string,
+    data: StoreCreate<Omit<MercadoPagoCheckoutSessionDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void> {
+    return this.setInternal(sessionId, data, actorUid);
+  }
+
+  public update(sessionId: string, patch: StorePatch<MercadoPagoCheckoutSessionDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(sessionId, patch, actorUid);
+  }
+
+  public async listPage(filters: MercadoPagoCheckoutSessionFilters): Promise<CursorPage<EntityWithId<MercadoPagoCheckoutSessionDocument>>> {
+    let query: Query<MercadoPagoCheckoutSessionDocument> = this.collection;
+    if (filters.status) {
+      query = query.where('status', '==', filters.status);
+    }
+    if (filters.createdByUid) {
+      query = query.where('createdByUid', '==', filters.createdByUid);
+    }
+    query = query.orderBy('updatedAt', 'desc');
+    query = await this.applyCursor(query, filters.cursorId);
+    return this.listPageFromQuery(query, filters.limit);
+  }
+}
+
+class FirestoreMercadoPagoEventsStore extends FirestoreCollectionStore<MercadoPagoEventDocument> implements MercadoPagoEventsStore {
+  public constructor(db: Firestore, transaction?: Transaction) {
+    super(getCollection<MercadoPagoEventDocument>(db, ACCOUNTING_COLLECTIONS.mercadoPagoEvents), transaction);
+  }
+
+  public getById(eventId: string): Promise<EntityWithId<MercadoPagoEventDocument> | null> {
+    return this.getByIdInternal(eventId);
+  }
+
+  public set(
+    eventId: string,
+    data: StoreCreate<Omit<MercadoPagoEventDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void> {
+    return this.setInternal(eventId, data, actorUid);
+  }
+
+  public update(eventId: string, patch: StorePatch<MercadoPagoEventDocument>, actorUid: string): Promise<void> {
+    return this.updateInternal(eventId, patch, actorUid);
+  }
+}
+
+export function createFirestoreAccountingDataAccess(
   db: Firestore,
   clock: Clock,
   transaction?: Transaction,
@@ -838,6 +1227,7 @@ function createDataAccess(
     familyGroups: new FirestoreFamilyGroupsReferenceStore(db, transaction),
     employees: new FirestoreEmployeesReferenceStore(db, transaction),
     handicaps: new FirestoreHandicapsReferenceStore(db, transaction),
+    tournamentRegistrations: new FirestoreTournamentRegistrationsReferenceStore(db, transaction),
     financialConfigs: new FirestoreFinancialConfigsStore(db, transaction),
     paymentMethods: new FirestorePaymentMethodsStore(db, transaction),
     paymentCommissionRules: new FirestorePaymentCommissionRulesStore(db, transaction),
@@ -847,12 +1237,20 @@ function createDataAccess(
     macroDebitSettlements: new FirestoreMacroDebitSettlementsStore(db, transaction),
     salaryConfigurations: new FirestoreSalaryConfigurationsStore(db, transaction),
     salaryPayments: new FirestoreSalaryPaymentsStore(db, transaction),
+    payrollConfigs: new FirestorePayrollConfigsStore(db, transaction),
+    overtimeEntries: new FirestoreOvertimeEntriesStore(db, transaction),
+    employeePayrollCycles: new FirestoreEmployeePayrollCyclesStore(db, transaction),
+    employeeAccountingLinks: new FirestoreEmployeeAccountingLinksStore(db, transaction),
+    employeeCertificates: new FirestoreEmployeeCertificatesStore(db, transaction),
+    cashClosures: new FirestoreCashClosuresStore(db, transaction),
     externalAccountingReferences: new FirestoreExternalAccountingReferencesStore(db, transaction),
     expenseSubmissions: new FirestoreExpenseSubmissionsStore(db, transaction),
     concessionContracts: new FirestoreConcessionContractsStore(db, transaction),
     advertisingContracts: new FirestoreAdvertisingContractsStore(db, transaction),
     handicapCharges: new FirestoreHandicapChargesStore(db, transaction),
     memberFeeCharges: new FirestoreMemberFeeChargesStore(db, transaction),
+    mercadoPagoCheckoutSessions: new FirestoreMercadoPagoCheckoutSessionsStore(db, transaction),
+    mercadoPagoEvents: new FirestoreMercadoPagoEventsStore(db, transaction),
   };
 }
 
@@ -862,11 +1260,11 @@ export class FirestoreAccountingTransactionManager implements AccountingTransact
   public constructor(private readonly clock: Clock) {}
 
   public async runInTransaction<T>(handler: (dataAccess: AccountingDataAccess) => Promise<T>): Promise<T> {
-    return this.db.runTransaction(async (transaction) => handler(createDataAccess(this.db, this.clock, transaction)));
+    return this.db.runTransaction(async (transaction) => handler(createFirestoreAccountingDataAccess(this.db, this.clock, transaction)));
   }
 
   public getDataAccess(): AccountingDataAccess {
-    return createDataAccess(this.db, this.clock);
+    return createFirestoreAccountingDataAccess(this.db, this.clock);
   }
 }
 

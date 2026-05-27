@@ -21,6 +21,12 @@ export async function createPostedMovement(params) {
         appliedCommissionAmountMinor = calculateAmountFromBps(params.grossAmountMinor, activeRule.percentageBps);
         netAmountMinor = params.grossAmountMinor - appliedCommissionAmountMinor;
     }
+    if (params.netAmountMinorOverride !== undefined && params.netAmountMinorOverride !== null) {
+        netAmountMinor = params.netAmountMinorOverride;
+        appliedCommissionAmountMinor = params.appliedCommissionAmountMinorOverride
+            ?? Math.max(params.grossAmountMinor - params.netAmountMinorOverride, 0);
+        appliedCommissionPctBps = null;
+    }
     const operationTimestamp = Timestamp.fromDate(params.operationDate);
     const approvedAtDate = params.approvedAt ?? params.operationDate;
     const movementId = await params.dataAccess.financialMovements.create({

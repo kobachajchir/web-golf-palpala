@@ -11,7 +11,7 @@ service cloud.firestore {
     }
 
     function isDirectivo() {
-      return hasClaim('directivo');
+      return hasClaim('comite_ejecutivo') || hasClaim('directivo');
     }
 
     function isAdministrativo() {
@@ -34,6 +34,44 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function validQuickActionIdList(actionIds) {
+      return actionIds is list && actionIds.size() <= 6;
+    }
+
+    function validQuickActionPreferences() {
+      return !request.resource.data.keys().hasAny(['quickActionIdsByRole'])
+        || (
+          request.resource.data.quickActionIdsByRole is map
+          && request.resource.data.quickActionIdsByRole.keys().hasOnly([
+            'socio',
+            'empleado',
+            'administrativo',
+            'comision_directiva',
+            'comite_ejecutivo'
+          ])
+          && (
+            !request.resource.data.quickActionIdsByRole.keys().hasAny(['socio'])
+            || validQuickActionIdList(request.resource.data.quickActionIdsByRole.socio)
+          )
+          && (
+            !request.resource.data.quickActionIdsByRole.keys().hasAny(['empleado'])
+            || validQuickActionIdList(request.resource.data.quickActionIdsByRole.empleado)
+          )
+          && (
+            !request.resource.data.quickActionIdsByRole.keys().hasAny(['administrativo'])
+            || validQuickActionIdList(request.resource.data.quickActionIdsByRole.administrativo)
+          )
+          && (
+            !request.resource.data.quickActionIdsByRole.keys().hasAny(['comision_directiva'])
+            || validQuickActionIdList(request.resource.data.quickActionIdsByRole.comision_directiva)
+          )
+          && (
+            !request.resource.data.quickActionIdsByRole.keys().hasAny(['comite_ejecutivo'])
+            || validQuickActionIdList(request.resource.data.quickActionIdsByRole.comite_ejecutivo)
+          )
+        );
+    }
+
     function isOwnEmployeeProfile(employeeId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -47,6 +85,26 @@ service cloud.firestore {
 
     function ownUserProfileId() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileId;
+    }
+
+    function isOwnMemberAccountingProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.profileType == 'member';
+    }
+
+    function canReadOwnMemberCharge(chargeResource) {
+      return isOwnMemberAccountingProfile()
+        && (
+          chargeResource.data.memberId == ownUserProfileId()
+          || chargeResource.data.holderMemberId == ownUserProfileId()
+        );
+    }
+
+    function canReadOwnMercadoPagoSession(sessionResource) {
+      return isOwnMemberAccountingProfile()
+        && sessionResource.data.memberIds is list
+        && sessionResource.data.memberIds.hasAny([ownUserProfileId()]);
     }
 
     function isFamilyGroupSelf(familyGroupResource) {
@@ -72,8 +130,13 @@ service cloud.firestore {
 
     function isOwnUserSelfServiceUpdate(uid) {
       return isOwnUser(uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'quickActionIdsByRole',
+          'updatedAt'
+        ])
         && request.resource.data.displayName is string
+        && validQuickActionPreferences()
         && request.resource.data.updatedAt == request.time
         && request.resource.data.email == resource.data.email
         && request.resource.data.primaryRoleId == resource.data.primaryRoleId
@@ -176,7 +239,8 @@ service cloud.firestore {
     }
 
     match /employees/{employeeId} {
-      allow read, write: if isStaff();
+      allow read: if isStaff() || isOwnEmployeeProfile(employeeId);
+      allow write: if isStaff();
       allow delete: if false;
     }
 
@@ -261,6 +325,48 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /payroll_configs/{configId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /overtime_entries/{entryId} {
+      allow read: if isAccountingStaff();
+      allow create: if isAccountingStaff();
+      allow update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /employee_payroll_cycles/{cycleId} {
+      allow read, create, update: if isDirectivo();
+      allow delete: if false;
+    }
+
+    match /employee_accounting_links/{linkId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /employee_certificates/{certificateId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /cash_closures/{closureId} {
+      allow read: if isAccountingStaff();
+      allow create, update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /accounting_reports/{reportId} {
+      allow read, create: if isAccountingStaff();
+      allow update: if isDirectivo();
+      allow delete: if false;
+    }
+
     match /external_accounting_references/{referenceId} {
       allow read, create, update: if isAccountingStaff();
       allow delete: if false;
@@ -292,8 +398,44 @@ service cloud.firestore {
     }
 
     match /member_fee_charges/{chargeId} {
-      allow read: if isAccountingStaff();
+      allow read: if isAccountingStaff() || canReadOwnMemberCharge(resource);
       allow create, update: if isAccountingStaff();
+      allow delete: if false;
+    }
+
+    match /mercado_pago_checkout_sessions/{sessionId} {
+      allow read: if isAccountingStaff()
+        || (isSignedIn() && resource.data.createdByUid == request.auth.uid)
+        || canReadOwnMercadoPagoSession(resource);
+      allow create, update, delete: if false;
+    }
+
+    match /mercado_pago_events/{eventId} {
+      allow read: if isAccountingStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /tournaments/{tournamentId} {
+      allow read: if isStaff() || resource.data.status == 'registration_open';
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    match /tournament_registrations/{registrationId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending_payment'
+        && request.resource.data.paymentStatus == 'unpaid'
+        && request.resource.data.receiptId == null
+        && request.resource.data.financialMovementId == null;
+      allow update: if isStaff();
+      allow delete: if false;
+    }
+
+    match /tournament_receipts/{receiptId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create, update: if isStaff();
       allow delete: if false;
     }
   }

@@ -7,6 +7,10 @@ import './member.use-case.test.js';
 import './role.use-case.test.js';
 import './auth.member-number.test.js';
 import './accounting.fee.use-case.test.js';
+import './accounting.cash-closure.use-case.test.js';
+import './accounting.membership-renewal.use-case.test.js';
+import './accounting.mercado-pago.use-case.test.js';
 import './accounting.payment.use-case.test.js';
+import './accounting.payroll-cycle.use-case.test.js';
 import './accounting.salary.use-case.test.js';
 //# sourceMappingURL=all.test.js.map

@@ -15,6 +15,8 @@ import type {
 } from '../domain/models';
 import type {
   CreateMemberAuthUserPayload,
+  EmployeeAuthInviteResult,
+  LinkEmployeeAuthUserPayload,
   MemberAuthStatus,
   RequestMemberPasswordResetPayload,
   RequestMemberPasswordResetResult,
@@ -34,8 +36,11 @@ const CALLABLE_NAMES = {
   getNextMemberNumber: 'usersGetNextMemberNumber',
   createEmployee: 'usersCreateEmployee',
   updateEmployee: 'usersUpdateEmployee',
+  linkEmployeeAuthUser: 'usersLinkEmployeeAuthUser',
+  inviteEmployeeUser: 'usersInviteEmployeeUser',
   assignRole: 'usersAssignRole',
   syncCustomClaims: 'usersSyncCustomClaims',
+  ensureCurrentUserProfile: 'usersEnsureCurrentUserProfile',
   recordHandicap: 'usersRecordHandicap',
   createMemberAuthUser: 'authOnboardingCreateMemberAuthUser',
   requestMemberPasswordReset: 'authOnboardingRequestMemberPasswordReset',
@@ -54,6 +59,15 @@ type CreateFamilyGroupResult = { familyGroupId: string };
 type CreateEmployeeResult = { employeeId: string };
 type RecordHandicapResult = { handicapId: string; memberId: string };
 type AssignRoleResult = { uid: string; claimsVersion: number };
+type EnsureCurrentUserProfileResult = {
+  uid: string;
+  active: boolean;
+  roleIds: string[];
+  primaryRoleId: string;
+  profileType: string;
+  profileId: string | null;
+  claimsVersion: number;
+};
 export type NextMemberNumberResult = {
   nextNumericId: number;
   nextMemberNumber: string;
@@ -143,6 +157,18 @@ export function createUsersCallables(functionsInstance?: Functions) {
         CALLABLE_NAMES.updateEmployee,
       )(payload)).data;
     },
+    async linkEmployeeAuthUser(payload: LinkEmployeeAuthUserPayload) {
+      return (await httpsCallable<LinkEmployeeAuthUserPayload, EmployeeAuthInviteResult>(
+        functionsRef,
+        CALLABLE_NAMES.linkEmployeeAuthUser,
+      )(payload)).data;
+    },
+    async inviteEmployeeUser(payload: { employeeId: string }) {
+      return (await httpsCallable<{ employeeId: string }, EmployeeAuthInviteResult>(
+        functionsRef,
+        CALLABLE_NAMES.inviteEmployeeUser,
+      )(payload)).data;
+    },
     async assignRole(payload: AssignRolePayload) {
       return (await httpsCallable<AssignRolePayload, AssignRoleResult>(
         functionsRef,
@@ -154,6 +180,12 @@ export function createUsersCallables(functionsInstance?: Functions) {
         functionsRef,
         CALLABLE_NAMES.syncCustomClaims,
       )(payload)).data;
+    },
+    async ensureCurrentUserProfile() {
+      return (await httpsCallable<Record<string, never>, EnsureCurrentUserProfileResult>(
+        functionsRef,
+        CALLABLE_NAMES.ensureCurrentUserProfile,
+      )({})).data;
     },
     async recordHandicap(payload: RecordHandicapPayload) {
       return (await httpsCallable<RecordHandicapPayload, RecordHandicapResult>(

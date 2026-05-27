@@ -36,7 +36,7 @@ function ensureAdminApp() {
 async function seedReferenceData() {
   const firestore = getFirestore();
   const batch = firestore.batch();
-  const roleIds = ['directivo', 'administrativo', 'empleado', 'socio'];
+  const roleIds = ['comite_ejecutivo', 'directivo', 'administrativo', 'empleado', 'comision_directiva', 'socio'];
 
   DEFAULT_ROLES.forEach((role, index) => {
     batch.set(
@@ -158,7 +158,7 @@ async function run() {
   const userRef = firestore.collection(USERS_COLLECTIONS.users).doc(authUserResult.user.uid);
   const userSnapshot = await userRef.get();
   const existingUser = userSnapshot.exists ? (userSnapshot.data() as UserDocument) : null;
-  const roleIds = ['socio', 'directivo', 'administrativo', 'empleado'];
+  const roleIds = ['socio', 'comite_ejecutivo', 'administrativo', 'empleado'];
   const claimsVersion = (existingUser?.claimsVersion ?? 0) + 1;
   const userPayload = {
     email,

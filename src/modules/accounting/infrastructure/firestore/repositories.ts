@@ -19,7 +19,11 @@ import {
   ACCOUNTING_PAYMENT_METHOD_IDS,
 } from '../../domain/constants';
 import type {
+  CashClosureDocument,
   EntityWithId,
+  EmployeeAccountingLinkDocument,
+  EmployeeCertificateDocument,
+  EmployeePayrollCycleDocument,
   ExpenseSubmissionDocument,
   ExternalAccountingReferenceDocument,
   FinancialConfigDocument,
@@ -27,6 +31,8 @@ import type {
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
   MemberFeeChargeDocument,
+  MercadoPagoCheckoutSessionDocument,
+  OvertimeEntryDocument,
   PaymentMethodDocument,
   SalaryPaymentDocument,
 } from '../../domain/models';
@@ -94,10 +100,17 @@ export function createPaymentMethodsRepository(db: Firestore = requireFirestore(
 
   return {
     ...repository,
-    listActiveSorted() {
-      return repository.listByQuery(
-        query(repository.collectionRef, where('active', '==', true), orderBy('sortOrder', 'asc')),
+    async listActiveSorted() {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('active', '==', true)),
       );
+      return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
+    },
+    async listAllSorted() {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef),
+      );
+      return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
     },
   };
 }
@@ -254,6 +267,23 @@ export function createMemberFeeChargesRepository(db: Firestore = requireFirestor
       );
       return sortByPeriodDesc(items);
     },
+    async listByMember(memberId: string, pageSize = 12) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('memberId', '==', memberId), orderBy('period', 'desc'), limit(pageSize)),
+      );
+      return sortByPeriodDesc(items);
+    },
+    async listPending(pageSize = 200) {
+      const items = await repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('status', 'in', ['pending', 'overdue']),
+          orderBy('period', 'desc'),
+          limit(pageSize),
+        ),
+      );
+      return sortByPeriodDesc(items);
+    },
     countPendingByPeriod(period: string) {
       return repository.countByQuery(
         query(
@@ -262,6 +292,118 @@ export function createMemberFeeChargesRepository(db: Firestore = requireFirestor
           where('status', '==', 'pending'),
         ),
       );
+    },
+  };
+}
+
+export function createMercadoPagoCheckoutSessionsRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<MercadoPagoCheckoutSessionDocument>(
+    db,
+    ACCOUNTING_COLLECTIONS.mercadoPagoCheckoutSessions,
+  );
+
+  return {
+    ...repository,
+    listRecent(pageSize = 10) {
+      return repository.listByQuery(
+        query(repository.collectionRef, orderBy('updatedAt', 'desc'), limit(pageSize)),
+      );
+    },
+    listByStatus(status: MercadoPagoCheckoutSessionDocument['status'], pageSize = 10) {
+      return repository.listByQuery(
+        query(repository.collectionRef, where('status', '==', status), orderBy('updatedAt', 'desc'), limit(pageSize)),
+      );
+    },
+  };
+}
+
+export function createOvertimeEntriesRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<OvertimeEntryDocument>(db, ACCOUNTING_COLLECTIONS.overtimeEntries);
+
+  return {
+    ...repository,
+    listByEmployeeAndPeriod(employeeId: string, period: string, pageSize = 25) {
+      return repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('employeeId', '==', employeeId),
+          where('period', '==', period),
+          orderBy('workDate', 'desc'),
+          limit(pageSize),
+        ),
+      );
+    },
+    listByStatusAndPeriod(status: OvertimeEntryDocument['status'], period: string, pageSize = 25) {
+      return repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('status', '==', status),
+          where('period', '==', period),
+          orderBy('workDate', 'desc'),
+          limit(pageSize),
+        ),
+      );
+    },
+  };
+}
+
+export function createEmployeePayrollCyclesRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<EmployeePayrollCycleDocument>(db, ACCOUNTING_COLLECTIONS.employeePayrollCycles);
+
+  return {
+    ...repository,
+    async listByPeriod(period: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('period', '==', period)),
+      );
+      return sortByPeriodDesc(items);
+    },
+    async listByEmployee(employeeId: string, pageSize = 12) {
+      return repository.listByQuery(
+        query(repository.collectionRef, where('employeeId', '==', employeeId), orderBy('period', 'desc'), limit(pageSize)),
+      );
+    },
+  };
+}
+
+export function createEmployeeAccountingLinksRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<EmployeeAccountingLinkDocument>(db, ACCOUNTING_COLLECTIONS.employeeAccountingLinks);
+
+  return {
+    ...repository,
+    async listByEmployeeAndPeriod(employeeId: string, period: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('employeeId', '==', employeeId), where('period', '==', period)),
+      );
+      return sortByPeriodDesc(items);
+    },
+  };
+}
+
+export function createEmployeeCertificatesRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<EmployeeCertificateDocument>(db, ACCOUNTING_COLLECTIONS.employeeCertificates);
+
+  return {
+    ...repository,
+    async listByEmployeeAndPeriod(employeeId: string, period: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('employeeId', '==', employeeId), where('period', '==', period)),
+      );
+      return sortByPeriodDesc(items);
+    },
+  };
+}
+
+export function createCashClosuresRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<CashClosureDocument>(db, ACCOUNTING_COLLECTIONS.cashClosures);
+
+  return {
+    ...repository,
+    async listByPeriod(period: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('period', '==', period)),
+      );
+      return sortByTimestampDesc(items, (item) => item.closureDate?.toDate() ?? null);
     },
   };
 }

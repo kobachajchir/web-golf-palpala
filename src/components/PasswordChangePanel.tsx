@@ -21,6 +21,11 @@ export function PasswordChangePanel({
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [visibleFields, setVisibleFields] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -73,38 +78,57 @@ export function PasswordChangePanel({
     }
   };
 
+  const toggleFieldVisibility = (field: keyof typeof visibleFields) => {
+    setVisibleFields((current) => ({ ...current, [field]: !current[field] }));
+  };
+
   return (
     <form className="auth-form" onSubmit={handleSubmit}>
       {requireCurrentPassword && (
         <label className="form-field">
           <span>Contraseña actual</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={currentPassword}
-            onChange={(event) => setCurrentPassword(event.target.value)}
-          />
+          <span className="password-input-wrap">
+            <input
+              type={visibleFields.current ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+            />
+            <button type="button" className="password-visibility-button" onClick={() => toggleFieldVisibility('current')}>
+              {visibleFields.current ? 'Ocultar' : 'Ver'}
+            </button>
+          </span>
         </label>
       )}
 
       <label className="form-field">
         <span>Nueva contraseña</span>
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
-        />
+        <span className="password-input-wrap">
+          <input
+            type={visibleFields.next ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+          />
+          <button type="button" className="password-visibility-button" onClick={() => toggleFieldVisibility('next')}>
+            {visibleFields.next ? 'Ocultar' : 'Ver'}
+          </button>
+        </span>
       </label>
 
       <label className="form-field">
         <span>Repetir nueva contraseña</span>
-        <input
-          type="password"
-          autoComplete="new-password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-        />
+        <span className="password-input-wrap">
+          <input
+            type={visibleFields.confirm ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+          />
+          <button type="button" className="password-visibility-button" onClick={() => toggleFieldVisibility('confirm')}>
+            {visibleFields.confirm ? 'Ocultar' : 'Ver'}
+          </button>
+        </span>
       </label>
 
       {error && <div className="error-message">{error}</div>}

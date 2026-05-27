@@ -93,4 +93,21 @@ test('licencia mayor a 6 meses debe fallar', async () => {
         transactions: manager,
     }), (error) => error instanceof AppError && error.code === 'failed-precondition');
 });
+test('socio dado de baja no puede generar cuota aunque exista excepcion administrativa', async () => {
+    const manager = new InMemoryAccountingTransactionManager();
+    seedActiveFinancialConfig(manager);
+    seedAccountingMember(manager, 'member-inactive', {
+        typeCodeSnapshot: 'pleno',
+        status: 'inactive',
+    });
+    await assert.rejects(() => generateFeePreviewUseCase({
+        actor: createAdminActor(),
+        input: {
+            memberId: 'member-inactive',
+            period: '2026-04',
+            forceAdministrativeExceptionReason: 'Baja administrativa',
+        },
+        transactions: manager,
+    }), (error) => error instanceof AppError && error.code === 'failed-precondition');
+});
 //# sourceMappingURL=accounting.fee.use-case.test.js.map

@@ -1,16 +1,16 @@
 {
   "ok": true,
-  "projectId": "demo-web-golf-palpala",
-  "emulator": true,
+  "projectId": "webgolfclub",
+  "emulator": false,
   "memberId": "dev-member-999-koba-chajchir",
-  "uid": "3PUf1FAmHtl513O8u74iJwLsfdgD",
+  "uid": "NUUg0nWThKX66DC6F8AaXcQOsnQ2",
   "memberNumber": "999",
   "normalizedMemberNumber": "000999",
   "displayName": "Koba Chajchir",
   "dni": "41041601",
   "roleIds": [
     "socio",
-    "directivo",
+    "comite_ejecutivo",
     "administrativo",
     "empleado"
   ],

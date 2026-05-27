@@ -1,8 +1,9 @@
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
-import { FieldValue, getFirestore, } from 'firebase-admin/firestore';
+import { FieldPath, FieldValue, getFirestore, } from 'firebase-admin/firestore';
 import { ACCOUNTING_COLLECTIONS, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import { USERS_COLLECTIONS } from '../../../users/domain/constants.js';
+import { TOURNAMENTS_COLLECTIONS } from '../../../tournaments/domain/constants.js';
 import { createAdminConverter } from '../../../users/infrastructure/firestore/converters.js';
 function getOrInitializeApp() {
     return getApps().length > 0 ? getApp() : initializeApp();
@@ -150,6 +151,15 @@ class FirestoreMembersReferenceStore extends FirestoreCollectionStore {
     update(memberId, patch, actorUid) {
         return this.updateInternal(memberId, patch, actorUid);
     }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.status) {
+            query = query.where('status', '==', filters.status);
+        }
+        query = query.orderBy(FieldPath.documentId());
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
 }
 class FirestoreFamilyGroupsReferenceStore extends FirestoreCollectionStore {
     constructor(db, transaction) {
@@ -173,6 +183,17 @@ class FirestoreHandicapsReferenceStore extends FirestoreCollectionStore {
     }
     getById(handicapId) {
         return this.getByIdInternal(handicapId);
+    }
+}
+class FirestoreTournamentRegistrationsReferenceStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, TOURNAMENTS_COLLECTIONS.registrations), transaction);
+    }
+    getById(registrationId) {
+        return this.getByIdInternal(registrationId);
+    }
+    update(registrationId, patch, actorUid) {
+        return this.updateInternal(registrationId, patch, actorUid);
     }
 }
 class FirestoreFinancialConfigsStore extends FirestoreCollectionStore {
@@ -400,12 +421,206 @@ class FirestoreSalaryPaymentsStore extends FirestoreCollectionStore {
         return this.listPageFromQuery(query, filters.limit);
     }
 }
+class FirestorePayrollConfigsStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.payrollConfigs), transaction);
+    }
+    getCurrent() {
+        return this.getByIdInternal('current');
+    }
+    setCurrent(data, actorUid) {
+        return this.setInternal('current', data, actorUid);
+    }
+}
+class FirestoreOvertimeEntriesStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.overtimeEntries), transaction);
+    }
+    getById(overtimeEntryId) {
+        return this.getByIdInternal(overtimeEntryId);
+    }
+    create(data, actorUid) {
+        return this.createInternal(data, actorUid);
+    }
+    update(overtimeEntryId, patch, actorUid) {
+        return this.updateInternal(overtimeEntryId, patch, actorUid);
+    }
+    async listApprovedByEmployeeAndPeriod(employeeId, period) {
+        return this.listFromQuery(this.collection
+            .where('employeeId', '==', employeeId)
+            .where('period', '==', period)
+            .where('status', '==', 'approved')
+            .orderBy('workDate', 'asc'));
+    }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.employeeId) {
+            query = query.where('employeeId', '==', filters.employeeId);
+        }
+        if (filters.period) {
+            query = query.where('period', '==', filters.period);
+        }
+        if (filters.status) {
+            query = query.where('status', '==', filters.status);
+        }
+        query = query.orderBy('workDate', 'desc');
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
+}
+class FirestoreEmployeePayrollCyclesStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.employeePayrollCycles), transaction);
+    }
+    getById(cycleId) {
+        return this.getByIdInternal(cycleId);
+    }
+    async findByEmployeeAndPeriod(employeeId, period) {
+        const snapshot = await getQuerySnapshot(this.collection.where('employeeId', '==', employeeId).where('period', '==', period).limit(1), this.transaction);
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+    }
+    create(data, actorUid) {
+        return this.createInternal(data, actorUid);
+    }
+    update(cycleId, patch, actorUid) {
+        return this.updateInternal(cycleId, patch, actorUid);
+    }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.employeeId) {
+            query = query.where('employeeId', '==', filters.employeeId);
+        }
+        if (filters.period) {
+            query = query.where('period', '==', filters.period);
+        }
+        if (filters.status) {
+            query = query.where('status', '==', filters.status);
+        }
+        query = query.orderBy('period', 'desc');
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
+}
+class FirestoreEmployeeAccountingLinksStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.employeeAccountingLinks), transaction);
+    }
+    getById(linkId) {
+        return this.getByIdInternal(linkId);
+    }
+    async findDuplicate(params) {
+        const snapshot = await getQuerySnapshot(this.collection
+            .where('employeeId', '==', params.employeeId)
+            .where('period', '==', params.period)
+            .where('referenceId', '==', params.referenceId)
+            .limit(1), this.transaction);
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+    }
+    async findByEmployeePeriodAndReferenceType(params) {
+        const snapshot = await getQuerySnapshot(this.collection
+            .where('employeeId', '==', params.employeeId)
+            .where('period', '==', params.period)
+            .where('referenceType', '==', params.referenceType)
+            .limit(1), this.transaction);
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+    }
+    create(data, actorUid) {
+        return this.createInternal(data, actorUid);
+    }
+    update(linkId, patch, actorUid) {
+        return this.updateInternal(linkId, patch, actorUid);
+    }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.employeeId) {
+            query = query.where('employeeId', '==', filters.employeeId);
+        }
+        if (filters.period) {
+            query = query.where('period', '==', filters.period);
+        }
+        if (filters.referenceId) {
+            query = query.where('referenceId', '==', filters.referenceId);
+        }
+        if (filters.referenceType) {
+            query = query.where('referenceType', '==', filters.referenceType);
+        }
+        query = query.orderBy('period', 'desc');
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
+}
+class FirestoreEmployeeCertificatesStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.employeeCertificates), transaction);
+    }
+    getById(certificateId) {
+        return this.getByIdInternal(certificateId);
+    }
+    create(data, actorUid) {
+        return this.createInternal(data, actorUid);
+    }
+    update(certificateId, patch, actorUid) {
+        return this.updateInternal(certificateId, patch, actorUid);
+    }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.employeeId) {
+            query = query.where('employeeId', '==', filters.employeeId);
+        }
+        if (filters.period) {
+            query = query.where('period', '==', filters.period);
+        }
+        if (filters.certificateType) {
+            query = query.where('certificateType', '==', filters.certificateType);
+        }
+        if (filters.status) {
+            query = query.where('status', '==', filters.status);
+        }
+        query = query.orderBy('period', 'desc');
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
+}
+class FirestoreCashClosuresStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.cashClosures), transaction);
+    }
+    getById(cashClosureId) {
+        return this.getByIdInternal(cashClosureId);
+    }
+    create(data, actorUid) {
+        return this.createInternal(data, actorUid);
+    }
+    update(cashClosureId, patch, actorUid) {
+        return this.updateInternal(cashClosureId, patch, actorUid);
+    }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.period) {
+            query = query.where('period', '==', filters.period);
+        }
+        if (filters.status) {
+            query = query.where('status', '==', filters.status);
+        }
+        query = query.orderBy('closureDate', 'desc');
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
+}
 class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStore {
     constructor(db, transaction) {
         super(getCollection(db, ACCOUNTING_COLLECTIONS.externalAccountingReferences), transaction);
     }
     getById(referenceId) {
         return this.getByIdInternal(referenceId);
+    }
+    async findByEmployeePeriodAndReferenceType(params) {
+        const snapshot = await getQuerySnapshot(this.collection
+            .where('employeeId', '==', params.employeeId)
+            .where('period', '==', params.period)
+            .where('referenceType', '==', params.referenceType)
+            .limit(1), this.transaction);
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
     }
     create(data, actorUid) {
         return this.createInternal(data, actorUid);
@@ -543,7 +758,55 @@ class FirestoreMemberFeeChargesStore extends FirestoreCollectionStore {
         return this.listPageFromQuery(query, filters.limit);
     }
 }
-function createDataAccess(db, clock, transaction) {
+class FirestoreMercadoPagoCheckoutSessionsStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.mercadoPagoCheckoutSessions), transaction);
+    }
+    getById(sessionId) {
+        return this.getByIdInternal(sessionId);
+    }
+    async getByExternalReference(externalReference) {
+        const snapshot = await getQuerySnapshot(this.collection.where('externalReference', '==', externalReference).limit(1), this.transaction);
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+    }
+    async getByPaymentId(paymentId) {
+        const snapshot = await getQuerySnapshot(this.collection.where('paymentId', '==', paymentId).limit(1), this.transaction);
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+    }
+    set(sessionId, data, actorUid) {
+        return this.setInternal(sessionId, data, actorUid);
+    }
+    update(sessionId, patch, actorUid) {
+        return this.updateInternal(sessionId, patch, actorUid);
+    }
+    async listPage(filters) {
+        let query = this.collection;
+        if (filters.status) {
+            query = query.where('status', '==', filters.status);
+        }
+        if (filters.createdByUid) {
+            query = query.where('createdByUid', '==', filters.createdByUid);
+        }
+        query = query.orderBy('updatedAt', 'desc');
+        query = await this.applyCursor(query, filters.cursorId);
+        return this.listPageFromQuery(query, filters.limit);
+    }
+}
+class FirestoreMercadoPagoEventsStore extends FirestoreCollectionStore {
+    constructor(db, transaction) {
+        super(getCollection(db, ACCOUNTING_COLLECTIONS.mercadoPagoEvents), transaction);
+    }
+    getById(eventId) {
+        return this.getByIdInternal(eventId);
+    }
+    set(eventId, data, actorUid) {
+        return this.setInternal(eventId, data, actorUid);
+    }
+    update(eventId, patch, actorUid) {
+        return this.updateInternal(eventId, patch, actorUid);
+    }
+}
+export function createFirestoreAccountingDataAccess(db, clock, transaction) {
     void clock;
     return {
         users: new FirestoreUsersReferenceStore(db, transaction),
@@ -551,6 +814,7 @@ function createDataAccess(db, clock, transaction) {
         familyGroups: new FirestoreFamilyGroupsReferenceStore(db, transaction),
         employees: new FirestoreEmployeesReferenceStore(db, transaction),
         handicaps: new FirestoreHandicapsReferenceStore(db, transaction),
+        tournamentRegistrations: new FirestoreTournamentRegistrationsReferenceStore(db, transaction),
         financialConfigs: new FirestoreFinancialConfigsStore(db, transaction),
         paymentMethods: new FirestorePaymentMethodsStore(db, transaction),
         paymentCommissionRules: new FirestorePaymentCommissionRulesStore(db, transaction),
@@ -560,12 +824,20 @@ function createDataAccess(db, clock, transaction) {
         macroDebitSettlements: new FirestoreMacroDebitSettlementsStore(db, transaction),
         salaryConfigurations: new FirestoreSalaryConfigurationsStore(db, transaction),
         salaryPayments: new FirestoreSalaryPaymentsStore(db, transaction),
+        payrollConfigs: new FirestorePayrollConfigsStore(db, transaction),
+        overtimeEntries: new FirestoreOvertimeEntriesStore(db, transaction),
+        employeePayrollCycles: new FirestoreEmployeePayrollCyclesStore(db, transaction),
+        employeeAccountingLinks: new FirestoreEmployeeAccountingLinksStore(db, transaction),
+        employeeCertificates: new FirestoreEmployeeCertificatesStore(db, transaction),
+        cashClosures: new FirestoreCashClosuresStore(db, transaction),
         externalAccountingReferences: new FirestoreExternalAccountingReferencesStore(db, transaction),
         expenseSubmissions: new FirestoreExpenseSubmissionsStore(db, transaction),
         concessionContracts: new FirestoreConcessionContractsStore(db, transaction),
         advertisingContracts: new FirestoreAdvertisingContractsStore(db, transaction),
         handicapCharges: new FirestoreHandicapChargesStore(db, transaction),
         memberFeeCharges: new FirestoreMemberFeeChargesStore(db, transaction),
+        mercadoPagoCheckoutSessions: new FirestoreMercadoPagoCheckoutSessionsStore(db, transaction),
+        mercadoPagoEvents: new FirestoreMercadoPagoEventsStore(db, transaction),
     };
 }
 export class FirestoreAccountingTransactionManager {
@@ -575,10 +847,10 @@ export class FirestoreAccountingTransactionManager {
         this.clock = clock;
     }
     async runInTransaction(handler) {
-        return this.db.runTransaction(async (transaction) => handler(createDataAccess(this.db, this.clock, transaction)));
+        return this.db.runTransaction(async (transaction) => handler(createFirestoreAccountingDataAccess(this.db, this.clock, transaction)));
     }
     getDataAccess() {
-        return createDataAccess(this.db, this.clock);
+        return createFirestoreAccountingDataAccess(this.db, this.clock);
     }
 }
 export class SystemClock {

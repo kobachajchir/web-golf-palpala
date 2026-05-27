@@ -262,8 +262,8 @@ export const executiveBoardUpsertBoardMember = onCall(async (request) => {
           if (previousUserSnapshot.exists) {
             const previousUser = previousUserSnapshot.data() as UserDocument;
             const currentRoles = normalizeRoleIds(previousUser.roleIds);
-            const nextRolesWithoutDirectivo = currentRoles.filter((roleId) => roleId !== 'directivo');
-            const nextRoles = nextRolesWithoutDirectivo.length > 0 ? nextRolesWithoutDirectivo : ['socio'];
+            const nextRolesWithoutCommission = currentRoles.filter((roleId) => roleId !== 'comision_directiva');
+            const nextRoles = nextRolesWithoutCommission.length > 0 ? nextRolesWithoutCommission : ['socio'];
             const roleUpdate = buildRoleUpdate({
               user: previousUser,
               uid: previousUid,
@@ -280,8 +280,8 @@ export const executiveBoardUpsertBoardMember = onCall(async (request) => {
       const nextUserRef = db.collection(USERS_COLLECTIONS.users).doc(input.uid);
       const nextUserSnapshot = await transaction.get(nextUserRef);
       const nextUser = userDataFromSnapshot(nextUserSnapshot);
-      assertCondition(nextUser.active !== false, 'failed-precondition', 'No se puede incorporar un usuario inactivo a la directiva.');
-      const nextRoles = Array.from(new Set([...normalizeRoleIds(nextUser.roleIds), 'socio', 'directivo']));
+      assertCondition(nextUser.active !== false, 'failed-precondition', 'No se puede incorporar un usuario inactivo a la Comisión Directiva.');
+      const nextRoles = Array.from(new Set([...normalizeRoleIds(nextUser.roleIds), 'socio', 'comision_directiva']));
       const nextUserRoleUpdate = buildRoleUpdate({
         user: nextUser,
         uid: input.uid,
@@ -409,8 +409,8 @@ export const executiveBoardDeactivateBoardMember = onCall(async (request) => {
           if (userSnapshot.exists) {
             const user = userSnapshot.data() as UserDocument;
             const currentRoles = normalizeRoleIds(user.roleIds);
-            const nextRolesWithoutDirectivo = currentRoles.filter((roleId) => roleId !== 'directivo');
-            const nextRoles = nextRolesWithoutDirectivo.length > 0 ? nextRolesWithoutDirectivo : ['socio'];
+            const nextRolesWithoutCommission = currentRoles.filter((roleId) => roleId !== 'comision_directiva');
+            const nextRoles = nextRolesWithoutCommission.length > 0 ? nextRolesWithoutCommission : ['socio'];
             const roleUpdate = buildRoleUpdate({
               user,
               uid,

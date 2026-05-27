@@ -6,7 +6,6 @@ import {
   DEFAULT_EARLY_PAYMENT_DISCOUNT_PCT_BPS,
   MAX_PAGE_SIZE,
   MAX_BPS,
-  MEMBERSHIP_RENEWAL_TERM_DAYS,
 } from '../domain/constants.js';
 import { AppError, assertCondition, isRecord } from '../domain/errors.js';
 import type {
@@ -41,20 +40,29 @@ export function ensureAuthenticatedActor(actor: Actor | null): Actor {
   return actor;
 }
 
+export function hasExecutiveAccess(actor: Actor): boolean {
+  const hasExecutiveRole =
+    actor.user.roleIds.includes('comite_ejecutivo') ||
+    actor.user.roleIds.includes('directivo');
+  const hasExecutiveClaim =
+    actor.claims.comite_ejecutivo === true ||
+    actor.claims.directivo === true;
+
+  return actor.user.active && hasExecutiveRole && hasExecutiveClaim;
+}
+
 export function ensureDirectivo(actor: Actor | null): Actor {
   const authenticatedActor = ensureAuthenticatedActor(actor);
-  const isDirectivo = authenticatedActor.user.roleIds.includes('directivo') && authenticatedActor.claims.directivo === true;
   assertCondition(authenticatedActor.user.active, 'permission-denied', 'El usuario no está activo.');
-  assertCondition(isDirectivo, 'permission-denied', 'Solo un directivo puede realizar esta operación.');
+  assertCondition(hasExecutiveAccess(authenticatedActor), 'permission-denied', 'Solo el Comité Ejecutivo puede realizar esta operación.');
   return authenticatedActor;
 }
 
 export function ensureStaff(actor: Actor | null): Actor {
   const authenticatedActor = ensureAuthenticatedActor(actor);
   const isAdministrative = authenticatedActor.user.roleIds.includes('administrativo') && authenticatedActor.claims.administrativo === true;
-  const isDirectivo = authenticatedActor.user.roleIds.includes('directivo') && authenticatedActor.claims.directivo === true;
   assertCondition(authenticatedActor.user.active, 'permission-denied', 'El usuario no está activo.');
-  assertCondition(isAdministrative || isDirectivo, 'permission-denied', 'Solo administrativo o directivo puede realizar esta operación.');
+  assertCondition(isAdministrative || hasExecutiveAccess(authenticatedActor), 'permission-denied', 'Solo administrativo o Comité Ejecutivo puede realizar esta operación.');
   return authenticatedActor;
 }
 
@@ -62,9 +70,9 @@ export function ensureEmployeeOrStaff(actor: Actor | null): Actor {
   const authenticatedActor = ensureAuthenticatedActor(actor);
   const isEmployee = authenticatedActor.user.roleIds.includes('empleado') && authenticatedActor.claims.empleado === true;
   const isStaff = (authenticatedActor.user.roleIds.includes('administrativo') && authenticatedActor.claims.administrativo === true)
-    || (authenticatedActor.user.roleIds.includes('directivo') && authenticatedActor.claims.directivo === true);
+    || hasExecutiveAccess(authenticatedActor);
   assertCondition(authenticatedActor.user.active, 'permission-denied', 'El usuario no está activo.');
-  assertCondition(isEmployee || isStaff, 'permission-denied', 'Solo empleados, administrativos o directivos pueden realizar esta operación.');
+  assertCondition(isEmployee || isStaff, 'permission-denied', 'Solo empleados, administrativos o Comité Ejecutivo pueden realizar esta operación.');
   return authenticatedActor;
 }
 
@@ -308,15 +316,25 @@ export function toAccountingPeriod(date: Date): AccountingPeriod {
   return `${year}-${month}`;
 }
 
+export function toClubAccountingPeriod(date: Date): AccountingPeriod {
+  const year = getClubDatePart(date, 'year');
+  const month = String(getClubDatePart(date, 'month')).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
 export function calculateAmountFromBps(baseAmountMinor: number, pctBps: Bps): number {
   return Math.round((baseAmountMinor * pctBps) / 10_000);
 }
 
 function getClubDatePart(date: Date, part: 'year' | 'month' | 'day'): number {
-  const value = new Intl.DateTimeFormat('en-CA', {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: ACCOUNTING_TIME_ZONE,
-    [part]: '2-digit',
-  }).format(date);
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const value = parts.find((entry) => entry.type === part)?.value;
+  assertCondition(value, 'invalid-argument', 'No se pudo resolver la fecha contable.');
   return Number(value);
 }
 
@@ -334,6 +352,7 @@ export function getClubDateStart(date: Date): Date {
 export function calculateEarlyPaymentDiscount(params: {
   chargeAmountMinor: number;
   config: EntityWithId<FinancialConfigDocument>;
+  chargePeriod?: AccountingPeriod;
   operationDate: Date;
 }): {
   paidAmountMinor: number;
@@ -344,7 +363,9 @@ export function calculateEarlyPaymentDiscount(params: {
   const discountPctBps = params.config.earlyPaymentDiscountPctBps ?? DEFAULT_EARLY_PAYMENT_DISCOUNT_PCT_BPS;
   const discountDayOfMonth = params.config.earlyPaymentDiscountDayOfMonth ?? DEFAULT_EARLY_PAYMENT_DISCOUNT_DAY_OF_MONTH;
   const operationDay = getClubDayOfMonth(params.operationDate);
-  const qualifies = discountPctBps > 0 && operationDay >= 1 && operationDay <= discountDayOfMonth;
+  const operationPeriod = toClubAccountingPeriod(params.operationDate);
+  const isSameChargePeriod = !params.chargePeriod || params.chargePeriod === operationPeriod;
+  const qualifies = discountPctBps > 0 && isSameChargePeriod && operationDay >= 1 && operationDay <= discountDayOfMonth;
   const discountAmountMinor = qualifies ? calculateAmountFromBps(params.chargeAmountMinor, discountPctBps) : 0;
 
   return {
@@ -356,9 +377,11 @@ export function calculateEarlyPaymentDiscount(params: {
 }
 
 export function calculateMembershipRenewalDueDate(paymentDate: Date): Date {
-  const renewalDueDate = getClubDateStart(paymentDate);
-  renewalDueDate.setUTCDate(renewalDueDate.getUTCDate() + MEMBERSHIP_RENEWAL_TERM_DAYS);
-  return renewalDueDate;
+  const year = getClubDatePart(paymentDate, 'year');
+  const month = getClubDatePart(paymentDate, 'month');
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  return new Date(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00${ACCOUNTING_TIME_ZONE_OFFSET}`);
 }
 
 export function getLicenseMaxEndDate(startAt: Date, maxLicenseMonths: number): Date {
@@ -452,6 +475,13 @@ export function ensureMemberCanBeBilled(params: {
     assertCondition(member.familyGroupId, 'failed-precondition', 'Los menores deben pertenecer a un grupo familiar.');
   }
 
+  const memberStatus = member.status as string;
+  assertCondition(
+    memberStatus !== 'inactive' && memberStatus !== 'suspended',
+    'failed-precondition',
+    'No se puede generar cuota para socios dados de baja o suspendidos.',
+  );
+
   if (member.status === 'inactive' || member.status === 'suspended') {
     assertCondition(
       typeof forceAdministrativeExceptionReason === 'string' && forceAdministrativeExceptionReason.trim().length > 0,
@@ -485,9 +515,11 @@ export async function resolveActor(
   return {
     uid,
     claims: {
+      comite_ejecutivo: token.comite_ejecutivo === true,
       directivo: token.directivo === true,
       administrativo: token.administrativo === true,
       empleado: token.empleado === true,
+      comision_directiva: token.comision_directiva === true,
       socio: token.socio === true,
       claimsVersion: typeof token.claimsVersion === 'number' ? token.claimsVersion : user.claimsVersion,
     },

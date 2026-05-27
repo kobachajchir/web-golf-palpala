@@ -1,8 +1,8 @@
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { AccountingRoute, AdminRoute, MembersRoute, PasswordChangeRoute, ProtectedRoute, PublicRoute } from './components/routes/RoleBasedRoute';
+import { AccountingRoutes } from './features/accounting/routes/accountingRoutes';
 import { useAuth } from './hooks/useAuth';
-import { AccountingDashboard } from './pages/AccountingDashboard';
 import { AdminUserProfile } from './pages/AdminUserProfile';
 import { ChangePassword } from './pages/ChangePassword';
 import { CourtRequests } from './pages/CourtRequests';
@@ -12,6 +12,7 @@ import { ExecutiveBoardAdmin } from './pages/ExecutiveBoardAdmin';
 import { Index } from './pages/Index';
 import { Login } from './pages/Login';
 import { MemberMembershipProfile } from './pages/MemberMembershipProfile';
+import { MercadoPagoReturn } from './pages/MercadoPagoReturn';
 import { MembersAdmin } from './pages/MembersAdmin';
 import { EmployeesAdmin } from './pages/EmployeesAdmin';
 import { NotFound } from './pages/NotFound';
@@ -128,12 +129,14 @@ function App() {
             }
           />
 
+          {AccountingRoutes()}
+
           <Route
-            path="/accounting"
+            path="/payments/mercado-pago/return/:result"
             element={
-              <AccountingRoute>
-                <AccountingDashboard />
-              </AccountingRoute>
+              <ProtectedRoute>
+                <MercadoPagoReturn />
+              </ProtectedRoute>
             }
           />
 

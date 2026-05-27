@@ -1,7 +1,7 @@
 {
   "ok": true,
   "dryRun": false,
-  "projectId": "demo-web-golf-palpala",
+  "projectId": "webgolfclub",
   "processed": 127,
   "createdAuthUsers": 127,
   "updatedUsers": 127,
@@ -10,1018 +10,1018 @@
     {
       "memberId": "legacy-140-6-barrera-mariano",
       "memberNumber": "000140",
-      "uid": "UMZOtV8MLRIVKZhz5sPyq2AjC6qS",
+      "uid": "wHupoZdtTCQWXvpeGGLrskG8jIO2",
       "authEmail": "socio-000140@club-auth.local",
-      "temporaryPassword": "CGP-000140-YWESDJLKFO",
-      "passwordGeneratedAt": "2026-05-09T14:23:44.890Z"
+      "temporaryPassword": "CGP-000140-VOWZ5BB1P6",
+      "passwordGeneratedAt": "2026-05-26T13:13:23.011Z"
     },
     {
       "memberId": "legacy-16-1-guesalaga-eladio",
       "memberNumber": "000016",
-      "uid": "zKMqA7cS3ymvr018eZ3PoDJ3ZnF9",
+      "uid": "w5IGzvNlBVgPPqLn6EKJVO6fdvE3",
       "authEmail": "socio-000016@club-auth.local",
-      "temporaryPassword": "CGP-000016-A0GQP7ZJ88",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.009Z"
+      "temporaryPassword": "CGP-000016-L9LWYPDUPG",
+      "passwordGeneratedAt": "2026-05-26T13:13:25.766Z"
     },
     {
       "memberId": "legacy-166-7-noceti-jorge-antonio",
       "memberNumber": "000166",
-      "uid": "5vCHCryHyFxfwxAv8hcy8rJXZQrH",
+      "uid": "SM1i0mczTjRR9mQlZsaJ0IsDklm2",
       "authEmail": "socio-000166@club-auth.local",
-      "temporaryPassword": "CGP-000166-KMPHLZKP17",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.094Z"
+      "temporaryPassword": "CGP-000166-DI8OBF8O4U",
+      "passwordGeneratedAt": "2026-05-26T13:13:28.312Z"
     },
     {
       "memberId": "legacy-177-8-scramoncin-mariela",
       "memberNumber": "000177",
-      "uid": "paTBoKaSTiIycdNCmDXI3ymhmVQM",
+      "uid": "dV1726fIXtTxbqoRvJoZCqGQAc23",
       "authEmail": "socio-000177@club-auth.local",
-      "temporaryPassword": "CGP-000177-OQMK9MMHOS",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.166Z"
+      "temporaryPassword": "CGP-000177-1CJPAHH0K2",
+      "passwordGeneratedAt": "2026-05-26T13:13:30.930Z"
     },
     {
       "memberId": "legacy-179-9-nazario-federico",
       "memberNumber": "000179",
-      "uid": "Sq0sxqwQdJdZNl1tWAg7i66Uyafb",
+      "uid": "lSyflmwuGCSeFeQRDVZmqAZ6rVB3",
       "authEmail": "socio-000179@club-auth.local",
-      "temporaryPassword": "CGP-000179-OMQPDBABWA",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.229Z"
+      "temporaryPassword": "CGP-000179-8CSGCCUVIE",
+      "passwordGeneratedAt": "2026-05-26T13:13:33.433Z"
     },
     {
       "memberId": "legacy-186-10-rodriguez-francile-hector",
       "memberNumber": "000186",
-      "uid": "9qYfX1CzDUkhTmVEKwumB3UuV07k",
+      "uid": "JC72lqkmpHh8GPkCk0ze3yR7sDY2",
       "authEmail": "socio-000186@club-auth.local",
-      "temporaryPassword": "CGP-000186-LERGMNFLZD",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.296Z"
+      "temporaryPassword": "CGP-000186-MN5WBQVPP7",
+      "passwordGeneratedAt": "2026-05-26T13:13:36.053Z"
     },
     {
       "memberId": "legacy-186-11-pedroso-patricia",
       "memberNumber": "000895",
-      "uid": "qUFwYVVm6nqj8npdTLSwEbyE1YtK",
+      "uid": "dVpzJzjbOTadj5imsrmE7KuJnRx1",
       "authEmail": "socio-000895@club-auth.local",
-      "temporaryPassword": "CGP-000895-ZHRCRBLQ1H",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.376Z"
+      "temporaryPassword": "CGP-000895-MY4M1E1P0W",
+      "passwordGeneratedAt": "2026-05-26T13:13:38.699Z"
     },
     {
       "memberId": "legacy-190-12-cicero-jorge",
       "memberNumber": "000190",
-      "uid": "mvt9iHsg6oQ6NicppcGiHxAtVy0V",
+      "uid": "0BMoR0vY32YXsMid9dWach2lnam1",
       "authEmail": "socio-000190@club-auth.local",
-      "temporaryPassword": "CGP-000190-ZWEGPANTQG",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.424Z"
+      "temporaryPassword": "CGP-000190-I2QXCV7JBO",
+      "passwordGeneratedAt": "2026-05-26T13:13:41.224Z"
     },
     {
       "memberId": "legacy-216-13-castellani-juez-amelio",
       "memberNumber": "000216",
-      "uid": "EkN9VP89G9mlV6cWS4ZqiFJ8pswG",
+      "uid": "aG5wpgleWAbgAsX4LyMaYtHmpAl1",
       "authEmail": "socio-000216@club-auth.local",
-      "temporaryPassword": "CGP-000216-LIZNEZOMOT",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.488Z"
+      "temporaryPassword": "CGP-000216-Z3NXDGATAG",
+      "passwordGeneratedAt": "2026-05-26T13:13:43.846Z"
     },
     {
       "memberId": "legacy-216-14-corte-adriana",
       "memberNumber": "000896",
-      "uid": "kVMWGo0kOnL00V6Oshsv9Vswsjdi",
+      "uid": "cFjKPY0HPLf3XtypPVS5pHXBwhm1",
       "authEmail": "socio-000896@club-auth.local",
-      "temporaryPassword": "CGP-000896-GODUVHOMRZ",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.559Z"
+      "temporaryPassword": "CGP-000896-DEQRZ4IPEK",
+      "passwordGeneratedAt": "2026-05-26T13:13:46.324Z"
     },
     {
       "memberId": "legacy-234-15-frias-manuel",
       "memberNumber": "000234",
-      "uid": "EkO3vNl8xuoMOZsCODwGgm94CF1j",
+      "uid": "z0kIgBoisug8hzS0UKBu0fRRVRo2",
       "authEmail": "socio-000234@club-auth.local",
-      "temporaryPassword": "CGP-000234-ZGBQTGIPXA",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.618Z"
+      "temporaryPassword": "CGP-000234-JIOVSZ3DWU",
+      "passwordGeneratedAt": "2026-05-26T13:13:48.928Z"
     },
     {
       "memberId": "legacy-267-16-pantaleon-diego",
       "memberNumber": "000267",
-      "uid": "w0lSwuP3Wg9P2CnC8f1IaAvuj6LC",
+      "uid": "lLzEVpe1cOfGupDw3e0Aer7eRcn2",
       "authEmail": "socio-000267@club-auth.local",
-      "temporaryPassword": "CGP-000267-4CVTIRIANM",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.681Z"
+      "temporaryPassword": "CGP-000267-2Y0ZA29QAU",
+      "passwordGeneratedAt": "2026-05-26T13:13:51.457Z"
     },
     {
       "memberId": "legacy-294-17-ruiz-ricardo",
       "memberNumber": "000294",
-      "uid": "HUyBc47Od0lg0wKYVOK4FWyxvSyb",
+      "uid": "7tXvXpROlXdPF3UkC999Dd8Cvo13",
       "authEmail": "socio-000294@club-auth.local",
-      "temporaryPassword": "CGP-000294-MG8CUDXLYK",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.723Z"
+      "temporaryPassword": "CGP-000294-IIDQCJ9CZF",
+      "passwordGeneratedAt": "2026-05-26T13:13:53.927Z"
     },
     {
       "memberId": "legacy-297-18-alvarez-renato",
       "memberNumber": "000297",
-      "uid": "3JK0amrlbUOQu0ukVlpVSM0Ox3cC",
+      "uid": "jbVzSLexF2W2sngHVFN4knNilsh1",
       "authEmail": "socio-000297@club-auth.local",
-      "temporaryPassword": "CGP-000297-UHR23M3F3Y",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.780Z"
+      "temporaryPassword": "CGP-000297-AUIYJROLWA",
+      "passwordGeneratedAt": "2026-05-26T13:13:56.413Z"
     },
     {
       "memberId": "legacy-313-19-pioli-raul",
       "memberNumber": "000313",
-      "uid": "8uXLBtTOjNFCvMqnGFW2SHLlNhiQ",
+      "uid": "qG4A3UbO3FfUZHtQztYYuvQdTjH2",
       "authEmail": "socio-000313@club-auth.local",
-      "temporaryPassword": "CGP-000313-3YMCS9UWJW",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.832Z"
+      "temporaryPassword": "CGP-000313-LBHY3HKM34",
+      "passwordGeneratedAt": "2026-05-26T13:13:58.969Z"
     },
     {
       "memberId": "legacy-321-20-besares-mariano",
       "memberNumber": "000321",
-      "uid": "QkQxeVHnV97kqBCtowpfM8w2NM86",
+      "uid": "j13Pw3PKyLMflhMW6LBI1FOR3SE2",
       "authEmail": "socio-000321@club-auth.local",
-      "temporaryPassword": "CGP-000321-KXSBEEUC8Z",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.879Z"
+      "temporaryPassword": "CGP-000321-IUHOQSMMAF",
+      "passwordGeneratedAt": "2026-05-26T13:14:01.470Z"
     },
     {
       "memberId": "legacy-322-21-alvaro-musri-lisandro",
       "memberNumber": "000322",
-      "uid": "X25SPgJAshiDgRQnTYFSmjWebYC8",
+      "uid": "MpVLGiOAUEWTkjgYD2sWxoRqTbu2",
       "authEmail": "socio-000322@club-auth.local",
-      "temporaryPassword": "CGP-000322-A3ODLLUEDP",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.920Z"
+      "temporaryPassword": "CGP-000322-YMEOFUJLQC",
+      "passwordGeneratedAt": "2026-05-26T13:14:03.857Z"
     },
     {
       "memberId": "legacy-332-22-carrion-nilo",
       "memberNumber": "000332",
-      "uid": "74VXAX5VHE7t2hpoAtpCSXEbgv0e",
+      "uid": "PR9uZO586Ph3Xq9LgHsPW9FBiCj1",
       "authEmail": "socio-000332@club-auth.local",
-      "temporaryPassword": "CGP-000332-IBXSPJLLZS",
-      "passwordGeneratedAt": "2026-05-09T14:23:45.978Z"
+      "temporaryPassword": "CGP-000332-CXGUUBVHQI",
+      "passwordGeneratedAt": "2026-05-26T13:14:06.999Z"
     },
     {
       "memberId": "legacy-333-23-siufi-javier",
       "memberNumber": "000333",
-      "uid": "H4KBI3RwaBRj1fc3wx11SWkOGUVh",
+      "uid": "1PCjtPjAEUhQU6KEYTrLJnTMoZr1",
       "authEmail": "socio-000333@club-auth.local",
-      "temporaryPassword": "CGP-000333-ZSMELSTAGK",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.025Z"
+      "temporaryPassword": "CGP-000333-AWUC7OR6IV",
+      "passwordGeneratedAt": "2026-05-26T13:14:09.593Z"
     },
     {
       "memberId": "legacy-335-24-ochoa-matias",
       "memberNumber": "000335",
-      "uid": "2C8hTUqeubl5xdonXsaaSkkIsEpw",
+      "uid": "Am9gxBnzGfVTtB2OoFxttYSxpAa2",
       "authEmail": "socio-000335@club-auth.local",
-      "temporaryPassword": "CGP-000335-XRAMU7EIDM",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.078Z"
+      "temporaryPassword": "CGP-000335-UFMU9AHVCJ",
+      "passwordGeneratedAt": "2026-05-26T13:14:12.108Z"
     },
     {
       "memberId": "legacy-338-25-marquez-gabriel",
       "memberNumber": "000338",
-      "uid": "TaWhaPh9OMiOTc4g9pwmCx88hWyd",
+      "uid": "M3o0g4HTZOdFSvNMFVpQH42QWix1",
       "authEmail": "socio-000338@club-auth.local",
-      "temporaryPassword": "CGP-000338-SGOXHWY08T",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.124Z"
+      "temporaryPassword": "CGP-000338-SV5RCLAEHO",
+      "passwordGeneratedAt": "2026-05-26T13:14:14.503Z"
     },
     {
       "memberId": "legacy-338-26-malnatti-marcelo",
       "memberNumber": "000897",
-      "uid": "RSKJe3aN21CAiOlwYUduuZ9ogkAl",
+      "uid": "TIQQDNj5vzeBN1yejVS5E2KOYlA3",
       "authEmail": "socio-000897@club-auth.local",
-      "temporaryPassword": "CGP-000897-GUQ7S1KNPF",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.170Z"
+      "temporaryPassword": "CGP-000897-TKACVXEPYJ",
+      "passwordGeneratedAt": "2026-05-26T13:14:16.894Z"
     },
     {
       "memberId": "legacy-357-27-villanueva-marcelo",
       "memberNumber": "000357",
-      "uid": "dZKg4GT6qxeNQhOZ6UFLI4u5zFkh",
+      "uid": "h9uohQQ4H8MAbToUocb35tg9wt02",
       "authEmail": "socio-000357@club-auth.local",
-      "temporaryPassword": "CGP-000357-U6IOW7YKCP",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.217Z"
+      "temporaryPassword": "CGP-000357-9NZDDXWMK2",
+      "passwordGeneratedAt": "2026-05-26T13:14:19.463Z"
     },
     {
       "memberId": "legacy-362-28-oviedo-cristina",
       "memberNumber": "000362",
-      "uid": "Rha1pYHyLPtg1Tfb0QZV3SptAadR",
+      "uid": "0nAA5Gi16gXlPCMN2GbcMQGLHz33",
       "authEmail": "socio-000362@club-auth.local",
-      "temporaryPassword": "CGP-000362-4CETOOE3ZS",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.264Z"
+      "temporaryPassword": "CGP-000362-GQGFTJC2TM",
+      "passwordGeneratedAt": "2026-05-26T13:14:21.971Z"
     },
     {
       "memberId": "legacy-367-29-zurueta-pablo",
       "memberNumber": "000367",
-      "uid": "vvbedpHDpQPMk5t83fdawHvgE2Ii",
+      "uid": "ZBrqC7jPCBdvXZZS0N1y4ZwtJXM2",
       "authEmail": "socio-000367@club-auth.local",
-      "temporaryPassword": "CGP-000367-RBSYERCSQJ",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.315Z"
+      "temporaryPassword": "CGP-000367-OZ5I49PVDY",
+      "passwordGeneratedAt": "2026-05-26T13:14:24.471Z"
     },
     {
       "memberId": "legacy-370-30-cervantes-marcos",
       "memberNumber": "000370",
-      "uid": "uTfAEFgPI51eHpQS6VMwkBRXJ3fQ",
+      "uid": "t2CFBeABJAPIpccp009baEzvFIu2",
       "authEmail": "socio-000370@club-auth.local",
-      "temporaryPassword": "CGP-000370-I8QQTHMUHO",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.363Z"
+      "temporaryPassword": "CGP-000370-UI6ZTJ0LCV",
+      "passwordGeneratedAt": "2026-05-26T13:14:26.995Z"
     },
     {
       "memberId": "legacy-441-31-perez-barquet-roberto",
       "memberNumber": "000441",
-      "uid": "YW1SMXfxD7RyWqA74jsxYC7WREel",
+      "uid": "KqLsc5zbrRRHFm8RDi07JHq4lia2",
       "authEmail": "socio-000441@club-auth.local",
-      "temporaryPassword": "CGP-000441-V7FDIYYWH4",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.411Z"
+      "temporaryPassword": "CGP-000441-VOLXK2NQ7C",
+      "passwordGeneratedAt": "2026-05-26T13:14:29.405Z"
     },
     {
       "memberId": "legacy-451-32-ratti-fernando",
       "memberNumber": "000451",
-      "uid": "ovoRIAS4dlLNwB9iNthJuZohnTvC",
+      "uid": "dadoJVFbYzXJnWUobiPHow5GuBi2",
       "authEmail": "socio-000451@club-auth.local",
-      "temporaryPassword": "CGP-000451-8CBPVIVQSL",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.458Z"
+      "temporaryPassword": "CGP-000451-CHOFAVLYYP",
+      "passwordGeneratedAt": "2026-05-26T13:14:31.919Z"
     },
     {
       "memberId": "legacy-534-33-weibel-sergio",
       "memberNumber": "000534",
-      "uid": "zwTAzGqGYdHkWMTaLCLZoe9GVSRg",
+      "uid": "7Nx1Df8YTjOv7mFV1N9YG0xUeDl2",
       "authEmail": "socio-000534@club-auth.local",
-      "temporaryPassword": "CGP-000534-RXTOACLBN6",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.522Z"
+      "temporaryPassword": "CGP-000534-IUA4DDBBNE",
+      "passwordGeneratedAt": "2026-05-26T13:14:34.464Z"
     },
     {
       "memberId": "legacy-546-34-saenz-juan",
       "memberNumber": "000546",
-      "uid": "CT5lMTMA9H3QrpxXH7Nsg8pxmmdE",
+      "uid": "V7yKbmPbPbQ8Nk2FSTRXACWveXo1",
       "authEmail": "socio-000546@club-auth.local",
-      "temporaryPassword": "CGP-000546-QJMSB7ATUU",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.563Z"
+      "temporaryPassword": "CGP-000546-X3KUMWHUIS",
+      "passwordGeneratedAt": "2026-05-26T13:14:36.998Z"
     },
     {
       "memberId": "legacy-547-35-traversi-patricia",
       "memberNumber": "000898",
-      "uid": "KojUcMk5zNOfjbM6d4jgdHegqcbQ",
+      "uid": "fqdPk1j87FWLxIRsSRgxH69rhyD3",
       "authEmail": "socio-000898@club-auth.local",
-      "temporaryPassword": "CGP-000898-ILXFPETWTQ",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.611Z"
+      "temporaryPassword": "CGP-000898-LVQKPXDJ4S",
+      "passwordGeneratedAt": "2026-05-26T13:14:39.502Z"
     },
     {
       "memberId": "legacy-547-36-boggione-rene",
       "memberNumber": "000547",
-      "uid": "36JIOLnJC8LWiGn3Ix2s7eViwLOI",
+      "uid": "N9l1oIcmpNd2dX7ucbVJup2yCBT2",
       "authEmail": "socio-000547@club-auth.local",
-      "temporaryPassword": "CGP-000547-GSRXTT5RFD",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.661Z"
+      "temporaryPassword": "CGP-000547-RKXCX6BPYO",
+      "passwordGeneratedAt": "2026-05-26T13:14:41.940Z"
     },
     {
       "memberId": "legacy-565-37-alvarado-carlos",
       "memberNumber": "000565",
-      "uid": "dn1QrIlFIu3kaaGA4a6u43RJPDxH",
+      "uid": "IEMtxc5sVGfZDWsAgKDz4AoIiZ03",
       "authEmail": "socio-000565@club-auth.local",
-      "temporaryPassword": "CGP-000565-KS7DAJST42",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.699Z"
+      "temporaryPassword": "CGP-000565-H72L7FCM58",
+      "passwordGeneratedAt": "2026-05-26T13:14:44.403Z"
     },
     {
       "memberId": "legacy-589-38-bouhid-nicolas",
       "memberNumber": "000589",
-      "uid": "OINdSKs4QXPqi10bGs2wxgNnPohI",
+      "uid": "AIqqum4r4QcJFQPhEvQkV1WzHSd2",
       "authEmail": "socio-000589@club-auth.local",
-      "temporaryPassword": "CGP-000589-C1LS0SRN1I",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.745Z"
+      "temporaryPassword": "CGP-000589-JPGXN44A8E",
+      "passwordGeneratedAt": "2026-05-26T13:14:46.310Z"
     },
     {
       "memberId": "legacy-592-39-goya-seiyu",
       "memberNumber": "000592",
-      "uid": "MkbCqmhVQ1S1EfJ5pfPkcRynjZii",
+      "uid": "rvBt0AJEGMQSUX8K74261HAK8wi2",
       "authEmail": "socio-000592@club-auth.local",
-      "temporaryPassword": "CGP-000592-TB3DIVI5YS",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.779Z"
+      "temporaryPassword": "CGP-000592-FNTL4AIEKG",
+      "passwordGeneratedAt": "2026-05-26T13:14:48.522Z"
     },
     {
       "memberId": "legacy-601-40-pantaleon-carlos",
       "memberNumber": "000601",
-      "uid": "pj4GDg170AmZwlR38L5hXKg5mhy6",
+      "uid": "78WSpmU6HNgM1UPYsYHVUZy7gIQ2",
       "authEmail": "socio-000601@club-auth.local",
-      "temporaryPassword": "CGP-000601-3YQLBTA8JH",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.827Z"
+      "temporaryPassword": "CGP-000601-SVWYRH0ZV1",
+      "passwordGeneratedAt": "2026-05-26T13:14:50.448Z"
     },
     {
       "memberId": "legacy-606-41-branca-oscar",
       "memberNumber": "000606",
-      "uid": "FeqWA57oGyoknkQQjRHBX6nuEgQ8",
+      "uid": "dO2D96w695T3Muq79HIxPo65cNA2",
       "authEmail": "socio-000606@club-auth.local",
-      "temporaryPassword": "CGP-000606-ZQQ6OXUTFT",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.871Z"
+      "temporaryPassword": "CGP-000606-TKNR7UEIDC",
+      "passwordGeneratedAt": "2026-05-26T13:14:52.288Z"
     },
     {
       "memberId": "legacy-606-42-delgado-maria-fernanda",
       "memberNumber": "000899",
-      "uid": "aIkncVN7my0Qa3dVlLpOQ5sZFJ76",
+      "uid": "Tmv4tGPRvWPjhSRusw7ygvsHkXA2",
       "authEmail": "socio-000899@club-auth.local",
-      "temporaryPassword": "CGP-000899-RE5NHAHFWX",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.910Z"
+      "temporaryPassword": "CGP-000899-LX2EDFDGEH",
+      "passwordGeneratedAt": "2026-05-26T13:14:54.545Z"
     },
     {
       "memberId": "legacy-613-43-figueroa-pedro",
       "memberNumber": "000613",
-      "uid": "gIbhxxqMkhMnygxrrS9GEMiOdORK",
+      "uid": "9pP8W6zNkEezzB1EeerHjw0x02k1",
       "authEmail": "socio-000613@club-auth.local",
-      "temporaryPassword": "CGP-000613-E1DSHQLT2J",
-      "passwordGeneratedAt": "2026-05-09T14:23:46.958Z"
+      "temporaryPassword": "CGP-000613-FETMYKJO1A",
+      "passwordGeneratedAt": "2026-05-26T13:14:56.458Z"
     },
     {
       "memberId": "legacy-618-44-ibarra-horacio",
       "memberNumber": "000618",
-      "uid": "BwI3GxgNZWAvZwddlKhigLQDsUKi",
+      "uid": "7hBkmGQrJ3fWlKk0RxeM1VkRiMf1",
       "authEmail": "socio-000618@club-auth.local",
-      "temporaryPassword": "CGP-000618-MARGSHIR9W",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.007Z"
+      "temporaryPassword": "CGP-000618-3US8PRMXEZ",
+      "passwordGeneratedAt": "2026-05-26T13:14:58.429Z"
     },
     {
       "memberId": "legacy-618-45-lokman-maria-gabriela",
       "memberNumber": "000900",
-      "uid": "DrNRKvlnLeFUGvxpxllJSishXNSj",
+      "uid": "C47h45SqfINHD5yHdlSywMNOUPK2",
       "authEmail": "socio-000900@club-auth.local",
-      "temporaryPassword": "CGP-000900-PVYMEMCZQC",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.055Z"
+      "temporaryPassword": "CGP-000900-RXDZEXBICZ",
+      "passwordGeneratedAt": "2026-05-26T13:15:00.267Z"
     },
     {
       "memberId": "legacy-621-46-alsina-daniel",
       "memberNumber": "000621",
-      "uid": "vnaEd7l5FUUrvdoGKeoM9aTPsszB",
+      "uid": "LpjPXLKsm2fNYmafxvRbjAkcFYU2",
       "authEmail": "socio-000621@club-auth.local",
-      "temporaryPassword": "CGP-000621-Y6QMASVBQZ",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.107Z"
+      "temporaryPassword": "CGP-000621-YWQU27CP6Y",
+      "passwordGeneratedAt": "2026-05-26T13:15:02.262Z"
     },
     {
       "memberId": "legacy-639-47-campero-martin",
       "memberNumber": "000639",
-      "uid": "Czhn6ocfxLuXJlT1XDiuDtCFQW3o",
+      "uid": "52KgYgjbW9aCAzFJ9Ck4VtNqhVG2",
       "authEmail": "socio-000639@club-auth.local",
-      "temporaryPassword": "CGP-000639-4H3UZUPCV6",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.164Z"
+      "temporaryPassword": "CGP-000639-SPKXNKVNIC",
+      "passwordGeneratedAt": "2026-05-26T13:15:04.212Z"
     },
     {
       "memberId": "legacy-674-48-toconas-franco",
       "memberNumber": "000674",
-      "uid": "9ztEFhcLWJbGvTn9X7YsJKq071Hk",
+      "uid": "ypjI1u6tpUaoiaocK8QkbXtFO9n1",
       "authEmail": "socio-000674@club-auth.local",
-      "temporaryPassword": "CGP-000674-PG2C7N1CLF",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.211Z"
+      "temporaryPassword": "CGP-000674-TA3S2QIKJY",
+      "passwordGeneratedAt": "2026-05-26T13:15:06.106Z"
     },
     {
       "memberId": "legacy-678-49-lorenzo-jose",
       "memberNumber": "000678",
-      "uid": "9vKESmTI9W0SGK4kl1yUhVcqaykt",
+      "uid": "DgwOn8NJYCbLOoBFtHeMkSX08x63",
       "authEmail": "socio-000678@club-auth.local",
-      "temporaryPassword": "CGP-000678-CN2C5Y4WLO",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.258Z"
+      "temporaryPassword": "CGP-000678-EXL8Q3M9WI",
+      "passwordGeneratedAt": "2026-05-26T13:15:08.087Z"
     },
     {
       "memberId": "legacy-68-2-abraham-oscar",
       "memberNumber": "000068",
-      "uid": "bu4Nq1pJdTrNKZV1ouqiQn0ULOOE",
+      "uid": "944UcXx7HDgCZ95sEXYGLZPLf4E3",
       "authEmail": "socio-000068@club-auth.local",
-      "temporaryPassword": "CGP-000068-HEWRGBSFWG",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.317Z"
+      "temporaryPassword": "CGP-000068-4THZ5JBCRS",
+      "passwordGeneratedAt": "2026-05-26T13:15:10.207Z"
     },
     {
       "memberId": "legacy-686-50-paredes-jorge",
       "memberNumber": "000686",
-      "uid": "e979DGSGNjFb8pz8qgkGlgbkTfgu",
+      "uid": "CXVOGIfnybepLZnZtjcCHJZSmMo2",
       "authEmail": "socio-000686@club-auth.local",
-      "temporaryPassword": "CGP-000686-CJY0XQ9WI8",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.370Z"
+      "temporaryPassword": "CGP-000686-8FTDIV686U",
+      "passwordGeneratedAt": "2026-05-26T13:15:12.044Z"
     },
     {
       "memberId": "legacy-694-51-fagioli-de-herrera-ruth",
       "memberNumber": "000694",
-      "uid": "hPU5LQYHNVsud0gAQmwoXDi5OMAf",
+      "uid": "QXLNOW2N3WM5YQS7ZhSa1UGx0Om2",
       "authEmail": "socio-000694@club-auth.local",
-      "temporaryPassword": "CGP-000694-8ESAK3NBOL",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.413Z"
+      "temporaryPassword": "CGP-000694-AVIRNCNGL7",
+      "passwordGeneratedAt": "2026-05-26T13:15:13.933Z"
     },
     {
       "memberId": "legacy-695-52-roman-eduardo",
       "memberNumber": "000695",
-      "uid": "WnzwNHtPgHLpgvkZFIGQFkFC9Djc",
+      "uid": "PjBbxhmvKaMQn4zJpXqXJg1Q6ng2",
       "authEmail": "socio-000695@club-auth.local",
-      "temporaryPassword": "CGP-000695-8S3S1ZEFAA",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.457Z"
+      "temporaryPassword": "CGP-000695-KAKMSYTWLI",
+      "passwordGeneratedAt": "2026-05-26T13:15:15.788Z"
     },
     {
       "memberId": "legacy-700-53-ramos-roque",
       "memberNumber": "000700",
-      "uid": "tQyWMWlZYzqhofBV9gPdJcVzHldl",
+      "uid": "fKfvZzWM0dU4l697BaU1SGh7wzw2",
       "authEmail": "socio-000700@club-auth.local",
-      "temporaryPassword": "CGP-000700-PTI0X7F2E8",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.501Z"
+      "temporaryPassword": "CGP-000700-UNHCBBHRNC",
+      "passwordGeneratedAt": "2026-05-26T13:15:17.738Z"
     },
     {
       "memberId": "legacy-704-54-hinojo-francisco-javier",
       "memberNumber": "000704",
-      "uid": "564vIEyZ8eSpKj7IOecBAGBopnqU",
+      "uid": "cug8jLdZC5Qndox7WrMXZYJ9fKp2",
       "authEmail": "socio-000704@club-auth.local",
-      "temporaryPassword": "CGP-000704-WFXGV2R02G",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.551Z"
+      "temporaryPassword": "CGP-000704-GFTZQVCGUS",
+      "passwordGeneratedAt": "2026-05-26T13:15:19.645Z"
     },
     {
       "memberId": "legacy-708-55-de-los-rios-jose",
       "memberNumber": "000708",
-      "uid": "BGya80kwVt22tktXkuHpTTt3fyuT",
+      "uid": "y3jE3gnJQ6PXUFmSz6stLQtg7Ms2",
       "authEmail": "socio-000708@club-auth.local",
-      "temporaryPassword": "CGP-000708-2UBWSTTSTF",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.595Z"
+      "temporaryPassword": "CGP-000708-MAHXAE8DKV",
+      "passwordGeneratedAt": "2026-05-26T13:15:21.534Z"
     },
     {
       "memberId": "legacy-714-56-lascano-lisandro",
       "memberNumber": "000714",
-      "uid": "zUhZsYsWQv5YYLG8Nddgau2E3ued",
+      "uid": "DSVoqfbNZbVNTWxePMBb3DIhCYv2",
       "authEmail": "socio-000714@club-auth.local",
-      "temporaryPassword": "CGP-000714-JSSQJZQCEY",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.655Z"
+      "temporaryPassword": "CGP-000714-JDOWTYVMAA",
+      "passwordGeneratedAt": "2026-05-26T13:15:24.185Z"
     },
     {
       "memberId": "legacy-715-57-soler-juan-manuel",
       "memberNumber": "000715",
-      "uid": "pb2nnaWn7BGlMDKOQygFtV4xA9be",
+      "uid": "TiBmVzA1gHSjWxauOK6fjA9EgBn1",
       "authEmail": "socio-000715@club-auth.local",
-      "temporaryPassword": "CGP-000715-QYV1D296S7",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.703Z"
+      "temporaryPassword": "CGP-000715-6NNF1TIF6S",
+      "passwordGeneratedAt": "2026-05-26T13:15:26.214Z"
     },
     {
       "memberId": "legacy-719-58-insausti-mario",
       "memberNumber": "000719",
-      "uid": "MGBEd20pO6cGuPZNAgXQfKe8GvnI",
+      "uid": "WHS7LSi5DKXBsYtD3CQLstx1Qy43",
       "authEmail": "socio-000719@club-auth.local",
-      "temporaryPassword": "CGP-000719-0ZXCE1IXZO",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.751Z"
+      "temporaryPassword": "CGP-000719-CKODCWKSUA",
+      "passwordGeneratedAt": "2026-05-26T13:15:28.183Z"
     },
     {
       "memberId": "legacy-72-3-jimenez-oliver-martin",
       "memberNumber": "000072",
-      "uid": "AdSbhWuTZEeKmtUYVJAIfxIkMetx",
+      "uid": "CpcoD6z205N48v2FLKjFELhUirv2",
       "authEmail": "socio-000072@club-auth.local",
-      "temporaryPassword": "CGP-000072-5QNPXHTAQ0",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.799Z"
+      "temporaryPassword": "CGP-000072-AMEWRQE3D2",
+      "passwordGeneratedAt": "2026-05-26T13:15:30.101Z"
     },
     {
       "memberId": "legacy-721-59-barrera-mario",
       "memberNumber": "000721",
-      "uid": "vmFVTD3vRe6UrL1rt5ZSgMRbPFK7",
+      "uid": "sivCKdwhEJNDQRPCXrmcWR6eRb63",
       "authEmail": "socio-000721@club-auth.local",
-      "temporaryPassword": "CGP-000721-XAAWQ667VP",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.847Z"
+      "temporaryPassword": "CGP-000721-FXTDUPQT41",
+      "passwordGeneratedAt": "2026-05-26T13:15:31.978Z"
     },
     {
       "memberId": "legacy-726-60-ficoseco-alejandro",
       "memberNumber": "000726",
-      "uid": "KF7nctSMLpTvdD2iHqMZtbHMEOwN",
+      "uid": "amGSjmytYdWjMHwkejT02zrutGU2",
       "authEmail": "socio-000726@club-auth.local",
-      "temporaryPassword": "CGP-000726-YJ0E5GRVQS",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.912Z"
+      "temporaryPassword": "CGP-000726-ZYVK369GAX",
+      "passwordGeneratedAt": "2026-05-26T13:15:33.973Z"
     },
     {
       "memberId": "legacy-73-4-frias-marcelo",
       "memberNumber": "000073",
-      "uid": "YEfufTjpZcwc1YlrQgF5MJrs8B5t",
+      "uid": "LpF0niUfDHOYs3Tvm2gfjsbXDXF2",
       "authEmail": "socio-000073@club-auth.local",
-      "temporaryPassword": "CGP-000073-8QW2XRRCPR",
-      "passwordGeneratedAt": "2026-05-09T14:23:47.958Z"
+      "temporaryPassword": "CGP-000073-JNLAUWQ2RJ",
+      "passwordGeneratedAt": "2026-05-26T13:15:35.966Z"
     },
     {
       "memberId": "legacy-730-61-sanchez-juan",
       "memberNumber": "000730",
-      "uid": "cJvmBGeAPZY8SkPvy736Ok9QQe5x",
+      "uid": "8GOH9zoGyrZdyIti8zqssJLLiIy1",
       "authEmail": "socio-000730@club-auth.local",
-      "temporaryPassword": "CGP-000730-HGEUAWO2GS",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.018Z"
+      "temporaryPassword": "CGP-000730-G8CQFSLUZ1",
+      "passwordGeneratedAt": "2026-05-26T13:15:37.871Z"
     },
     {
       "memberId": "legacy-731-62-cabido-raul",
       "memberNumber": "000731",
-      "uid": "nXx7qYpVPBlPvrAuf9yswXbh2741",
+      "uid": "aA2GoCRpRyNxWJSI725OLEKF1QE2",
       "authEmail": "socio-000731@club-auth.local",
-      "temporaryPassword": "CGP-000731-SCFNK2HCQH",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.059Z"
+      "temporaryPassword": "CGP-000731-MYRZHKXTAP",
+      "passwordGeneratedAt": "2026-05-26T13:15:39.833Z"
     },
     {
       "memberId": "legacy-737-63-gomez-luis",
       "memberNumber": "000737",
-      "uid": "5YFsTkLmqQjLLjXk9NtfQOkPcMRj",
+      "uid": "nOPECp3XixPHcdIx2vAEf3bXmUK2",
       "authEmail": "socio-000737@club-auth.local",
-      "temporaryPassword": "CGP-000737-JUP7ES59HU",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.101Z"
+      "temporaryPassword": "CGP-000737-NGYTW5KAOP",
+      "passwordGeneratedAt": "2026-05-26T13:15:41.758Z"
     },
     {
       "memberId": "legacy-737-64-santucho-isabel",
       "memberNumber": "000901",
-      "uid": "oICfewHT71ZSRvFXeD5scYOSV7ET",
+      "uid": "oNf8qA75chSk7h5jSOrgzI5VVYt1",
       "authEmail": "socio-000901@club-auth.local",
-      "temporaryPassword": "CGP-000901-SSDRSMTYOU",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.148Z"
+      "temporaryPassword": "CGP-000901-D8D20OZVVN",
+      "passwordGeneratedAt": "2026-05-26T13:15:43.686Z"
     },
     {
       "memberId": "legacy-738-65-venencia-roberto",
       "memberNumber": "000738",
-      "uid": "y98O0uDfUBfgW2uGSKF52IcUIdrb",
+      "uid": "oYJAU21smfRwwfJbHljoAKdKi3x2",
       "authEmail": "socio-000738@club-auth.local",
-      "temporaryPassword": "CGP-000738-J7UKPN8FPK",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.195Z"
+      "temporaryPassword": "CGP-000738-ELCLGUORL9",
+      "passwordGeneratedAt": "2026-05-26T13:15:45.739Z"
     },
     {
       "memberId": "legacy-74-5-frias-jorge",
       "memberNumber": "000074",
-      "uid": "cgCrAjvKN25oaH3Vo79DxkQ3kZly",
+      "uid": "rJGUvAth7PMJEza85YRKu8R8tc93",
       "authEmail": "socio-000074@club-auth.local",
-      "temporaryPassword": "CGP-000074-JLVSIARKLN",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.251Z"
+      "temporaryPassword": "CGP-000074-HPGREG3QS1",
+      "passwordGeneratedAt": "2026-05-26T13:15:47.671Z"
     },
     {
       "memberId": "legacy-742-66-bracamonte-alfredo",
       "memberNumber": "000742",
-      "uid": "Gm52YealSgX9LPqWkAnj0oVP5LAM",
+      "uid": "uYvXUxeJboamQ8tPKstnhx2XfjB2",
       "authEmail": "socio-000742@club-auth.local",
-      "temporaryPassword": "CGP-000742-UFFOKTU6SL",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.353Z"
+      "temporaryPassword": "CGP-000742-OFJXYLY2QI",
+      "passwordGeneratedAt": "2026-05-26T13:15:49.583Z"
     },
     {
       "memberId": "legacy-743-67-bracamonte-ricardo",
       "memberNumber": "000743",
-      "uid": "6SHhKuvdxByjQsfhKdYbSGTs74ul",
+      "uid": "CZ2CzqeaKXZll1fDU1xhbOiGmuF3",
       "authEmail": "socio-000743@club-auth.local",
-      "temporaryPassword": "CGP-000743-SK75MAUGOG",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.418Z"
+      "temporaryPassword": "CGP-000743-AEJREJFXLW",
+      "passwordGeneratedAt": "2026-05-26T13:15:51.655Z"
     },
     {
       "memberId": "legacy-747-68-eleit-fernando",
       "memberNumber": "000747",
-      "uid": "O64Ewe1kIwic5z7wphhEjnoRHr4D",
+      "uid": "k0P6DliomyN3BkISJ47DeHpURpu1",
       "authEmail": "socio-000747@club-auth.local",
-      "temporaryPassword": "CGP-000747-VKJXSDGLX2",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.462Z"
+      "temporaryPassword": "CGP-000747-GM8R8GWTUU",
+      "passwordGeneratedAt": "2026-05-26T13:15:53.680Z"
     },
     {
       "memberId": "legacy-748-69-lenarduzzi-pablo",
       "memberNumber": "000748",
-      "uid": "tXmzlNHaJHb42U6chA0Yq1bx60cv",
+      "uid": "2obnhn1KGPSMCeu5knkd2xG0AuU2",
       "authEmail": "socio-000748@club-auth.local",
-      "temporaryPassword": "CGP-000748-BFQPCS0F2G",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.508Z"
+      "temporaryPassword": "CGP-000748-WU4VPK2SL1",
+      "passwordGeneratedAt": "2026-05-26T13:15:55.601Z"
     },
     {
       "memberId": "legacy-749-70-martearena-juan-jose",
       "memberNumber": "000749",
-      "uid": "5B3LKdDLrihhOz4x0M3iuVC1HmrB",
+      "uid": "DgZ3QH5U9jQJBMnRQzlfnFUYvEf2",
       "authEmail": "socio-000749@club-auth.local",
-      "temporaryPassword": "CGP-000749-WZNHJJTYKT",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.568Z"
+      "temporaryPassword": "CGP-000749-HZYOEB5PFJ",
+      "passwordGeneratedAt": "2026-05-26T13:15:57.591Z"
     },
     {
       "memberId": "legacy-751-71-mignacco-franco",
       "memberNumber": "000751",
-      "uid": "yR0YU63rWJHt7Pd3emBV3Yw09Frm",
+      "uid": "rxhcfUSje9ToZspkP9txFdByAUE3",
       "authEmail": "socio-000751@club-auth.local",
-      "temporaryPassword": "CGP-000751-MECXEK539L",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.607Z"
+      "temporaryPassword": "CGP-000751-CGBXFGVPK5",
+      "passwordGeneratedAt": "2026-05-26T13:15:59.589Z"
     },
     {
       "memberId": "legacy-755-72-monaco-juan",
       "memberNumber": "000755",
-      "uid": "hTIuXnBkBgcZgYT8xmuingo6kadk",
+      "uid": "lEzIllSXZwUaKacJXOodUEJ9quK2",
       "authEmail": "socio-000755@club-auth.local",
-      "temporaryPassword": "CGP-000755-2PJD6DTRZ1",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.665Z"
+      "temporaryPassword": "CGP-000755-ORNQPAHGGP",
+      "passwordGeneratedAt": "2026-05-26T13:16:01.695Z"
     },
     {
       "memberId": "legacy-756-73-burgos-ramon",
       "memberNumber": "000756",
-      "uid": "1qs5pJ05pSuT628ezwIKzO9oRj6x",
+      "uid": "AEkpkY0XUMg6Q7aDpyYZN97fZ9o1",
       "authEmail": "socio-000756@club-auth.local",
-      "temporaryPassword": "CGP-000756-7J3PWDUZT9",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.742Z"
+      "temporaryPassword": "CGP-000756-G0006KCWJ8",
+      "passwordGeneratedAt": "2026-05-26T13:16:04.045Z"
     },
     {
       "memberId": "legacy-757-74-briones-daniel",
       "memberNumber": "000757",
-      "uid": "FC6fz7vMVulxREpOERb9Fs52wJRZ",
+      "uid": "f2j8Z0r4M5cVpRKrgHKe1WAGLQy2",
       "authEmail": "socio-000757@club-auth.local",
-      "temporaryPassword": "CGP-000757-P0RXDFUFFD",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.815Z"
+      "temporaryPassword": "CGP-000757-CTPLQJZSYU",
+      "passwordGeneratedAt": "2026-05-26T13:16:05.891Z"
     },
     {
       "memberId": "legacy-761-75-lemir-daniel",
       "memberNumber": "000761",
-      "uid": "Bk5fyxcsfKWVV9VR13YXLZiOdbnC",
+      "uid": "n6FoLv3PRRYS1vL9y0TNSl9FrGK2",
       "authEmail": "socio-000761@club-auth.local",
-      "temporaryPassword": "CGP-000761-8F9ZF496W6",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.884Z"
+      "temporaryPassword": "CGP-000761-IC4Z8O5EI6",
+      "passwordGeneratedAt": "2026-05-26T13:16:07.896Z"
     },
     {
       "memberId": "legacy-773-76-calvo-fernando",
       "memberNumber": "000773",
-      "uid": "TyPRxVmP1XoJxebmlXV5RNRkOCFY",
+      "uid": "tmtQWO2sgdTJvLbE1ymbLTY74z23",
       "authEmail": "socio-000773@club-auth.local",
-      "temporaryPassword": "CGP-000773-8VE08PL7KZ",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.927Z"
+      "temporaryPassword": "CGP-000773-IAZHBOMRMW",
+      "passwordGeneratedAt": "2026-05-26T13:16:09.757Z"
     },
     {
       "memberId": "legacy-778-77-pierazzoli-ricardo",
       "memberNumber": "000778",
-      "uid": "rGRYF9Zyby8YbhLDq1T2khHv8x3s",
+      "uid": "sUVmBmOUeqheZljDZex0s1gT7Ke2",
       "authEmail": "socio-000778@club-auth.local",
-      "temporaryPassword": "CGP-000778-PPXYA5S0FT",
-      "passwordGeneratedAt": "2026-05-09T14:23:48.982Z"
+      "temporaryPassword": "CGP-000778-6NMENN3F4I",
+      "passwordGeneratedAt": "2026-05-26T13:16:11.693Z"
     },
     {
       "memberId": "legacy-779-78-aguiirre-guillermo",
       "memberNumber": "000779",
-      "uid": "im1r17EVfe3X5Ux1sm3XZzd4w8dA",
+      "uid": "Xni4K6YjbOQ6GUIyIKQPrJD5rQR2",
       "authEmail": "socio-000779@club-auth.local",
-      "temporaryPassword": "CGP-000779-LOUWDEYM6P",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.036Z"
+      "temporaryPassword": "CGP-000779-0WPW7SRKLN",
+      "passwordGeneratedAt": "2026-05-26T13:16:13.676Z"
     },
     {
       "memberId": "legacy-780-79-musri-fabricio",
       "memberNumber": "000780",
-      "uid": "dtyJv0D7eQ3mf7nfttsmGep8upTT",
+      "uid": "mnPUy7jnb1bT41aX0w7PqGYPVEZ2",
       "authEmail": "socio-000780@club-auth.local",
-      "temporaryPassword": "CGP-000780-RB6XI18LSO",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.122Z"
+      "temporaryPassword": "CGP-000780-LXUP3B4FTE",
+      "passwordGeneratedAt": "2026-05-26T13:16:15.482Z"
     },
     {
       "memberId": "legacy-782-80-escobedo-luciano",
       "memberNumber": "000782",
-      "uid": "n1WHdeJqMoF7ey2EwkDEj799CF15",
+      "uid": "WDiiqKL34WghZYfjStOgXRPqVhn1",
       "authEmail": "socio-000782@club-auth.local",
-      "temporaryPassword": "CGP-000782-YRDZ0WYWWG",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.194Z"
+      "temporaryPassword": "CGP-000782-UBADSQIUGP",
+      "passwordGeneratedAt": "2026-05-26T13:16:17.348Z"
     },
     {
       "memberId": "legacy-793-81-hinojo-jose",
       "memberNumber": "000793",
-      "uid": "0RYU4kQIC74AO0xi7cE6Q2DGJAHi",
+      "uid": "iK1gliFfniThozhkwv6Z46oYzHV2",
       "authEmail": "socio-000793@club-auth.local",
-      "temporaryPassword": "CGP-000793-W88CN9SOKN",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.268Z"
+      "temporaryPassword": "CGP-000793-EBFWZXG3WT",
+      "passwordGeneratedAt": "2026-05-26T13:16:19.224Z"
     },
     {
       "memberId": "legacy-807-82-armatta-martin",
       "memberNumber": "000807",
-      "uid": "lKW3qaRNYj3DzaPZCVeBhVG1Ef5W",
+      "uid": "O8unpH0317b0o3TfNJlDLS28ojZ2",
       "authEmail": "socio-000807@club-auth.local",
-      "temporaryPassword": "CGP-000807-RAJGRAYHV5",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.362Z"
+      "temporaryPassword": "CGP-000807-DFOSZE6JV9",
+      "passwordGeneratedAt": "2026-05-26T13:16:21.076Z"
     },
     {
       "memberId": "legacy-812-83-perez-manuel",
       "memberNumber": "000812",
-      "uid": "G9TFeTEYgnu2kYkXbgZhzyDujuq1",
+      "uid": "AVAbzN7RfJMqMrWyAyv0MuyOGA23",
       "authEmail": "socio-000812@club-auth.local",
-      "temporaryPassword": "CGP-000812-VZXWIH7XJR",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.437Z"
+      "temporaryPassword": "CGP-000812-GP6ILXDTM2",
+      "passwordGeneratedAt": "2026-05-26T13:16:23.020Z"
     },
     {
       "memberId": "legacy-816-84-alvarado-pedro",
       "memberNumber": "000816",
-      "uid": "9Bo6GCa8di9SKcgW6bQ95G9msvFx",
+      "uid": "NUSLyvOgL9bCFKrPzftjFgTFDo32",
       "authEmail": "socio-000816@club-auth.local",
-      "temporaryPassword": "CGP-000816-MHTBFGPG4F",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.481Z"
+      "temporaryPassword": "CGP-000816-U5OV09AHGI",
+      "passwordGeneratedAt": "2026-05-26T13:16:24.867Z"
     },
     {
       "memberId": "legacy-818-85-beguier-pablo",
       "memberNumber": "000818",
-      "uid": "47IKtsmF3ofXwZKFTLFnKufcdjeA",
+      "uid": "7C8xnNqwoQe5plJpsYUFx1T6Rcg2",
       "authEmail": "socio-000818@club-auth.local",
-      "temporaryPassword": "CGP-000818-P2E3RIVPFO",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.528Z"
+      "temporaryPassword": "CGP-000818-CC6OPXI0VP",
+      "passwordGeneratedAt": "2026-05-26T13:16:26.711Z"
     },
     {
       "memberId": "legacy-820-86-nazario-martin",
       "memberNumber": "000820",
-      "uid": "1DVfxVH8GxyxlhHxTVNseFlucmXG",
+      "uid": "qmJeQVabhZOKENPXQWXnR3biH4M2",
       "authEmail": "socio-000820@club-auth.local",
-      "temporaryPassword": "CGP-000820-6SYJNEFSIJ",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.586Z"
+      "temporaryPassword": "CGP-000820-WQF7OV8BZ5",
+      "passwordGeneratedAt": "2026-05-26T13:16:28.547Z"
     },
     {
       "memberId": "legacy-821-87-salum-eduardo",
       "memberNumber": "000821",
-      "uid": "rkbBgROAAF53WT46lZTF4mocf530",
+      "uid": "XV83catUF7XtNQaLl2JH2zaLhhx2",
       "authEmail": "socio-000821@club-auth.local",
-      "temporaryPassword": "CGP-000821-FZDFF5LMHS",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.640Z"
+      "temporaryPassword": "CGP-000821-JSYWYPEJJH",
+      "passwordGeneratedAt": "2026-05-26T13:16:30.430Z"
     },
     {
       "memberId": "legacy-827-88-quintar-hadel",
       "memberNumber": "000827",
-      "uid": "RrPgbOOyCBArhCnAkMTcZRsBbxSH",
+      "uid": "jyfca3uFSih95sQNDyijb2yEb1t2",
       "authEmail": "socio-000827@club-auth.local",
-      "temporaryPassword": "CGP-000827-GTJXUZFNJP",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.690Z"
+      "temporaryPassword": "CGP-000827-DWK1K3N6SX",
+      "passwordGeneratedAt": "2026-05-26T13:16:32.342Z"
     },
     {
       "memberId": "legacy-829-89-soler-sebastian",
       "memberNumber": "000829",
-      "uid": "3Q3vKhony7IUURntRGhdJPISaCSK",
+      "uid": "8EFfQXaraPbApMC6AKeiYkSqwx92",
       "authEmail": "socio-000829@club-auth.local",
-      "temporaryPassword": "CGP-000829-4SPU5V4DUV",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.748Z"
+      "temporaryPassword": "CGP-000829-JAEQ7UFS9A",
+      "passwordGeneratedAt": "2026-05-26T13:16:34.266Z"
     },
     {
       "memberId": "legacy-830-90-massa-alejandro",
       "memberNumber": "000830",
-      "uid": "KnPEGKD83J7z8I0IgBzFKLen79K8",
+      "uid": "O95WCUdz8pbA7AWfdapEQeue5kp2",
       "authEmail": "socio-000830@club-auth.local",
-      "temporaryPassword": "CGP-000830-XDCIIOOSGC",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.800Z"
+      "temporaryPassword": "CGP-000830-WWMYK98NIL",
+      "passwordGeneratedAt": "2026-05-26T13:16:36.259Z"
     },
     {
       "memberId": "legacy-836-91-banha-pablo",
       "memberNumber": "000836",
-      "uid": "V2exNIkJIp8ghiPiZ3BY4CwiBLOM",
+      "uid": "xbtPK2VA2RT1A3am4hYT3iUSRr32",
       "authEmail": "socio-000836@club-auth.local",
-      "temporaryPassword": "CGP-000836-QVSR9OFAH3",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.851Z"
+      "temporaryPassword": "CGP-000836-IATCTWZPWY",
+      "passwordGeneratedAt": "2026-05-26T13:16:38.136Z"
     },
     {
       "memberId": "legacy-845-92-flores-fernando",
       "memberNumber": "000845",
-      "uid": "fEDHxCiDTY7kowfHapMI7iuRPVBV",
+      "uid": "pxq5KHoVetaJiXE8je6hXQo4sbH2",
       "authEmail": "socio-000845@club-auth.local",
-      "temporaryPassword": "CGP-000845-5ABKYYPLCT",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.907Z"
+      "temporaryPassword": "CGP-000845-NOR1AC6WEU",
+      "passwordGeneratedAt": "2026-05-26T13:16:39.966Z"
     },
     {
       "memberId": "legacy-845-93-milena-fernando",
       "memberNumber": "000902",
-      "uid": "DhHHUbYRgjL9XPYbUslkrYTUjZFc",
+      "uid": "fkk3HYCaQVY4n7lR7EBUbzOQ0ao1",
       "authEmail": "socio-000902@club-auth.local",
-      "temporaryPassword": "CGP-000902-LK9WFND825",
-      "passwordGeneratedAt": "2026-05-09T14:23:49.954Z"
+      "temporaryPassword": "CGP-000902-MFQ0ZNY92H",
+      "passwordGeneratedAt": "2026-05-26T13:16:41.852Z"
     },
     {
       "memberId": "legacy-854-94-aguilar-hugo",
       "memberNumber": "000854",
-      "uid": "UBAgrs75lPxJvkojrnBuIV094sRE",
+      "uid": "Qi4irR0fg8YEvRxh0WYYpoh3gwa2",
       "authEmail": "socio-000854@club-auth.local",
-      "temporaryPassword": "CGP-000854-6MFDODH1WW",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.012Z"
+      "temporaryPassword": "CGP-000854-TZRAKIRKEW",
+      "passwordGeneratedAt": "2026-05-26T13:16:43.705Z"
     },
     {
       "memberId": "legacy-857-95-lascano-cruz",
       "memberNumber": "000857",
-      "uid": "a2wHq1s3D7FVOgZszmLSuzdttfOg",
+      "uid": "Ha1EEcJ9TWWTyQYIVRRYHpsJ87A3",
       "authEmail": "socio-000857@club-auth.local",
-      "temporaryPassword": "CGP-000857-ZADSIL13QJ",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.056Z"
+      "temporaryPassword": "CGP-000857-OLR9UOMP7F",
+      "passwordGeneratedAt": "2026-05-26T13:16:45.557Z"
     },
     {
       "memberId": "legacy-858-96-quinteros-pablo",
       "memberNumber": "000858",
-      "uid": "RVytkRVnyKoOlw65vBDdFZam7tja",
+      "uid": "tHsUreMDnfTfPrkiMFTpA0vhTSk2",
       "authEmail": "socio-000858@club-auth.local",
-      "temporaryPassword": "CGP-000858-U0VZQKTYXN",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.103Z"
+      "temporaryPassword": "CGP-000858-MDWZ1IXVP9",
+      "passwordGeneratedAt": "2026-05-26T13:16:47.490Z"
     },
     {
       "memberId": "legacy-860-97-sousa-hernan",
       "memberNumber": "000860",
-      "uid": "Zxm6fpu5P3K5txmgqzKBVsgx7Mxx",
+      "uid": "dyuHHgx1IsWR3AgoR0JPtHlWV8F3",
       "authEmail": "socio-000860@club-auth.local",
-      "temporaryPassword": "CGP-000860-ZWNKZQDY8K",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.161Z"
+      "temporaryPassword": "CGP-000860-OZDQSUON1U",
+      "passwordGeneratedAt": "2026-05-26T13:16:49.803Z"
     },
     {
       "memberId": "legacy-861-98-mendez-daniel",
       "memberNumber": "000861",
-      "uid": "Ciw66dsrz48AJeORSb2PPIHPOSYr",
+      "uid": "7QwKuOctKodso5KbNnrc2hDuX133",
       "authEmail": "socio-000861@club-auth.local",
-      "temporaryPassword": "CGP-000861-NIFY1KWFZ0",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.203Z"
+      "temporaryPassword": "CGP-000861-5KF1P9VRE2",
+      "passwordGeneratedAt": "2026-05-26T13:16:51.640Z"
     },
     {
       "memberId": "legacy-862-100-rios-raul",
       "memberNumber": "000903",
-      "uid": "9fQnWdNe6s55cqdMmI9bJiPSaoUn",
+      "uid": "LBRnrn6ZS1cFiNl6I3ND3qwcDt22",
       "authEmail": "socio-000903@club-auth.local",
-      "temporaryPassword": "CGP-000903-PPMPJSOIRG",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.259Z"
+      "temporaryPassword": "CGP-000903-SJPPFMX61F",
+      "passwordGeneratedAt": "2026-05-26T13:16:53.476Z"
     },
     {
       "memberId": "legacy-862-99-palermo-solano",
       "memberNumber": "000862",
-      "uid": "n75ZvtONtDkTldz7ppZKvBupS2Oq",
+      "uid": "SuehET1MifUp2i52ggoFNNRJnav2",
       "authEmail": "socio-000862@club-auth.local",
-      "temporaryPassword": "CGP-000862-GNHTBASUHW",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.320Z"
+      "temporaryPassword": "CGP-000862-PSOX83GAS9",
+      "passwordGeneratedAt": "2026-05-26T13:16:55.322Z"
     },
     {
       "memberId": "legacy-864-101-lopez-rodrigo",
       "memberNumber": "000864",
-      "uid": "7BVQM4qgIUQF6BmtNz86BLir8wzH",
+      "uid": "Y9sg34oQv2dNHOADOsoMxVuH8dp1",
       "authEmail": "socio-000864@club-auth.local",
-      "temporaryPassword": "CGP-000864-IVAHQ3VCTL",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.363Z"
+      "temporaryPassword": "CGP-000864-HJD20XKZUB",
+      "passwordGeneratedAt": "2026-05-26T13:16:57.407Z"
     },
     {
       "memberId": "legacy-865-102-bejar-fernando",
       "memberNumber": "000865",
-      "uid": "dEMcN4WFBIdHnfF7pOMe5kOOMwRE",
+      "uid": "hKlx0I2WliN813iny8AklJGIwVP2",
       "authEmail": "socio-000865@club-auth.local",
-      "temporaryPassword": "CGP-000865-LNUSPL24BM",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.427Z"
+      "temporaryPassword": "CGP-000865-NGXMSXFCG7",
+      "passwordGeneratedAt": "2026-05-26T13:16:59.240Z"
     },
     {
       "memberId": "legacy-866-103-albarracin-gerardo",
       "memberNumber": "000866",
-      "uid": "DyuiDcxDJNy5YVMA6UJ84bNsGmvG",
+      "uid": "TkTE0zV1R3drOU4FbOv3ObfStt92",
       "authEmail": "socio-000866@club-auth.local",
-      "temporaryPassword": "CGP-000866-DKRAYRQUG5",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.482Z"
+      "temporaryPassword": "CGP-000866-U96JLSH7LX",
+      "passwordGeneratedAt": "2026-05-26T13:17:01.095Z"
     },
     {
       "memberId": "legacy-867-104-noceti-jaime",
       "memberNumber": "000867",
-      "uid": "xtD7ifTdo61fzASZUoEFcaviQ3cx",
+      "uid": "16JXdwB2ltY2KxrAj2IVLafIONu1",
       "authEmail": "socio-000867@club-auth.local",
-      "temporaryPassword": "CGP-000867-1THK1NFZL3",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.547Z"
+      "temporaryPassword": "CGP-000867-2ISO0C0ZMB",
+      "passwordGeneratedAt": "2026-05-26T13:17:03.019Z"
     },
     {
       "memberId": "legacy-868-105-ripoll-jorge",
       "memberNumber": "000868",
-      "uid": "AoAE7bmGvlGCGsE78vAizxJQdo4s",
+      "uid": "1yAAnmswPWgHilh5zXPJfQoj1eD2",
       "authEmail": "socio-000868@club-auth.local",
-      "temporaryPassword": "CGP-000868-ZFGGLET6CK",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.590Z"
+      "temporaryPassword": "CGP-000868-JZWTPY5GNC",
+      "passwordGeneratedAt": "2026-05-26T13:17:05.034Z"
     },
     {
       "memberId": "legacy-869-106-aparicio-gaston",
       "memberNumber": "000869",
-      "uid": "gfnZfv4hv9g69c3GZSrvpfJeSzQl",
+      "uid": "7O4dFEulCHOyv8m3RaafB0hJXcf1",
       "authEmail": "socio-000869@club-auth.local",
-      "temporaryPassword": "CGP-000869-PTHTPA2CVQ",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.640Z"
+      "temporaryPassword": "CGP-000869-8TTUO199U1",
+      "passwordGeneratedAt": "2026-05-26T13:17:06.872Z"
     },
     {
       "memberId": "legacy-873-107-noceti-octavio",
       "memberNumber": "000873",
-      "uid": "Os1JxlcbHSR1gjAvrDObNKFE05jc",
+      "uid": "IsTXZZFWIwVT1nxxL8fmq5rt0s62",
       "authEmail": "socio-000873@club-auth.local",
-      "temporaryPassword": "CGP-000873-GD60WQD9ZM",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.694Z"
+      "temporaryPassword": "CGP-000873-JQ98FANP0Y",
+      "passwordGeneratedAt": "2026-05-26T13:17:08.737Z"
     },
     {
       "memberId": "legacy-874-108-paredes-matias",
       "memberNumber": "000874",
-      "uid": "E4Bup3qKm6aEuAGreQcfvYiEaPl4",
+      "uid": "zwhykQAUKYWoc1qs0MPZmYd1k7o2",
       "authEmail": "socio-000874@club-auth.local",
-      "temporaryPassword": "CGP-000874-VLEYB4DXVY",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.738Z"
+      "temporaryPassword": "CGP-000874-1FHSWM2N3R",
+      "passwordGeneratedAt": "2026-05-26T13:17:10.574Z"
     },
     {
       "memberId": "legacy-875-109-massarelli-fernando",
       "memberNumber": "000875",
-      "uid": "6WRDFF7S0slPR0MwNrWvBBixOTzi",
+      "uid": "yYOg36sIhLTeze6C0mYOnxWf4dw2",
       "authEmail": "socio-000875@club-auth.local",
-      "temporaryPassword": "CGP-000875-VKTCFDP0QE",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.793Z"
+      "temporaryPassword": "CGP-000875-D60IXHP16L",
+      "passwordGeneratedAt": "2026-05-26T13:17:12.513Z"
     },
     {
       "memberId": "legacy-876-110-delia-martin",
       "memberNumber": "000876",
-      "uid": "oqJbtDEcuh3Th6VWy7PD7LWJAlPk",
+      "uid": "bTucdwYrXkVGf2QLlCe1DluOqK13",
       "authEmail": "socio-000876@club-auth.local",
-      "temporaryPassword": "CGP-000876-LIAAVNKJO3",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.853Z"
+      "temporaryPassword": "CGP-000876-8Z8P5WDXXF",
+      "passwordGeneratedAt": "2026-05-26T13:17:14.365Z"
     },
     {
       "memberId": "legacy-877-111-colombo-miguel",
       "memberNumber": "000877",
-      "uid": "M8SAtrB5kIuklzSZ1vxMCYADL43H",
+      "uid": "ZI5IQY64jOWvTp9HP7GjmO592em2",
       "authEmail": "socio-000877@club-auth.local",
-      "temporaryPassword": "CGP-000877-MCY4XFZTEH",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.910Z"
+      "temporaryPassword": "CGP-000877-DOWDE3XV6W",
+      "passwordGeneratedAt": "2026-05-26T13:17:16.330Z"
     },
     {
       "memberId": "legacy-878-112-manzur-yamil",
       "memberNumber": "000878",
-      "uid": "DpY5P2kjfnHH86fnh38eC27vOFSg",
+      "uid": "zPY1GRTq3Ybzf0oCg2YSukiBvxR2",
       "authEmail": "socio-000878@club-auth.local",
-      "temporaryPassword": "CGP-000878-BW8DZSNNLO",
-      "passwordGeneratedAt": "2026-05-09T14:23:50.954Z"
+      "temporaryPassword": "CGP-000878-9Y6OVDSXAY",
+      "passwordGeneratedAt": "2026-05-26T13:17:18.317Z"
     },
     {
       "memberId": "legacy-879-113-corrado-gerardo",
       "memberNumber": "000879",
-      "uid": "pKxIaeK7LwLUmOcECndjlqryspfR",
+      "uid": "GxrHgUm0gSQczXi7bpb5tdIo2DK2",
       "authEmail": "socio-000879@club-auth.local",
-      "temporaryPassword": "CGP-000879-JOOZWYA4YS",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.007Z"
+      "temporaryPassword": "CGP-000879-VO1VR3Q8C2",
+      "passwordGeneratedAt": "2026-05-26T13:17:20.127Z"
     },
     {
       "memberId": "legacy-879-114-seijo-jorge",
       "memberNumber": "000904",
-      "uid": "fxPZ1tB2vmV9CiKBiYKZBvj7v7Qb",
+      "uid": "FvSG03gShqVHR0pnFspJBOo5mF82",
       "authEmail": "socio-000904@club-auth.local",
-      "temporaryPassword": "CGP-000904-PTNQXOVW8S",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.063Z"
+      "temporaryPassword": "CGP-000904-86ARQBVFN1",
+      "passwordGeneratedAt": "2026-05-26T13:17:22.030Z"
     },
     {
       "memberId": "legacy-880-115-perea-agustin",
       "memberNumber": "000880",
-      "uid": "hOgcJsr9gCLTeyduUpebF7lSaXLU",
+      "uid": "n3shpTZPD1RM8PC1XSLIvlVUi0r2",
       "authEmail": "socio-000880@club-auth.local",
-      "temporaryPassword": "CGP-000880-JAIWXCWPSH",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.108Z"
+      "temporaryPassword": "CGP-000880-EFKWIZ4XCP",
+      "passwordGeneratedAt": "2026-05-26T13:17:23.926Z"
     },
     {
       "memberId": "legacy-881-116-rodriguez-francisco",
       "memberNumber": "000881",
-      "uid": "i3gA8Edlvvn2oHNbEAalpWQiFkyH",
+      "uid": "eVLse2W84idE7Ap7ZTRMRb6LFHE2",
       "authEmail": "socio-000881@club-auth.local",
-      "temporaryPassword": "CGP-000881-UZZX3PBX6X",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.152Z"
+      "temporaryPassword": "CGP-000881-ILQALTBBCD",
+      "passwordGeneratedAt": "2026-05-26T13:17:25.748Z"
     },
     {
       "memberId": "legacy-882-117-girotti-juan",
       "memberNumber": "000882",
-      "uid": "xFlyd9lBh1uUUjX8X7zSDI01C2Me",
+      "uid": "wQzWAkaLdhafZl9FFsAdKuPd60v1",
       "authEmail": "socio-000882@club-auth.local",
-      "temporaryPassword": "CGP-000882-NBK05CM9PC",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.195Z"
+      "temporaryPassword": "CGP-000882-PVHPC89L4H",
+      "passwordGeneratedAt": "2026-05-26T13:17:27.640Z"
     },
     {
       "memberId": "legacy-884-118-vinabal-alexis",
       "memberNumber": "000884",
-      "uid": "EOIztk774WjPTO25Q5Gl8nonLDgr",
+      "uid": "YBMayxWvsCW6BO86aJbpgV36cHS2",
       "authEmail": "socio-000884@club-auth.local",
-      "temporaryPassword": "CGP-000884-1G0AEAATFA",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.233Z"
+      "temporaryPassword": "CGP-000884-C2ABY1Q0AN",
+      "passwordGeneratedAt": "2026-05-26T13:17:29.510Z"
     },
     {
       "memberId": "legacy-886-119-lyons-federico",
       "memberNumber": "000886",
-      "uid": "KwPA9U8tZb9lIIUm7TeglQvvBcEi",
+      "uid": "7XBKpgqLd3OiQCVUT5NaqdozZQP2",
       "authEmail": "socio-000886@club-auth.local",
-      "temporaryPassword": "CGP-000886-4OLHILVAN9",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.280Z"
+      "temporaryPassword": "CGP-000886-7YCPTGZECM",
+      "passwordGeneratedAt": "2026-05-26T13:17:31.389Z"
     },
     {
       "memberId": "legacy-887-120-garcia-german",
       "memberNumber": "000887",
-      "uid": "7OglOkJvPua92bgiYdnUwsYrUtyT",
+      "uid": "kW8LoWj9qyRCiQNYy1ktFZb4NjK2",
       "authEmail": "socio-000887@club-auth.local",
-      "temporaryPassword": "CGP-000887-VFPUFLV5AQ",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.322Z"
+      "temporaryPassword": "CGP-000887-AFLICZRTWD",
+      "passwordGeneratedAt": "2026-05-26T13:17:33.216Z"
     },
     {
       "memberId": "legacy-889-121-lauriero-agustin",
       "memberNumber": "000889",
-      "uid": "7QrhNM3IHtK1pxGKhOuwLJMHZ1I4",
+      "uid": "txwtjKly9zTtQx5JrdNFipJZFkh2",
       "authEmail": "socio-000889@club-auth.local",
-      "temporaryPassword": "CGP-000889-XUDV6NWBO2",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.367Z"
+      "temporaryPassword": "CGP-000889-ATADEEO5QY",
+      "passwordGeneratedAt": "2026-05-26T13:17:35.015Z"
     },
     {
       "memberId": "legacy-890-122-gomez-rodrigo",
       "memberNumber": "000890",
-      "uid": "TatjZe9BSZxpUDNaI7ot1TLOizWi",
+      "uid": "18FM3kCabpNwj963y7DMQcs26vi2",
       "authEmail": "socio-000890@club-auth.local",
-      "temporaryPassword": "CGP-000890-TKJAWSNRZW",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.417Z"
+      "temporaryPassword": "CGP-000890-JS9ILCDN1G",
+      "passwordGeneratedAt": "2026-05-26T13:17:36.901Z"
     },
     {
       "memberId": "legacy-891-123-perea-matias",
       "memberNumber": "000891",
-      "uid": "WZV2qBt2rJpdtuxq0y0spIQQqLEA",
+      "uid": "iRF5zOG7D6SRKMa7TqhrYtQUhco1",
       "authEmail": "socio-000891@club-auth.local",
-      "temporaryPassword": "CGP-000891-X3TAN6BYBG",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.485Z"
+      "temporaryPassword": "CGP-000891-GIOVT1J4BW",
+      "passwordGeneratedAt": "2026-05-26T13:17:38.860Z"
     },
     {
       "memberId": "legacy-892-124-blanco-maria-alejandra",
       "memberNumber": "000892",
-      "uid": "4tJFeIChXgpgeIsXHCF89xPOUVeB",
+      "uid": "35JOHpxfUmVqnsScR4GeWCN2sKz2",
       "authEmail": "socio-000892@club-auth.local",
-      "temporaryPassword": "CGP-000892-VRXJC3OKKI",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.531Z"
+      "temporaryPassword": "CGP-000892-3V6CDNIHS9",
+      "passwordGeneratedAt": "2026-05-26T13:17:40.732Z"
     },
     {
       "memberId": "legacy-893-125-gomez-luis-alejandro",
       "memberNumber": "000893",
-      "uid": "b1VuldYe4cSmBM7CN7JM0MgalA59",
+      "uid": "8FPYlR781OhPJjKhblBcSvkyvb12",
       "authEmail": "socio-000893@club-auth.local",
-      "temporaryPassword": "CGP-000893-BH741JURAT",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.588Z"
+      "temporaryPassword": "CGP-000893-WCZGJASZI8",
+      "passwordGeneratedAt": "2026-05-26T13:17:42.590Z"
     },
     {
       "memberId": "legacy-893-126-martinez-gustavo",
       "memberNumber": "000905",
-      "uid": "2lv3ANH6RY5OXD95lRam9wjoGNaz",
+      "uid": "Sjjs7J5AgugTNG5Eixozz2QPgiw1",
       "authEmail": "socio-000905@club-auth.local",
-      "temporaryPassword": "CGP-000905-MUHYHR1NM4",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.644Z"
+      "temporaryPassword": "CGP-000905-HSBVGGKSJH",
+      "passwordGeneratedAt": "2026-05-26T13:17:44.414Z"
     },
     {
       "memberId": "legacy-894-127-jure-segundo",
       "memberNumber": "000894",
-      "uid": "ZJp71iL69db5UII3ps1sekvmauUZ",
+      "uid": "xOD1K642iJbfHsagR7p9UlsB1Ww2",
       "authEmail": "socio-000894@club-auth.local",
-      "temporaryPassword": "CGP-000894-JS7F8EM8FT",
-      "passwordGeneratedAt": "2026-05-09T14:23:51.695Z"
+      "temporaryPassword": "CGP-000894-L5KUBILL2R",
+      "passwordGeneratedAt": "2026-05-26T13:17:46.261Z"
     }
   ]
 }

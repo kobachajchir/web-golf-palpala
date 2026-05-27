@@ -31,6 +31,8 @@ export interface CreatePostedMovementParams {
   approvedByUid?: string | null;
   applyPaymentCommission?: boolean;
   approvedAt?: Date;
+  netAmountMinorOverride?: number | null | undefined;
+  appliedCommissionAmountMinorOverride?: number | null | undefined;
 }
 
 export interface CreatedMovementResult {
@@ -66,6 +68,13 @@ export async function createPostedMovement(params: CreatePostedMovementParams): 
     appliedCommissionPctBps = activeRule.percentageBps;
     appliedCommissionAmountMinor = calculateAmountFromBps(params.grossAmountMinor, activeRule.percentageBps);
     netAmountMinor = params.grossAmountMinor - appliedCommissionAmountMinor;
+  }
+
+  if (params.netAmountMinorOverride !== undefined && params.netAmountMinorOverride !== null) {
+    netAmountMinor = params.netAmountMinorOverride;
+    appliedCommissionAmountMinor = params.appliedCommissionAmountMinorOverride
+      ?? Math.max(params.grossAmountMinor - params.netAmountMinorOverride, 0);
+    appliedCommissionPctBps = null;
   }
 
   const operationTimestamp = Timestamp.fromDate(params.operationDate);

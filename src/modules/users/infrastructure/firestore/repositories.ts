@@ -221,29 +221,48 @@ export function createMembersRepository(db: Firestore = requireFirestore()) {
           [...members].sort((left, right) => Number(right.isFamilyHolder) - Number(left.isFamilyHolder)),
         );
     },
-    listByLicenseEnd(status: string, pageSize = 50) {
-      return repository.listByQuery(
+    async listByLicenseEnd(status: string, pageSize = 50) {
+      const members = await repository.listByQuery(
         query(
           repository.collectionRef,
           where('status', '==', status),
-          orderBy('licenseEndAt', 'asc'),
-          limit(pageSize),
         ),
       );
+      return [...members]
+        .sort((left, right) => {
+          const leftTime = left.licenseEndAt?.toMillis?.() ?? 0;
+          const rightTime = right.licenseEndAt?.toMillis?.() ?? 0;
+          return leftTime - rightTime;
+        })
+        .slice(0, pageSize);
     },
     listByLinkedUserId(linkedUserId: string) {
       return repository.listByQuery(
         query(repository.collectionRef, where('linkedUserId', '==', linkedUserId)),
       );
     },
-    listAlphabetical(pageSize = 12) {
-      return repository.listByQuery(
-        query(repository.collectionRef, orderBy('lastName', 'asc'), orderBy('firstName', 'asc'), limit(pageSize)),
+    async listAlphabetical(pageSize = 12) {
+      const members = await repository.listByQuery(
+        query(repository.collectionRef, orderBy('lastName', 'asc'), limit(pageSize)),
       );
+      return [...members].sort((left, right) => {
+        const lastNameOrder = left.lastName.localeCompare(right.lastName, 'es-AR');
+        return lastNameOrder || left.firstName.localeCompare(right.firstName, 'es-AR');
+      });
     },
     countActive() {
       return repository.countByQuery(
         query(repository.collectionRef, where('status', '==', 'active')),
+      );
+    },
+    listMembershipRenewals(status: 'current' | 'needs_renewal', pageSize = 25) {
+      return repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('membershipRenewalStatus', '==', status),
+          orderBy('membershipRenewalDueAt', 'asc'),
+          limit(pageSize),
+        ),
       );
     },
   };
@@ -270,10 +289,14 @@ export function createEmployeesRepository(db: Firestore = requireFirestore()) {
         query(repository.collectionRef, where('linkedUserId', '==', linkedUserId)),
       );
     },
-    listAlphabetical(pageSize = 12) {
-      return repository.listByQuery(
-        query(repository.collectionRef, orderBy('lastName', 'asc'), orderBy('firstName', 'asc'), limit(pageSize)),
+    async listAlphabetical(pageSize = 12) {
+      const employees = await repository.listByQuery(
+        query(repository.collectionRef, orderBy('lastName', 'asc'), limit(pageSize)),
       );
+      return [...employees].sort((left, right) => {
+        const lastNameOrder = left.lastName.localeCompare(right.lastName, 'es-AR');
+        return lastNameOrder || left.firstName.localeCompare(right.firstName, 'es-AR');
+      });
     },
     countActive() {
       return repository.countByQuery(

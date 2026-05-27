@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import {
@@ -26,6 +26,8 @@ import type {
   FinancialMovementDocument,
   MacroDebitSettlementDocument,
   MemberFeeChargeDocument,
+  CreateMercadoPagoCheckoutResult,
+  MercadoPagoCheckoutSessionDocument,
   PaymentMethodDocument,
   SalaryPeriodicity,
   SalaryPaymentDocument,
@@ -38,6 +40,7 @@ import {
   createFinancialMovementsRepository,
   createMacroDebitSettlementsRepository,
   createMemberFeeChargesRepository,
+  createMercadoPagoCheckoutSessionsRepository,
   createPaymentMethodsRepository,
   createSalaryPaymentsRepository,
 } from '../modules/accounting/infrastructure/firestore/repositories';
@@ -65,9 +68,12 @@ type DashboardSnapshot = {
   monthSettlements: Array<EntityWithId<MacroDebitSettlementDocument>>;
   recentExpenses: Array<EntityWithId<ExpenseSubmissionDocument>>;
   periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+  pendingFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+  recentMercadoPagoSessions: Array<EntityWithId<MercadoPagoCheckoutSessionDocument>>;
   periodReferences: Array<EntityWithId<ExternalAccountingReferenceDocument>>;
   recentSalaryPayments: Array<EntityWithId<SalaryPaymentDocument>>;
   membersPreview: Array<EntityWithId<MemberDocument>>;
+  renewalMembers: Array<EntityWithId<MemberDocument>>;
   employeesPreview: Array<EntityWithId<EmployeeDocument>>;
   memberMap: Record<string, EntityWithId<MemberDocument>>;
   employeeMap: Record<string, EntityWithId<EmployeeDocument>>;
@@ -87,6 +93,7 @@ type FeePaymentFormState = {
   memberFeeChargeId: string;
   paymentMethodId: string;
   paymentReference: string;
+  operationDate: string;
   notes: string;
 };
 
@@ -144,17 +151,111 @@ type SalaryConfigFormState = {
   notes: string;
 };
 
-type AccountingSection = 'inicio' | 'movimientos' | 'tesoreria' | 'cuotas' | 'sensibles' | 'empleados' | 'reportes';
-type EntryModalType = 'income' | 'expense' | null;
-type SensitivePanel = 'reference' | 'salary' | 'void';
-
-type SensitivePanelState = Record<SensitivePanel, boolean>;
-
-const INITIAL_SENSITIVE_PANELS: SensitivePanelState = {
-  reference: false,
-  salary: false,
-  void: false,
+type AdminMercadoPagoCheckoutState = Pick<
+  CreateMercadoPagoCheckoutResult,
+  'sessionId' | 'preferenceId' | 'checkoutUrl' | 'status' | 'reused'
+> & {
+  title: string;
+  totalAmountMinor: number;
+  itemCount: number;
 };
+
+type AccountingSection = 'inicio' | 'cargar' | 'movimientos' | 'tesoreria' | 'cuotas' | 'sensibles' | 'empleados' | 'reportes';
+type EntryModalType = 'income' | 'expense' | null;
+type AccountingSubsection =
+  | 'load-entries'
+  | 'membership-pricing'
+  | 'renewals'
+  | 'movement-list'
+  | 'payment-methods'
+  | 'expense-form'
+  | 'generate-fee'
+  | 'register-payment'
+  | 'mercado-pago'
+  | 'expense-queue'
+  | 'employee-list'
+  | 'employee-expenses'
+  | 'treasury-summary'
+  | 'treasury-settlements'
+  | 'reference'
+  | 'salary'
+  | 'void'
+  | 'sensitive-settlements'
+  | 'sensitive-summary';
+
+const ACCOUNTING_SECTIONS: readonly AccountingSection[] = [
+  'inicio',
+  'cargar',
+  'movimientos',
+  'tesoreria',
+  'cuotas',
+  'sensibles',
+  'empleados',
+  'reportes',
+];
+
+const ACCOUNTING_SECTION_TITLES: Record<AccountingSection, string> = {
+  inicio: 'Contabilidad',
+  cargar: 'Ingresos y egresos',
+  movimientos: 'Movimientos financieros',
+  tesoreria: 'Tesoreria',
+  cuotas: 'Cuota societaria',
+  sensibles: 'Liquidaciones y controles',
+  empleados: 'Empleados y rendiciones',
+  reportes: 'Reportes',
+};
+
+const ACCOUNTING_SUBSECTIONS: readonly AccountingSubsection[] = [
+  'load-entries',
+  'membership-pricing',
+  'renewals',
+  'movement-list',
+  'payment-methods',
+  'expense-form',
+  'generate-fee',
+  'register-payment',
+  'mercado-pago',
+  'expense-queue',
+  'employee-list',
+  'employee-expenses',
+  'treasury-summary',
+  'treasury-settlements',
+  'reference',
+  'salary',
+  'void',
+  'sensitive-settlements',
+  'sensitive-summary',
+];
+
+const ACCOUNTING_SUBSECTION_SECTION: Record<AccountingSubsection, AccountingSection> = {
+  'load-entries': 'cargar',
+  'membership-pricing': 'cuotas',
+  renewals: 'cuotas',
+  'movement-list': 'movimientos',
+  'payment-methods': 'movimientos',
+  'expense-form': 'cuotas',
+  'generate-fee': 'cuotas',
+  'register-payment': 'cuotas',
+  'mercado-pago': 'cuotas',
+  'expense-queue': 'empleados',
+  'employee-list': 'empleados',
+  'employee-expenses': 'empleados',
+  'treasury-summary': 'tesoreria',
+  'treasury-settlements': 'tesoreria',
+  reference: 'sensibles',
+  salary: 'sensibles',
+  void: 'sensibles',
+  'sensitive-settlements': 'sensibles',
+  'sensitive-summary': 'sensibles',
+};
+
+function isAccountingSection(value: string | null): value is AccountingSection {
+  return Boolean(value && ACCOUNTING_SECTIONS.includes(value as AccountingSection));
+}
+
+function isAccountingSubsection(value: string | null): value is AccountingSubsection {
+  return Boolean(value && ACCOUNTING_SUBSECTIONS.includes(value as AccountingSubsection));
+}
 
 const accountingCallables = createAccountingCallables();
 const INCOME_CATEGORY_OPTIONS = [
@@ -184,6 +285,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   [ACCOUNTING_PAYMENT_METHOD_IDS.transfer]: 'Transferencia',
   [ACCOUNTING_PAYMENT_METHOD_IDS.debit]: 'Débito',
   [ACCOUNTING_PAYMENT_METHOD_IDS.debitMacro]: 'Débito Macro',
+  [ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago]: 'Mercado Pago',
 };
 
 const FALLBACK_PAYMENT_METHODS = [
@@ -199,7 +301,12 @@ const FALLBACK_PAYMENT_METHODS = [
     specialReportingType: 'macro_debit',
   },
   { id: ACCOUNTING_PAYMENT_METHOD_IDS.credit, name: 'Credito', bancarizado: true, active: true, sortOrder: 50 },
+  { id: ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago, name: 'Mercado Pago', bancarizado: true, active: true, sortOrder: 60 },
 ] as Array<EntityWithId<PaymentMethodDocument>>;
+
+function getDefaultExternalReferenceProvider(referenceType: ExternalReferenceFormState['referenceType']) {
+  return referenceType === 'F931' ? 'ARCA' : '';
+}
 
 function getCurrentAccountingPeriod(date = new Date()): AccountingPeriod {
   const year = date.getFullYear();
@@ -312,12 +419,30 @@ function getPaymentMethodOptionLabel(paymentMethod: EntityWithId<PaymentMethodDo
 }
 
 function requiresPaymentReference(paymentMethodId: string): boolean {
-  return paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.cash;
+  return paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.cash
+    && paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago;
 }
 
 function getMovementPaymentReference(movement: EntityWithId<FinancialMovementDocument>): string | null {
   const value = movement.metadata?.paymentReference;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function getDateInputAccountingPeriod(value: string): AccountingPeriod {
+  return value.slice(0, 7) as AccountingPeriod;
+}
+
+function getDateInputDay(value: string): number {
+  return Number(value.slice(8, 10));
+}
+
+function createMercadoPagoQrImageUrl(checkoutUrl: string): string {
+  const params = new URLSearchParams({
+    size: '260x260',
+    margin: '14',
+    data: checkoutUrl,
+  });
+  return `https://api.qrserver.com/v1/create-qr-code/?${params.toString()}`;
 }
 
 function ChevronIcon() {
@@ -343,7 +468,7 @@ function AccountingCollapsibleCard({
 }) {
   return (
     <article className={`accounting-collapsible-card ${open ? 'accounting-collapsible-card--open' : ''}`}>
-      <button type="button" className="accounting-collapsible-card__header" onClick={onToggle}>
+      <button type="button" className="accounting-collapsible-card__header" aria-expanded={open} onClick={onToggle}>
         <span>
           <strong>{title}</strong>
           <small>{description}</small>
@@ -354,6 +479,101 @@ function AccountingCollapsibleCard({
       </button>
       {open && <div className="accounting-collapsible-card__body">{children}</div>}
     </article>
+  );
+}
+
+function AccountingSectionToggle({
+  eyebrow,
+  title,
+  open,
+  onClick,
+}: {
+  eyebrow: string;
+  title: string;
+  open: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`accounting-section-toggle ${open ? 'accounting-section-toggle--open' : ''}`}
+      aria-expanded={open}
+      onClick={onClick}
+    >
+      <span>
+        <small className="eyebrow">{eyebrow}</small>
+        <strong>{title}</strong>
+      </span>
+      <span className="accounting-chevron" aria-hidden="true">
+        <ChevronIcon />
+      </span>
+    </button>
+  );
+}
+
+function MercadoPagoAdminCheckoutPanel({
+  checkout,
+  onClose,
+}: {
+  checkout: AdminMercadoPagoCheckoutState;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const qrImageUrl = checkout.checkoutUrl ? createMercadoPagoQrImageUrl(checkout.checkoutUrl) : '';
+
+  const handleCopyCheckoutUrl = async () => {
+    if (!checkout.checkoutUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(checkout.checkoutUrl);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <section className="floating-card mercado-pago-admin-checkout" aria-live="polite">
+      <div className="mercado-pago-admin-checkout__copy">
+        <p className="eyebrow">Caja online</p>
+        <h2>{checkout.title}</h2>
+        <p>
+          El checkout queda listo para que el socio pague en el mostrador. Escanea el QR o abrí/copiale el link de
+          Mercado Pago; el movimiento contable se registra cuando el webhook confirme la acreditación.
+        </p>
+        <div className="accounting-inline-summary">
+          <span>
+            {checkout.itemCount} concepto{checkout.itemCount === 1 ? '' : 's'} · Sesión {checkout.sessionId}
+          </span>
+          <strong>{formatCurrency(checkout.totalAmountMinor)}</strong>
+        </div>
+      </div>
+
+      <div className="mercado-pago-admin-checkout__payment">
+        {qrImageUrl ? (
+          <img src={qrImageUrl} alt="QR para abrir el checkout de Mercado Pago" />
+        ) : (
+          <div className="empty-state empty-state--inline">Mercado Pago no devolvió un link para generar el QR.</div>
+        )}
+        <div className="accounting-inline-actions">
+          {checkout.checkoutUrl && (
+            <a className="btn-primary" href={checkout.checkoutUrl} target="_blank" rel="noreferrer">
+              Abrir checkout
+            </a>
+          )}
+          {checkout.checkoutUrl && (
+            <button type="button" className="btn-secondary" onClick={handleCopyCheckoutUrl}>
+              {copied ? 'Link copiado' : 'Copiar link'}
+            </button>
+          )}
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -371,6 +591,34 @@ function getEmployeeDisplayName(employee: EntityWithId<EmployeeDocument> | null 
   }
 
   return `${employee.lastName}, ${employee.firstName}`;
+}
+
+function isMemberPaymentBlocked(member: EntityWithId<MemberDocument> | null | undefined): boolean {
+  return member?.status === 'inactive' || member?.status === 'suspended';
+}
+
+function timestampToDate(value: { toDate: () => Date } | Date | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  return value instanceof Date ? value : value.toDate();
+}
+
+function isMemberMembershipNotCurrent(member: EntityWithId<MemberDocument>, now = new Date()): boolean {
+  if (
+    isMemberPaymentBlocked(member)
+    || member.status === 'license'
+    || member.typeCodeSnapshot === 'vitalicio'
+    || member.typeId === 'vitalicio'
+  ) {
+    return false;
+  }
+
+  const renewalDueAt = timestampToDate(member.membershipRenewalDueAt);
+  return member.membershipRenewalStatus === 'needs_renewal'
+    || !member.lastFeePaymentAt
+    || Boolean(renewalDueAt && renewalDueAt.getTime() < now.getTime());
 }
 
 function SummaryCard({
@@ -444,6 +692,7 @@ async function loadRelatedProfiles(params: {
   membersPreview: Array<EntityWithId<MemberDocument>>;
   employeesPreview: Array<EntityWithId<EmployeeDocument>>;
   periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+  pendingFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
   recentMovements: Array<EntityWithId<FinancialMovementDocument>>;
   periodMovements: Array<EntityWithId<FinancialMovementDocument>>;
   recentExpenses: Array<EntityWithId<ExpenseSubmissionDocument>>;
@@ -465,7 +714,7 @@ async function loadRelatedProfiles(params: {
   const memberIds = new Set<string>();
   const employeeIds = new Set<string>();
 
-  params.periodFeeCharges.forEach((charge) => {
+  [...params.periodFeeCharges, ...params.pendingFeeCharges].forEach((charge) => {
     if (charge.memberId) {
       memberIds.add(charge.memberId);
     }
@@ -516,8 +765,12 @@ async function loadRelatedProfiles(params: {
 
 export function AccountingDashboard() {
   const { user, interfaceMode } = useAuth();
+  const [searchParams] = useSearchParams();
   const dashboardRole = getDashboardRole(user?.roleIds, interfaceMode);
   const periodNow = getCurrentAccountingPeriod();
+  const requestedSection = searchParams.get('section');
+  const requestedSubsection = searchParams.get('subsection');
+  const requestedEntry = searchParams.get('entry');
   const [selectedPeriod, setSelectedPeriod] = useState(periodNow);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -525,7 +778,7 @@ export function AccountingDashboard() {
   const [submittingAction, setSubmittingAction] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<AccountingSection>('inicio');
   const [entryModal, setEntryModal] = useState<EntryModalType>(null);
-  const [openSensitivePanels, setOpenSensitivePanels] = useState<SensitivePanelState>(INITIAL_SENSITIVE_PANELS);
+  const [openAccountingSubsection, setOpenAccountingSubsection] = useState<AccountingSubsection | null>(null);
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>({
     activeConfig: null,
     paymentMethods: [],
@@ -537,9 +790,12 @@ export function AccountingDashboard() {
     monthSettlements: [],
     recentExpenses: [],
     periodFeeCharges: [],
+    pendingFeeCharges: [],
+    recentMercadoPagoSessions: [],
     periodReferences: [],
     recentSalaryPayments: [],
     membersPreview: [],
+    renewalMembers: [],
     employeesPreview: [],
     memberMap: {},
     employeeMap: {},
@@ -557,13 +813,14 @@ export function AccountingDashboard() {
     memberFeeChargeId: '',
     paymentMethodId: ACCOUNTING_PAYMENT_METHOD_IDS.transfer,
     paymentReference: '',
+    operationDate: new Date().toISOString().slice(0, 10),
     notes: '',
   });
   const [externalReferenceForm, setExternalReferenceForm] = useState<ExternalReferenceFormState>({
     referenceType: 'F931',
     period: periodNow,
     amountMinor: '',
-    providerName: '',
+    providerName: getDefaultExternalReferenceProvider('F931'),
     referenceNumber: '',
     notes: '',
   });
@@ -607,6 +864,48 @@ export function AccountingDashboard() {
     allowOvertime: false,
     notes: '',
   });
+  const [memberSearch, setMemberSearch] = useState('');
+  const [renewalSearch, setRenewalSearch] = useState('');
+  const [expenseQueueSearch, setExpenseQueueSearch] = useState('');
+  const [expenseQueueStatus, setExpenseQueueStatus] = useState<'all' | 'submitted' | 'approved'>('all');
+  const [selectedMercadoPagoChargeIds, setSelectedMercadoPagoChargeIds] = useState<string[]>([]);
+  const [adminMercadoPagoCheckout, setAdminMercadoPagoCheckout] = useState<AdminMercadoPagoCheckoutState | null>(null);
+  const [isRenewalSearchOpen, setIsRenewalSearchOpen] = useState(false);
+  const [isExpenseQueueSearchOpen, setIsExpenseQueueSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const querySubsection = isAccountingSubsection(requestedSubsection) ? requestedSubsection : null;
+    const querySection = isAccountingSection(requestedSection)
+      ? requestedSection
+      : querySubsection
+        ? ACCOUNTING_SUBSECTION_SECTION[querySubsection]
+        : null;
+    const isRestrictedSection = querySection === 'sensibles' || querySection === 'tesoreria';
+
+    if (!querySection || (isRestrictedSection && dashboardRole !== 'directivo')) {
+      return;
+    }
+
+    startTransition(() => {
+      setActiveSection(querySection);
+
+      if (querySubsection) {
+        setOpenAccountingSubsection(querySubsection);
+      }
+
+      if (querySubsection === 'renewals') {
+        setIsRenewalSearchOpen(true);
+      }
+
+      if (querySubsection === 'expense-queue' || querySubsection === 'employee-expenses') {
+        setIsExpenseQueueSearchOpen(true);
+      }
+
+      if (requestedEntry === 'income' || requestedEntry === 'expense') {
+        setEntryModal(requestedEntry);
+      }
+    });
+  }, [dashboardRole, requestedEntry, requestedSection, requestedSubsection]);
 
   const loadDashboard = useCallback(async () => {
     if (!dashboardRole) {
@@ -626,6 +925,7 @@ export function AccountingDashboard() {
       const salaryPaymentsRepository = createSalaryPaymentsRepository();
       const externalAccountingReferencesRepository = createExternalAccountingReferencesRepository();
       const memberFeeChargesRepository = createMemberFeeChargesRepository();
+      const mercadoPagoCheckoutSessionsRepository = createMercadoPagoCheckoutSessionsRepository();
       const membersRepository = createMembersRepository();
       const employeesRepository = createEmployeesRepository();
 
@@ -642,6 +942,8 @@ export function AccountingDashboard() {
         recentSalaryPayments,
         periodReferences,
         periodFeeCharges,
+        pendingFeeCharges,
+        recentMercadoPagoSessions,
         membersPreview,
         employeesPreview,
         activeMembersCount,
@@ -661,7 +963,9 @@ export function AccountingDashboard() {
         dashboardRole === 'directivo' ? salaryPaymentsRepository.listByPeriod(selectedPeriod) : Promise.resolve([]),
         externalAccountingReferencesRepository.listByPeriod(selectedPeriod),
         memberFeeChargesRepository.listByPeriod(selectedPeriod),
-        membersRepository.listAlphabetical(10),
+        memberFeeChargesRepository.listPending(250),
+        mercadoPagoCheckoutSessionsRepository.listRecent(8),
+        membersRepository.listDirectory(),
         employeesRepository.listAlphabetical(10),
         membersRepository.countActive(),
         employeesRepository.countActive(),
@@ -673,6 +977,7 @@ export function AccountingDashboard() {
         membersPreview,
         employeesPreview,
         periodFeeCharges,
+        pendingFeeCharges,
         recentMovements,
         periodMovements,
         recentExpenses,
@@ -692,7 +997,10 @@ export function AccountingDashboard() {
         recentSalaryPayments,
         periodReferences,
         periodFeeCharges,
+        pendingFeeCharges,
+        recentMercadoPagoSessions,
         membersPreview,
+        renewalMembers: membersPreview.filter((member) => isMemberMembershipNotCurrent(member)),
         employeesPreview,
         memberMap,
         employeeMap,
@@ -720,9 +1028,13 @@ export function AccountingDashboard() {
       }));
     }
 
-    const pendingCharge = snapshot.periodFeeCharges.find(
-      (charge) => charge.status === 'pending' || charge.status === 'overdue',
-    );
+    const pendingCharge = [...snapshot.pendingFeeCharges, ...snapshot.periodFeeCharges].find((charge) => {
+      if (charge.status !== 'pending' && charge.status !== 'overdue') {
+        return false;
+      }
+      const member = snapshot.memberMap[charge.memberId ?? ''] ?? snapshot.memberMap[charge.holderMemberId ?? ''];
+      return !isMemberPaymentBlocked(member);
+    });
     if (!feePaymentForm.memberFeeChargeId && pendingCharge) {
       setFeePaymentForm((current) => ({
         ...current,
@@ -757,6 +1069,8 @@ export function AccountingDashboard() {
     submitExpenseForm.employeeId,
     snapshot.employeesPreview,
     snapshot.membersPreview,
+    snapshot.memberMap,
+    snapshot.pendingFeeCharges,
     snapshot.periodFeeCharges,
     snapshot.recentMovements,
     voidMovementForm.movementId,
@@ -782,9 +1096,67 @@ export function AccountingDashboard() {
       snapshot.periodFeeCharges.length > 0,
   );
   const paymentMethodOptions = useMemo(
-    () => (snapshot.paymentMethods.length > 0 ? snapshot.paymentMethods : FALLBACK_PAYMENT_METHODS),
+    () => {
+      const configuredMethods = snapshot.paymentMethods.length > 0 ? snapshot.paymentMethods : FALLBACK_PAYMENT_METHODS;
+      const configuredIds = new Set(configuredMethods.map((paymentMethod) => paymentMethod.id));
+      return [
+        ...configuredMethods,
+        ...FALLBACK_PAYMENT_METHODS.filter((paymentMethod) => !configuredIds.has(paymentMethod.id)),
+      ].sort((left, right) => left.sortOrder - right.sortOrder);
+    },
     [snapshot.paymentMethods],
   );
+  const manualPaymentMethodOptions = useMemo(
+    () => paymentMethodOptions.filter((paymentMethod) => paymentMethod.id !== ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago),
+    [paymentMethodOptions],
+  );
+  const payableFeeCharges = useMemo(() => {
+    const chargesById = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
+    [...snapshot.pendingFeeCharges, ...snapshot.periodFeeCharges].forEach((charge) => {
+      if (charge.status === 'pending' || charge.status === 'overdue') {
+        chargesById.set(charge.id, charge);
+      }
+    });
+    return [...chargesById.values()].sort((left, right) => left.period.localeCompare(right.period));
+  }, [snapshot.pendingFeeCharges, snapshot.periodFeeCharges]);
+  const pendingChargesByMemberId = useMemo(() => {
+    const grouped = new Map<string, Array<EntityWithId<MemberFeeChargeDocument>>>();
+    payableFeeCharges.forEach((charge) => {
+      const memberId = charge.memberId ?? charge.holderMemberId ?? null;
+      if (!memberId) {
+        return;
+      }
+      grouped.set(memberId, [...(grouped.get(memberId) ?? []), charge]);
+    });
+    return grouped;
+  }, [payableFeeCharges]);
+  const filteredMembers = useMemo(() => {
+    const queryText = memberSearch.trim().toLocaleLowerCase('es-AR');
+
+    if (!queryText) {
+      return snapshot.membersPreview.slice(0, 60);
+    }
+
+    return snapshot.membersPreview
+      .filter((member) => {
+        const haystack = `${member.lastName} ${member.firstName} ${member.memberNumber}`.toLocaleLowerCase('es-AR');
+        return haystack.includes(queryText);
+      })
+      .slice(0, 60);
+  }, [memberSearch, snapshot.membersPreview]);
+
+  const filteredRenewalMembers = useMemo(() => {
+    const queryText = renewalSearch.trim().toLocaleLowerCase('es-AR');
+
+    if (!queryText) {
+      return snapshot.renewalMembers;
+    }
+
+    return snapshot.renewalMembers.filter((member) => {
+      const haystack = `${getMemberDisplayName(member)} ${member.memberNumber ?? ''}`.toLocaleLowerCase('es-AR');
+      return haystack.includes(queryText);
+    });
+  }, [renewalSearch, snapshot.renewalMembers]);
 
   const incomeTotalMinor = useMemo(
     () =>
@@ -847,8 +1219,70 @@ export function AccountingDashboard() {
   );
 
   const selectedFeeCharge = useMemo(
-    () => snapshot.periodFeeCharges.find((charge) => charge.id === feePaymentForm.memberFeeChargeId) ?? null,
-    [feePaymentForm.memberFeeChargeId, snapshot.periodFeeCharges],
+    () => payableFeeCharges.find((charge) => charge.id === feePaymentForm.memberFeeChargeId) ?? null,
+    [feePaymentForm.memberFeeChargeId, payableFeeCharges],
+  );
+  const selectedGenerateFeeMember = useMemo(
+    () =>
+      snapshot.membersPreview.find((member) => member.id === generateFeeForm.memberId)
+      ?? snapshot.memberMap[generateFeeForm.memberId]
+      ?? null,
+    [generateFeeForm.memberId, snapshot.memberMap, snapshot.membersPreview],
+  );
+  const selectedFeeChargeMember = useMemo(() => {
+    if (!selectedFeeCharge) {
+      return null;
+    }
+
+    return snapshot.memberMap[selectedFeeCharge.memberId ?? ''] ?? snapshot.memberMap[selectedFeeCharge.holderMemberId ?? ''] ?? null;
+  }, [selectedFeeCharge, snapshot.memberMap]);
+  const selectedGenerateFeeMemberBlocked = isMemberPaymentBlocked(selectedGenerateFeeMember);
+  const selectedFeeChargeMemberBlocked = isMemberPaymentBlocked(selectedFeeChargeMember);
+  const feePaymentAccountingPeriod = getDateInputAccountingPeriod(feePaymentForm.operationDate);
+  const feePaymentIsOutsideChargePeriod = Boolean(
+    selectedFeeCharge && feePaymentAccountingPeriod !== selectedFeeCharge.period,
+  );
+  const feePaymentWouldApplyEarlyDiscount = Boolean(
+    selectedFeeCharge &&
+      !feePaymentIsOutsideChargePeriod &&
+      getDateInputDay(feePaymentForm.operationDate) >= 1 &&
+      getDateInputDay(feePaymentForm.operationDate) <= (snapshot.activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10),
+  );
+  const isFeePaymentFormReady = Boolean(
+    selectedFeeCharge &&
+      feePaymentForm.operationDate &&
+      feePaymentForm.paymentMethodId &&
+      !selectedFeeChargeMemberBlocked &&
+      (!requiresPaymentReference(feePaymentForm.paymentMethodId) || feePaymentForm.paymentReference.trim()),
+  );
+  const mercadoPagoEligibleFeeCharges = useMemo(
+    () =>
+      payableFeeCharges.filter((charge) => {
+        const member = snapshot.memberMap[charge.memberId ?? ''] ?? snapshot.memberMap[charge.holderMemberId ?? ''];
+        return !isMemberPaymentBlocked(member);
+      }),
+    [payableFeeCharges, snapshot.memberMap],
+  );
+  const selectedMercadoPagoCharges = useMemo(
+    () => mercadoPagoEligibleFeeCharges.filter((charge) => selectedMercadoPagoChargeIds.includes(charge.id)),
+    [mercadoPagoEligibleFeeCharges, selectedMercadoPagoChargeIds],
+  );
+  const selectedMercadoPagoTotalMinor = useMemo(
+    () => selectedMercadoPagoCharges.reduce((total, charge) => total + charge.finalAmountMinor, 0),
+    [selectedMercadoPagoCharges],
+  );
+  const manualIncomeAmountMinor = useMemo(
+    () => parseAmountInputToMinor(manualIncomeForm.amount),
+    [manualIncomeForm.amount],
+  );
+  const isManualIncomeFormReady = Boolean(
+    manualIncomeForm.operationDate &&
+      manualIncomeForm.categoryId &&
+      manualIncomeForm.concept.trim() &&
+      Number.isFinite(manualIncomeAmountMinor) &&
+      manualIncomeAmountMinor > 0 &&
+      manualIncomeForm.paymentMethodId &&
+      (!requiresPaymentReference(manualIncomeForm.paymentMethodId) || manualIncomeForm.paymentReference.trim()),
   );
 
   const paymentMix = useMemo(() => {
@@ -876,6 +1310,31 @@ export function AccountingDashboard() {
       ),
     [snapshot.recentExpenses],
   );
+  const filteredRecentExpenseQueue = useMemo(() => {
+    const queryText = expenseQueueSearch.trim().toLocaleLowerCase('es-AR');
+
+    return recentExpenseQueue.filter((expense) => {
+      if (expenseQueueStatus !== 'all' && expense.status !== expenseQueueStatus) {
+        return false;
+      }
+
+      if (!queryText) {
+        return true;
+      }
+
+      const employee = snapshot.employeeMap[expense.employeeId];
+      const haystack = [
+        getEmployeeDisplayName(employee),
+        expense.categoryCodeSnapshot,
+        expense.description,
+        expense.vendorName ?? '',
+      ]
+        .join(' ')
+        .toLocaleLowerCase('es-AR');
+
+      return haystack.includes(queryText);
+    });
+  }, [expenseQueueSearch, expenseQueueStatus, recentExpenseQueue, snapshot.employeeMap]);
 
   const handlePeriodChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextPeriod = normalizeAccountingPeriod(event.target.value);
@@ -888,21 +1347,21 @@ export function AccountingDashboard() {
 
   const handleSectionChange = (section: AccountingSection) => {
     startTransition(() => {
+      const nextSection = activeSection === section ? 'inicio' : section;
+
       if (section === 'inicio') {
         setSelectedPeriod(periodNow);
         setGenerateFeeForm((current) => ({ ...current, period: periodNow }));
         setExternalReferenceForm((current) => ({ ...current, period: periodNow }));
       }
 
-      setActiveSection(section);
+      setActiveSection(nextSection);
+      setOpenAccountingSubsection(null);
     });
   };
 
-  const toggleSensitivePanel = (panel: SensitivePanel) => {
-    setOpenSensitivePanels((current) => ({
-      ...current,
-      [panel]: !current[panel],
-    }));
+  const toggleAccountingSubsection = (subsection: AccountingSubsection) => {
+    setOpenAccountingSubsection((current) => (current === subsection ? null : subsection));
   };
 
   const refreshAfterAction = async (message: string) => {
@@ -910,10 +1369,34 @@ export function AccountingDashboard() {
     await loadDashboard();
   };
 
+  const showAdminMercadoPagoCheckout = async (
+    checkout: CreateMercadoPagoCheckoutResult,
+    details: Pick<AdminMercadoPagoCheckoutState, 'title' | 'totalAmountMinor' | 'itemCount'>,
+  ) => {
+    setAdminMercadoPagoCheckout({
+      sessionId: checkout.sessionId,
+      preferenceId: checkout.preferenceId,
+      checkoutUrl: checkout.checkoutUrl,
+      status: checkout.status,
+      reused: checkout.reused,
+      ...details,
+    });
+    await refreshAfterAction(
+      checkout.checkoutUrl
+        ? `Checkout Mercado Pago listo para cobrar en administración (${checkout.sessionId}).`
+        : `Se creó la sesión Mercado Pago ${checkout.sessionId}, pero no devolvió link de pago.`,
+    );
+  };
+
   const handleGenerateCuota = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!generateFeeForm.memberId) {
       setNotice({ kind: 'error', message: 'Seleccioná un socio para generar la cuota.' });
+      return;
+    }
+
+    if (selectedGenerateFeeMemberBlocked) {
+      setNotice({ kind: 'error', message: 'No se pueden crear pagos nuevos para socios dados de baja o suspendidos.' });
       return;
     }
 
@@ -949,6 +1432,11 @@ export function AccountingDashboard() {
       return;
     }
 
+    if (selectedFeeChargeMemberBlocked) {
+      setNotice({ kind: 'error', message: 'No se pueden cobrar cuotas de socios dados de baja o suspendidos.' });
+      return;
+    }
+
     if (requiresPaymentReference(feePaymentForm.paymentMethodId) && !feePaymentForm.paymentReference.trim()) {
       setNotice({ kind: 'error', message: 'Ingresá una referencia para este medio de pago.' });
       return;
@@ -958,6 +1446,25 @@ export function AccountingDashboard() {
     setNotice(null);
 
     try {
+      if (feePaymentForm.paymentMethodId === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago) {
+        const checkout = await accountingCallables.createMercadoPagoCheckout({
+          items: [
+            {
+              sourceType: 'member_fee_charge',
+              sourceId: selectedFeeCharge.id,
+            },
+          ],
+          notes: feePaymentForm.notes || `Checkout Mercado Pago para cuota ${selectedFeeCharge.period}.`,
+        });
+
+        await showAdminMercadoPagoCheckout(checkout, {
+          title: `Cobro de cuota ${selectedFeeCharge.period}`,
+          totalAmountMinor: selectedFeeCharge.finalAmountMinor,
+          itemCount: 1,
+        });
+        return;
+      }
+
       const result = await accountingCallables.registerPayment({
         sourceType: 'member_fee_charge',
         sourceId: selectedFeeCharge.id,
@@ -966,16 +1473,21 @@ export function AccountingDashboard() {
         paymentMethodId: feePaymentForm.paymentMethodId,
         paymentReference: feePaymentForm.paymentReference.trim() || null,
         grossAmountMinor: selectedFeeCharge.finalAmountMinor,
-        operationDate: new Date().toISOString(),
+        operationDate: new Date(`${feePaymentForm.operationDate}T00:00:00.000-03:00`).toISOString(),
         notes: feePaymentForm.notes || null,
         metadata: {
           paymentReference: feePaymentForm.paymentReference.trim() || null,
         },
       });
+      const periodHint = feePaymentIsOutsideChargePeriod
+        ? ' La fecha de pago queda fuera del periodo de la cuota: se registra el cobro, pero sin pronto pago.'
+        : feePaymentWouldApplyEarlyDiscount
+          ? ' Se aplico pronto pago por estar dentro del periodo y antes del dia limite.'
+          : '';
       await refreshAfterAction(
         result.duplicate
           ? `El pago ya estaba registrado en el movimiento ${result.movementId}.`
-          : `Se registró el cobro en el movimiento ${result.movementId}.`,
+          : `Se registró el cobro en el movimiento ${result.movementId}.${periodHint}`,
       );
       setFeePaymentForm((current) => ({ ...current, paymentReference: '', notes: '' }));
     } catch (actionError) {
@@ -988,9 +1500,107 @@ export function AccountingDashboard() {
     }
   };
 
+  const toggleMercadoPagoCharge = (chargeId: string) => {
+    setSelectedMercadoPagoChargeIds((current) =>
+      current.includes(chargeId)
+        ? current.filter((selectedId) => selectedId !== chargeId)
+        : [...current, chargeId],
+    );
+  };
+
+  const handleCreateMercadoPagoCheckout = async () => {
+    if (selectedMercadoPagoCharges.length === 0) {
+      setNotice({ kind: 'error', message: 'Seleccioná al menos una cuota pendiente para pagar online.' });
+      return;
+    }
+
+    setSubmittingAction('mercado-pago-checkout');
+    setNotice(null);
+
+    try {
+      const result = await accountingCallables.createMercadoPagoCheckout({
+        items: selectedMercadoPagoCharges.map((charge) => ({
+          sourceType: 'member_fee_charge',
+          sourceId: charge.id,
+        })),
+        notes: `Checkout Mercado Pago generado desde contabilidad para ${selectedPeriod}.`,
+      });
+
+      await showAdminMercadoPagoCheckout(result, {
+        title: 'Cobro agrupado de cuotas',
+        totalAmountMinor: selectedMercadoPagoTotalMinor,
+        itemCount: selectedMercadoPagoCharges.length,
+      });
+    } catch (actionError) {
+      setNotice({
+        kind: 'error',
+        message: actionError instanceof Error ? actionError.message : 'No pudimos crear el checkout de Mercado Pago.',
+      });
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
+
+  const openFeePaymentFormForCharge = (chargeId: string) => {
+    setActiveSection('cuotas');
+    setOpenAccountingSubsection('register-payment');
+    setFeePaymentForm((current) => ({
+      ...current,
+      memberFeeChargeId: chargeId,
+    }));
+  };
+
+  const handleStartRenewalPayment = async (member: EntityWithId<MemberDocument>) => {
+    if (isMemberPaymentBlocked(member)) {
+      setNotice({ kind: 'error', message: 'No se pueden crear ni cobrar cuotas de socios dados de baja o suspendidos.' });
+      return;
+    }
+
+    const existingCharge = pendingChargesByMemberId.get(member.id)?.[0] ?? null;
+    if (existingCharge) {
+      openFeePaymentFormForCharge(existingCharge.id);
+      setNotice({ kind: 'success', message: `Se abrio el formulario de pago para ${getMemberDisplayName(member)}.` });
+      return;
+    }
+
+    setSubmittingAction(`renewal-payment-${member.id}`);
+    setNotice(null);
+
+    try {
+      const result = await accountingCallables.generateCuota({
+        memberId: member.id,
+        period: selectedPeriod as AccountingPeriod,
+        notes: `Generada desde renovaciones pendientes para ${getMemberDisplayName(member)}.`,
+      });
+      await refreshAfterAction(
+        result.duplicate
+          ? `La cuota ya existia y se reutilizo el cargo ${result.memberFeeChargeId}.`
+          : `Se genero la cuota ${result.memberFeeChargeId}. Elegi el medio de pago para continuar.`,
+      );
+      openFeePaymentFormForCharge(result.memberFeeChargeId);
+    } catch (actionError) {
+      setNotice({
+        kind: 'error',
+        message: actionError instanceof Error ? actionError.message : 'No pudimos preparar el pago de la membresia.',
+      });
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
+
   const handleSubmitIncome = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const amountMinor = parseAmountInputToMinor(manualIncomeForm.amount);
+
+    if (!manualIncomeForm.operationDate) {
+      setNotice({ kind: 'error', message: 'Elegi una fecha para el ingreso.' });
+      return;
+    }
+
+    if (!manualIncomeForm.categoryId) {
+      setNotice({ kind: 'error', message: 'Elegi una categoria para el ingreso.' });
+      return;
+    }
 
     if (!manualIncomeForm.concept.trim()) {
       setNotice({ kind: 'error', message: 'Agrega un concepto para el ingreso.' });
@@ -1002,10 +1612,47 @@ export function AccountingDashboard() {
       return;
     }
 
+    if (!manualIncomeForm.paymentMethodId) {
+      setNotice({ kind: 'error', message: 'Elegi un medio de pago.' });
+      return;
+    }
+
+    if (requiresPaymentReference(manualIncomeForm.paymentMethodId) && !manualIncomeForm.paymentReference.trim()) {
+      setNotice({ kind: 'error', message: 'Ingresa una referencia para este medio de pago.' });
+      return;
+    }
+
     setSubmittingAction('submit-income');
     setNotice(null);
 
     try {
+      if (manualIncomeForm.paymentMethodId === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago) {
+        const checkout = await accountingCallables.createMercadoPagoCheckout({
+          items: [
+            {
+              sourceType: 'manual_income',
+              categoryId: manualIncomeForm.categoryId,
+              description: manualIncomeForm.concept.trim(),
+              amountMinor,
+              metadata: {
+                concept: manualIncomeForm.concept.trim(),
+                entryMode: 'manual',
+                operationDate: manualIncomeForm.operationDate,
+              },
+            },
+          ],
+          notes: manualIncomeForm.notes || `Ingreso manual Mercado Pago: ${manualIncomeForm.concept.trim()}.`,
+        });
+
+        setEntryModal(null);
+        await showAdminMercadoPagoCheckout(checkout, {
+          title: manualIncomeForm.concept.trim(),
+          totalAmountMinor: amountMinor,
+          itemCount: 1,
+        });
+        return;
+      }
+
       await accountingCallables.registerPayment({
         sourceType: 'manual_income',
         sourceId: null,
@@ -1097,7 +1744,7 @@ export function AccountingDashboard() {
     event.preventDefault();
 
     if (dashboardRole !== 'directivo') {
-      setNotice({ kind: 'error', message: 'Solo Junta Directiva puede modificar sueldos.' });
+      setNotice({ kind: 'error', message: 'Solo Comité Ejecutivo puede modificar sueldos.' });
       return;
     }
 
@@ -1146,7 +1793,7 @@ export function AccountingDashboard() {
     event.preventDefault();
 
     if (!dashboardRole) {
-      setNotice({ kind: 'error', message: 'Solo administración o Junta Directiva puede modificar los precios de membresía.' });
+      setNotice({ kind: 'error', message: 'Solo administración o Comité Ejecutivo puede modificar los precios de membresía.' });
       return;
     }
 
@@ -1282,7 +1929,7 @@ export function AccountingDashboard() {
       setExternalReferenceForm((current) => ({
         ...current,
         amountMinor: '',
-        providerName: '',
+        providerName: getDefaultExternalReferenceProvider(current.referenceType),
         referenceNumber: '',
         notes: '',
       }));
@@ -1348,7 +1995,7 @@ export function AccountingDashboard() {
   const membershipPricingFormCard = (
     <form className="accounting-action-card" onSubmit={handleUpsertMembershipPricing}>
       <div>
-        <strong>Configurar cuotas de socios</strong>
+        <strong>Modificar precio de cuota societaria</strong>
         <p>
           Editá el precio base del socio pleno y los descuentos por tipo. Se guarda como una nueva versión activa en
           Firebase.
@@ -1444,7 +2091,7 @@ export function AccountingDashboard() {
   );
 
   if (!dashboardRole) {
-    return <div className="empty-state">Esta sección contable solo está disponible para administración y Junta Directiva.</div>;
+    return <div className="empty-state">Esta sección contable solo está disponible para administración y Comité Ejecutivo.</div>;
   }
 
   return (
@@ -1452,7 +2099,7 @@ export function AccountingDashboard() {
       <div className="accounting-shell">
         {false && <section className="floating-card accounting-hero">
           <div className="accounting-hero__copy">
-            <p className="eyebrow">{dashboardRole === 'directivo' ? 'Junta Directiva' : 'Administración'}</p>
+            <p className="eyebrow">{dashboardRole === 'directivo' ? 'Comité Ejecutivo' : 'Administración'}</p>
             <h1>Contabilidad</h1>
             <p>
               {dashboardRole === 'directivo'
@@ -1483,6 +2130,12 @@ export function AccountingDashboard() {
             {notice.message}
           </div>
         )}
+        {adminMercadoPagoCheckout && (
+          <MercadoPagoAdminCheckoutPanel
+            checkout={adminMercadoPagoCheckout}
+            onClose={() => setAdminMercadoPagoCheckout(null)}
+          />
+        )}
         {loading && !hasDashboardData && (
           <div className="loading-state loading-state--inline accounting-loading-inline">
             <span className="loading-spinner" />
@@ -1490,159 +2143,240 @@ export function AccountingDashboard() {
           </div>
         )}
 
-        <section className="floating-card accounting-workbench accounting-workbench--centered">
+        <div className={`accounting-sections-shell ${activeSection !== 'inicio' ? 'accounting-sections-shell--mobile-focused' : ''}`}>
+        <section className="floating-card accounting-workbench accounting-workbench--centered accounting-sections-nav">
           <div className="accounting-section-header">
             <div>
               <p className="eyebrow">Contabilidad</p>
               <h2>Carga diaria y accesos contables</h2>
             </div>
-            {activeSection !== 'inicio' && (
-              <button type="button" className="btn-secondary" onClick={() => handleSectionChange('inicio')}>
-                Volver
-              </button>
-            )}
           </div>
 
-          {true ? (
-            <div className="accounting-hub-grid">
-              <article className="accounting-hub-card accounting-hub-card--primary">
-                <span className="eyebrow">Cargar datos</span>
-                <h3>Ingresos y egresos</h3>
-                <p>Accesos rápidos para registrar dinero que entra o sale del club.</p>
-                <div className="accounting-hub-card__actions">
-                  <button type="button" className="btn-primary" onClick={() => setEntryModal('income')}>
+          <div className="accounting-section-list">
+            <AccountingSectionToggle
+              eyebrow="Cargar datos"
+              title="Ingresos y egresos"
+              open={activeSection === 'cargar'}
+              onClick={() => handleSectionChange('cargar')}
+            />
+            <AccountingSectionToggle
+              eyebrow="Movimientos financieros"
+              title="Ingresos, egresos y medios de pago"
+              open={activeSection === 'movimientos'}
+              onClick={() => handleSectionChange('movimientos')}
+            />
+            <AccountingSectionToggle
+              eyebrow="Cuota societaria"
+              title="Precio y renovaciones"
+              open={activeSection === 'cuotas'}
+              onClick={() => handleSectionChange('cuotas')}
+            />
+            {dashboardRole === 'directivo' && (
+              <AccountingSectionToggle
+                eyebrow="Tesorería"
+                title="Caja, bancos y conciliaciones"
+                open={activeSection === 'tesoreria'}
+                onClick={() => handleSectionChange('tesoreria')}
+              />
+            )}
+            {dashboardRole === 'directivo' && (
+              <AccountingSectionToggle
+                eyebrow="Liquidaciones y controles sensibles"
+                title="Sueldos, referencias y obligaciones"
+                open={activeSection === 'sensibles'}
+                onClick={() => handleSectionChange('sensibles')}
+              />
+            )}
+            <AccountingSectionToggle
+              eyebrow="Empleados y rendiciones"
+              title="Recibos, gastos y horas extra"
+              open={activeSection === 'empleados'}
+              onClick={() => handleSectionChange('empleados')}
+            />
+            <Link className="accounting-section-toggle accounting-section-toggle--link" to="/accounting/reports">
+              <span>
+                <small className="eyebrow">Reportes</small>
+                <strong>Análisis y trazabilidad</strong>
+              </span>
+              <span className="accounting-chevron" aria-hidden="true">
+                <ChevronIcon />
+              </span>
+            </Link>
+          </div>
+        </section>
+
+        <div className="accounting-section-content-slot">
+        {activeSection !== 'inicio' && (
+          <button
+            type="button"
+            className="ui-action-button ui-action-button--compact accounting-mobile-back"
+            onClick={() => handleSectionChange('inicio')}
+          >
+            <span className="accounting-chevron" aria-hidden="true">
+              <ChevronIcon />
+            </span>
+            <span>
+              <small>Volver</small>
+              <strong>{ACCOUNTING_SECTION_TITLES[activeSection]}</strong>
+            </span>
+          </button>
+        )}
+        {activeSection === 'inicio' && (
+          <section className="accounting-section-placeholder">
+            <strong>Seleccioná una sección</strong>
+          </section>
+        )}
+
+        {activeSection === 'cargar' && (
+          <section className="floating-card accounting-primary-panel accounting-dropdown-panel">
+            <div className="accounting-section-header">
+              <div>
+                <p className="eyebrow">Cargar datos</p>
+                <h2>Ingresos y egresos</h2>
+              </div>
+            </div>
+
+            <div className="accounting-subsection-stack">
+              <AccountingCollapsibleCard
+                title="Acciones de carga"
+                description="Ingresos, egresos y cierre de caja desde un único bloque operativo."
+                open={openAccountingSubsection === 'load-entries'}
+                onToggle={() => toggleAccountingSubsection('load-entries')}
+              >
+                <div className="accounting-inline-actions accounting-inline-actions--centered">
+                  <button type="button" className="ui-action-button ui-action-button--positive" onClick={() => setEntryModal('income')}>
                     Cargar ingreso
                   </button>
-                  <button type="button" className="btn-secondary" onClick={() => setEntryModal('expense')}>
+                  <button type="button" className="ui-action-button ui-action-button--danger" onClick={() => setEntryModal('expense')}>
                     Cargar egreso
                   </button>
+                  {dashboardRole === 'administrativo' && (
+                    <Link className="ui-action-button ui-action-button--secondary" to="/accounting/cash-closures">
+                      Cerrar caja
+                    </Link>
+                  )}
                 </div>
-              </article>
-
-              <button type="button" className="accounting-hub-card" onClick={() => handleSectionChange('movimientos')}>
-                <span className="eyebrow">Movimientos financieros</span>
-                <h3>Ingresos, egresos y medios de pago</h3>
-                <p>Caja chica, transferencias, débito automático, crédito y otros movimientos diarios.</p>
-              </button>
-
-              <button type="button" className="accounting-hub-card" onClick={() => handleSectionChange('cuotas')}>
-                <span className="eyebrow">Cuotas y descuentos</span>
-                <h3>Precio base de membresía</h3>
-                <p>Actualizá el valor del socio pleno y los descuentos por tipo de socio.</p>
-              </button>
-
-              {dashboardRole === 'directivo' && (
-                <button type="button" className="accounting-hub-card" onClick={() => handleSectionChange('tesoreria')}>
-                  <span className="eyebrow">Tesorería</span>
-                  <h3>Caja, bancos y conciliaciones</h3>
-                  <p>Control del dinero disponible, saldos del período y medios de pago.</p>
-                </button>
-              )}
-
-              {dashboardRole === 'directivo' && (
-                <button type="button" className="accounting-hub-card" onClick={() => handleSectionChange('sensibles')}>
-                  <span className="eyebrow">Liquidaciones y controles sensibles</span>
-                  <h3>Sueldos, referencias y obligaciones</h3>
-                  <p>Información delicada de control interno para Junta Directiva.</p>
-                </button>
-              )}
-
-              <button type="button" className="accounting-hub-card" onClick={() => handleSectionChange('empleados')}>
-                <span className="eyebrow">Empleados y rendiciones</span>
-                <h3>Recibos, gastos y horas extra</h3>
-                <p>Listado de empleados, rendiciones cargadas y detalle operativo de cada legajo.</p>
-              </button>
-
-              <button type="button" className="accounting-hub-card" onClick={() => handleSectionChange('reportes')}>
-                <span className="eyebrow">Reportes</span>
-                <h3>Análisis y trazabilidad</h3>
-                <p>Tablero ejecutivo, resumen financiero, gráficas, historial y auditoría.</p>
-              </button>
+              </AccountingCollapsibleCard>
             </div>
-          ) : (
-            <div className="accounting-link-groups">
-              <div className="accounting-link-group">
-                <strong>Movimientos financieros</strong>
-                <button
-                  type="button"
-                  className={activeSection === 'movimientos' ? 'accounting-link-button accounting-link-button--active' : 'accounting-link-button'}
-                  onClick={() => handleSectionChange('movimientos')}
-                >
-                  Consultar ingresos, egresos y cobros
-                </button>
-              </div>
-              <div className="accounting-link-group">
-                <strong>Cuotas y descuentos</strong>
-                <button
-                  type="button"
-                  className={activeSection === 'cuotas' ? 'accounting-link-button accounting-link-button--active' : 'accounting-link-button'}
-                  onClick={() => handleSectionChange('cuotas')}
-                >
-                  Precio base y descuentos por tipo
-                </button>
-              </div>
-              {dashboardRole === 'directivo' && (
-                <div className="accounting-link-group">
-                  <strong>Tesorería</strong>
-                  <button
-                    type="button"
-                    className={activeSection === 'tesoreria' ? 'accounting-link-button accounting-link-button--active' : 'accounting-link-button'}
-                    onClick={() => handleSectionChange('tesoreria')}
-                  >
-                    Caja, bancos y conciliaciones
-                  </button>
-                </div>
-              )}
-              {dashboardRole === 'directivo' && (
-                <div className="accounting-link-group">
-                  <strong>Liquidaciones y controles sensibles</strong>
-                  <button
-                    type="button"
-                    className={activeSection === 'sensibles' ? 'accounting-link-button accounting-link-button--active' : 'accounting-link-button'}
-                    onClick={() => handleSectionChange('sensibles')}
-                  >
-                    Sueldos, referencias y obligaciones
-                  </button>
-                </div>
-              )}
-              <div className="accounting-link-group">
-                <strong>Reportes</strong>
-                <button
-                  type="button"
-                  className={activeSection === 'reportes' ? 'accounting-link-button accounting-link-button--active' : 'accounting-link-button'}
-                  onClick={() => handleSectionChange('reportes')}
-                >
-                  Analizar movimientos contables
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
+          </section>
+        )}
 
         {activeSection === 'cuotas' && (
           <section className="floating-card accounting-primary-panel">
             <div className="accounting-section-header">
               <div>
-                <p className="eyebrow">Cuotas y descuentos</p>
-                <h2>Precio base y descuentos de membresía</h2>
+                <p className="eyebrow">Cuota societaria</p>
+                <h2>Precio base y renovaciones pendientes</h2>
               </div>
             </div>
 
-            <div className="accounting-actions-grid">
-              {membershipPricingFormCard}
+            <div className="accounting-subsection-stack">
+              <AccountingCollapsibleCard
+                title="Modificar precio de cuota societaria"
+                description="Precio base, descuentos por tipo de socio y nueva versión de configuración."
+                open={openAccountingSubsection === 'membership-pricing'}
+                onToggle={() => toggleAccountingSubsection('membership-pricing')}
+              >
+                {membershipPricingFormCard}
+              </AccountingCollapsibleCard>
+
+              <AccountingCollapsibleCard
+                title="Renovaciones pendientes"
+                description="Socios marcados por la revisión diaria porque pasaron 30 días desde el último pago."
+                open={openAccountingSubsection === 'renewals'}
+                onToggle={() => toggleAccountingSubsection('renewals')}
+              >
+                <div className={`search-collapse accounting-search-collapse ${isRenewalSearchOpen ? 'search-collapse--open' : ''}`}>
+                  <button
+                    type="button"
+                    className="search-collapse__trigger"
+                    aria-expanded={isRenewalSearchOpen}
+                    onClick={() => setIsRenewalSearchOpen((current) => !current)}
+                  >
+                    <span className="search-collapse__title">
+                      <span className="search-collapse__icon" aria-hidden="true">B</span>
+                      <span>
+                        <strong>Buscar renovaciones</strong>
+                        <small>Socio, numero o apellido</small>
+                      </span>
+                    </span>
+                    <span className="search-collapse__chevron" aria-hidden="true">v</span>
+                  </button>
+                  {isRenewalSearchOpen && (
+                    <div className="search-collapse__body">
+                      <label className="form-field">
+                        <span>Buscar socio</span>
+                        <input
+                          value={renewalSearch}
+                          onChange={(event) => setRenewalSearch(event.target.value)}
+                          placeholder="Nombre, apellido o numero"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <div className="accounting-list">
+                  {filteredRenewalMembers.map((member) => {
+                    const pendingCharges = pendingChargesByMemberId.get(member.id) ?? [];
+                    const pendingAmountMinor = pendingCharges.reduce((total, charge) => total + charge.finalAmountMinor, 0);
+
+                    return (
+                      <article key={member.id} className="accounting-row">
+                        <div className="accounting-row__main">
+                          <strong>{getMemberDisplayName(member)}</strong>
+                          <small>
+                            Vence {formatTimestamp(member.membershipRenewalDueAt)}
+                            {member.lastFeePaymentAt ? ` - ultimo pago ${formatTimestamp(member.lastFeePaymentAt)}` : ' - sin pagos registrados'}
+                          </small>
+                          <small>
+                            {pendingCharges.length > 0
+                              ? `${pendingCharges.length} cuota${pendingCharges.length === 1 ? '' : 's'} emitida${pendingCharges.length === 1 ? '' : 's'} - ${formatCurrency(pendingAmountMinor)}`
+                              : `Sin cuota emitida para ${formatPeriod(selectedPeriod)}`}
+                          </small>
+                        </div>
+                        <div className="accounting-row__meta">
+                          <span className="status-chip status-chip--pending">
+                            {member.membershipRenewalStatus === 'needs_renewal' ? 'Pendiente' : 'No al dia'}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={submittingAction === `renewal-payment-${member.id}`}
+                            onClick={() => void handleStartRenewalPayment(member)}
+                          >
+                            {submittingAction === `renewal-payment-${member.id}` ? 'Preparando...' : 'Pagar'}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!loading && filteredRenewalMembers.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay renovaciones vencidas.</div>
+                  )}
+                </div>
+              </AccountingCollapsibleCard>
             </div>
           </section>
         )}
 
         {activeSection === 'movimientos' && (
-          <div className="accounting-layout">
+          <div className="accounting-subsection-stack">
             <section className="floating-card accounting-primary-panel">
               <div className="accounting-section-header">
                 <div>
                   <p className="eyebrow">Movimientos financieros</p>
                   <h2>Entradas y salidas del período</h2>
                 </div>
-                <div className="accounting-inline-actions">
+              </div>
+
+              <AccountingCollapsibleCard
+                title="Movimientos financieros"
+                description="Listado del período con estado, medio de pago y referencia del comprobante."
+                open={openAccountingSubsection === 'movement-list'}
+                onToggle={() => toggleAccountingSubsection('movement-list')}
+              >
+                <div className="accounting-inline-actions accounting-inline-actions--centered">
                   <button type="button" className="btn-primary" onClick={() => setEntryModal('income')}>
                     Cargar ingreso
                   </button>
@@ -1650,127 +2384,142 @@ export function AccountingDashboard() {
                     Cargar egreso
                   </button>
                 </div>
-              </div>
 
-              <div className="accounting-list">
-                {snapshot.recentMovements.slice(0, 12).map((movement) => (
-                  <article key={movement.id} className="accounting-row">
-                    <div className="accounting-row__main">
-                      <strong>{getMovementLabel(movement)}</strong>
-                      <small>
-                        {movement.movementType === 'income' ? 'Ingreso' : 'Egreso'}
-                        {' · '}
-                        {getPaymentMethodLabel(movement.paymentMethodCodeSnapshot, paymentMethodOptions)}
-                        {getMovementPaymentReference(movement) ? ` · Ref. ${getMovementPaymentReference(movement)}` : ''}
-                      </small>
-                    </div>
-                    <div className="accounting-row__meta">
-                      <span className={`status-chip status-chip--${movement.status.replaceAll('_', '-')}`}>
-                        {movement.status}
-                      </span>
-                      <strong>{formatCurrency(movement.netAmountMinor)}</strong>
-                      <small>{formatTimestamp(movement.operationDate)}</small>
-                    </div>
-                  </article>
-                ))}
+                <div className="accounting-list">
+                  {snapshot.recentMovements.slice(0, 12).map((movement) => (
+                    <article key={movement.id} className="accounting-row">
+                      <div className="accounting-row__main">
+                        <strong>{getMovementLabel(movement)}</strong>
+                        <small>
+                          {movement.movementType === 'income' ? 'Ingreso' : 'Egreso'}
+                          {' · '}
+                          {getPaymentMethodLabel(movement.paymentMethodCodeSnapshot, paymentMethodOptions)}
+                          {getMovementPaymentReference(movement) ? ` · Ref. ${getMovementPaymentReference(movement)}` : ''}
+                        </small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <span className={`status-chip status-chip--${movement.status.replaceAll('_', '-')}`}>
+                          {movement.status}
+                        </span>
+                        <strong>{formatCurrency(movement.netAmountMinor)}</strong>
+                        <small>{formatTimestamp(movement.operationDate)}</small>
+                      </div>
+                    </article>
+                  ))}
 
-                {!loading && snapshot.recentMovements.length === 0 && (
-                  <div className="empty-state empty-state--inline">Todavía no hay movimientos cargados.</div>
-                )}
-              </div>
+                  {!loading && snapshot.recentMovements.length === 0 && (
+                    <div className="empty-state empty-state--inline">Todavía no hay movimientos cargados.</div>
+                  )}
+                </div>
+              </AccountingCollapsibleCard>
             </section>
 
             <section className="floating-card accounting-secondary-panel">
-              <div className="accounting-section-header">
-                <div>
-                  <p className="eyebrow">Circuitos de cobro</p>
-                  <h2>Medios de pago operativos</h2>
+              <AccountingCollapsibleCard
+                title="Medios de pago operativos"
+                description="Circuitos de cobro, caja chica, transferencias, crédito y débito automático."
+                open={openAccountingSubsection === 'payment-methods'}
+                onToggle={() => toggleAccountingSubsection('payment-methods')}
+              >
+                <div className="accounting-topic-list">
+                  <span>Ingresos</span>
+                  <span>Egresos</span>
+                  <span>Caja chica</span>
+                  <span>Transferencias</span>
+                  <span>Débito automático</span>
+                  <span>Pagos con crédito</span>
+                  <span>Otros medios de pago</span>
                 </div>
-              </div>
 
-              <div className="accounting-topic-list">
-                <span>Ingresos</span>
-                <span>Egresos</span>
-                <span>Caja chica</span>
-                <span>Transferencias</span>
-                <span>Débito automático</span>
-                <span>Pagos con crédito</span>
-                <span>Otros medios de pago</span>
-              </div>
-
-              {!loading && paymentMethodOptions.length === 0 && (
-                <div className="empty-state empty-state--inline">No hay medios de pago configurados.</div>
-              )}
+                {!loading && paymentMethodOptions.length === 0 && (
+                  <div className="empty-state empty-state--inline">No hay medios de pago configurados.</div>
+                )}
+              </AccountingCollapsibleCard>
             </section>
           </div>
         )}
 
         {activeSection === 'empleados' && (
-          <div className="accounting-layout">
+          <div className="accounting-subsection-stack">
             <section className="floating-card accounting-primary-panel">
               <div className="accounting-section-header">
                 <div>
                   <p className="eyebrow">Empleados</p>
                   <h2>Legajos, recibos y horas extra</h2>
                 </div>
-                <Link className="btn-secondary" to="/admin/employees">
-                  Administrar empleados
-                </Link>
               </div>
 
-              <div className="accounting-list">
-                {snapshot.employeesPreview.map((employee) => {
-                  const salaryPayments = snapshot.recentSalaryPayments.filter((payment) => payment.employeeId === employee.id);
-                  const overtimeMinor = salaryPayments.reduce((total, payment) => total + (payment.overtimeAmountMinor ?? 0), 0);
+              <AccountingCollapsibleCard
+                title="Legajos y ciclos mensuales"
+                description="Acceso a la contabilidad mensual, recibos, horas extra y estado laboral."
+                open={openAccountingSubsection === 'employee-list'}
+                onToggle={() => toggleAccountingSubsection('employee-list')}
+              >
+                <div className="accounting-inline-actions accounting-inline-actions--centered">
+                  <Link className="btn-secondary" to="/admin/employees">
+                    Administrar empleados
+                  </Link>
+                </div>
 
-                  return (
-                    <article key={employee.id} className="accounting-row">
-                      <div className="accounting-row__main">
-                        <strong>{getEmployeeDisplayName(employee)}</strong>
-                        <small>
-                          {employee.position} · {employee.status === 'active' ? 'Activo' : 'Inactivo'}
-                        </small>
-                      </div>
-                      <div className="accounting-row__meta">
-                        <strong>{formatCurrency(overtimeMinor)}</strong>
-                        <small>Horas extra liquidadas</small>
-                      </div>
-                    </article>
-                  );
-                })}
+                <div className="accounting-list">
+                  {snapshot.employeesPreview.map((employee) => {
+                    const salaryPayments = snapshot.recentSalaryPayments.filter((payment) => payment.employeeId === employee.id);
+                    const overtimeMinor = salaryPayments.reduce((total, payment) => total + (payment.overtimeAmountMinor ?? 0), 0);
 
-                {!loading && snapshot.employeesPreview.length === 0 && (
-                  <div className="empty-state empty-state--inline">No hay empleados cargados.</div>
-                )}
-              </div>
+                    return (
+                      <article key={employee.id} className="accounting-row accounting-row--actions">
+                        <div className="accounting-row__main">
+                          <strong>{getEmployeeDisplayName(employee)}</strong>
+                          <small>
+                            {employee.position} · {employee.status === 'active' ? 'Activo' : 'Inactivo'}
+                          </small>
+                        </div>
+                        <div className="accounting-row__meta">
+                          <strong>{formatCurrency(overtimeMinor)}</strong>
+                          <small>Horas extra liquidadas</small>
+                        </div>
+                        <div className="accounting-inline-actions">
+                          <Link className="btn-secondary" to={`/accounting/employees/${employee.id}`}>
+                            Ver ciclo mensual
+                          </Link>
+                        </div>
+                      </article>
+                    );
+                  })}
+
+                  {!loading && snapshot.employeesPreview.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay empleados cargados.</div>
+                  )}
+                </div>
+              </AccountingCollapsibleCard>
             </section>
 
             <section className="floating-card accounting-secondary-panel">
-              <div className="accounting-section-header">
-                <div>
-                  <p className="eyebrow">Rendiciones</p>
-                  <h2>Recibos y gastos presentados</h2>
+              <AccountingCollapsibleCard
+                title="Rendiciones de empleados"
+                description="Recibos, gastos presentados y estado administrativo de cada comprobante."
+                open={openAccountingSubsection === 'employee-expenses'}
+                onToggle={() => toggleAccountingSubsection('employee-expenses')}
+              >
+                <div className="accounting-list">
+                  {snapshot.recentExpenses.map((expense) => (
+                    <article key={expense.id} className="accounting-row">
+                      <div className="accounting-row__main">
+                        <strong>{expense.description}</strong>
+                        <small>{expense.vendorName ?? 'Sin proveedor'} · {expense.status}</small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <strong>{formatCurrency(expense.amountMinor)}</strong>
+                        <small>{formatTimestamp(expense.expenseDate)}</small>
+                      </div>
+                    </article>
+                  ))}
+
+                  {!loading && snapshot.recentExpenses.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay rendiciones cargadas.</div>
+                  )}
                 </div>
-              </div>
-
-              <div className="accounting-list">
-                {snapshot.recentExpenses.map((expense) => (
-                  <article key={expense.id} className="accounting-row">
-                    <div className="accounting-row__main">
-                      <strong>{expense.description}</strong>
-                      <small>{expense.vendorName ?? 'Sin proveedor'} · {expense.status}</small>
-                    </div>
-                    <div className="accounting-row__meta">
-                      <strong>{formatCurrency(expense.amountMinor)}</strong>
-                      <small>{formatTimestamp(expense.expenseDate)}</small>
-                    </div>
-                  </article>
-                ))}
-
-                {!loading && snapshot.recentExpenses.length === 0 && (
-                  <div className="empty-state empty-state--inline">No hay rendiciones cargadas.</div>
-                )}
-              </div>
+              </AccountingCollapsibleCard>
             </section>
           </div>
         )}
@@ -1944,9 +2693,6 @@ export function AccountingDashboard() {
                           {employee.status}
                         </small>
                       </div>
-                      <div className="accounting-row__meta">
-                        <small>{employee.contractType}</small>
-                      </div>
                     </article>
                   ))}
                 </div>
@@ -1958,7 +2704,7 @@ export function AccountingDashboard() {
         )}
 
         {activeSection === 'movimientos' && dashboardRole === 'administrativo' && (
-          <div className="accounting-layout">
+          <div className="accounting-subsection-stack">
             <section className="floating-card accounting-primary-panel">
               <div className="accounting-section-header">
                 <div>
@@ -1967,8 +2713,14 @@ export function AccountingDashboard() {
                 </div>
               </div>
 
-              <div className="accounting-actions-grid">
-                <form className="accounting-action-card" onSubmit={handleSubmitExpense}>
+              <div className="accounting-subsection-stack">
+                <AccountingCollapsibleCard
+                  title="Cargar factura o compra"
+                  description="Registra el gasto con responsable, rubro, proveedor y medio de pago."
+                  open={openAccountingSubsection === 'expense-form'}
+                  onToggle={() => toggleAccountingSubsection('expense-form')}
+                >
+                <form className="accounting-action-card accounting-action-card--embedded" onSubmit={handleSubmitExpense}>
                   <div>
                     <strong>Cargar factura o compra</strong>
                     <p>Registra el gasto con responsable, rubro, proveedor y medio de pago.</p>
@@ -2049,7 +2801,7 @@ export function AccountingDashboard() {
                         setSubmitExpenseForm((current) => ({ ...current, paymentMethodId: event.target.value }))
                       }
                     >
-                      {paymentMethodOptions.map((paymentMethod) => (
+                      {manualPaymentMethodOptions.map((paymentMethod) => (
                         <option key={paymentMethod.id} value={paymentMethod.id}>
                           {getPaymentMethodOptionLabel(paymentMethod)}
                         </option>
@@ -2071,12 +2823,28 @@ export function AccountingDashboard() {
                     {submittingAction === 'submit-expense' ? 'Cargando...' : 'Cargar gasto'}
                   </button>
                 </form>
+                </AccountingCollapsibleCard>
 
-                <form className="accounting-action-card" onSubmit={handleGenerateCuota}>
+                <AccountingCollapsibleCard
+                  title="Generar cuota"
+                  description="Emite el devengado del período sin tocar caja hasta el cobro."
+                  open={openAccountingSubsection === 'generate-fee'}
+                  onToggle={() => toggleAccountingSubsection('generate-fee')}
+                >
+                <form className="accounting-action-card accounting-action-card--embedded" onSubmit={handleGenerateCuota}>
                   <div>
                     <strong>Generar cuota</strong>
                     <p>Emití el devengado del período sin tocar caja hasta el cobro.</p>
                   </div>
+
+                  <label className="form-field">
+                    <span>Buscar socio</span>
+                    <input
+                      value={memberSearch}
+                      onChange={(event) => setMemberSearch(event.target.value)}
+                      placeholder="Apellido, nombre o numero"
+                    />
+                  </label>
 
                   <label className="form-field">
                     <span>Socio</span>
@@ -2087,13 +2855,20 @@ export function AccountingDashboard() {
                       }
                     >
                       <option value="">Seleccionar socio</option>
-                      {snapshot.membersPreview.map((member) => (
+                      {filteredMembers.map((member) => (
                         <option key={member.id} value={member.id}>
-                          {getMemberDisplayName(member)}
+                          {getMemberDisplayName(member)} - Socio {member.memberNumber}
                         </option>
                       ))}
                     </select>
                   </label>
+
+                  {selectedGenerateFeeMemberBlocked && (
+                    <div className="error-message">
+                      Este socio esta dado de baja o suspendido. Los pagos anteriores quedan registrados, pero no se
+                      pueden crear cuotas nuevas.
+                    </div>
+                  )}
 
                   <label className="form-field">
                     <span>Período</span>
@@ -2119,12 +2894,23 @@ export function AccountingDashboard() {
                     />
                   </label>
 
-                  <button type="submit" className="btn-primary" disabled={submittingAction === 'generate-cuota'}>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={submittingAction === 'generate-cuota' || selectedGenerateFeeMemberBlocked}
+                  >
                     {submittingAction === 'generate-cuota' ? 'Generando...' : 'Generar cuota'}
                   </button>
                 </form>
+                </AccountingCollapsibleCard>
 
-                <form className="accounting-action-card" onSubmit={handleRegisterPayment}>
+                <AccountingCollapsibleCard
+                  title="Registrar cobro"
+                  description="Toma una cuota pendiente y convierte el pago en movimiento contable."
+                  open={openAccountingSubsection === 'register-payment'}
+                  onToggle={() => toggleAccountingSubsection('register-payment')}
+                >
+                <form className="accounting-action-card accounting-action-card--embedded" onSubmit={handleRegisterPayment}>
                   <div>
                     <strong>Registrar cobro</strong>
                     <p>Tomá una cuota pendiente y convertí el cobro en movimiento contable.</p>
@@ -2139,11 +2925,14 @@ export function AccountingDashboard() {
                       }
                     >
                       <option value="">Seleccionar cargo</option>
-                      {snapshot.periodFeeCharges
-                        .filter((charge) => charge.status === 'pending' || charge.status === 'overdue')
+                      {payableFeeCharges
                         .map((charge) => {
                           const member =
                             snapshot.memberMap[charge.memberId ?? ''] ?? snapshot.memberMap[charge.holderMemberId ?? ''];
+
+                          if (isMemberPaymentBlocked(member)) {
+                            return null;
+                          }
 
                           return (
                             <option key={charge.id} value={charge.id}>
@@ -2153,6 +2942,33 @@ export function AccountingDashboard() {
                         })}
                     </select>
                   </label>
+
+                  {selectedFeeChargeMemberBlocked && (
+                    <div className="error-message">
+                      Este cargo pertenece a un socio dado de baja o suspendido. No se puede registrar un cobro nuevo.
+                    </div>
+                  )}
+
+                  <label className="form-field">
+                    <span>Fecha de pago</span>
+                    <input
+                      type="date"
+                      value={feePaymentForm.operationDate}
+                      onChange={(event) =>
+                        setFeePaymentForm((current) => ({ ...current, operationDate: event.target.value }))
+                      }
+                    />
+                  </label>
+
+                  {selectedFeeCharge && (
+                    <div className={feePaymentIsOutsideChargePeriod ? 'error-message' : 'accounting-success'}>
+                      {feePaymentIsOutsideChargePeriod
+                        ? `La fecha pertenece a ${feePaymentAccountingPeriod}, pero la cuota es de ${selectedFeeCharge.period}. Se puede cobrar igual, sin descuento por pronto pago.`
+                        : feePaymentWouldApplyEarlyDiscount
+                          ? 'Dentro del periodo y antes del dia limite: corresponde descuento por pronto pago.'
+                          : 'Dentro del periodo, pero fuera del rango de pronto pago.'}
+                    </div>
+                  )}
 
                   <label className="form-field">
                     <span>Medio de pago</span>
@@ -2203,79 +3019,204 @@ export function AccountingDashboard() {
                     />
                   </label>
 
-                  <button type="submit" className="btn-primary" disabled={submittingAction === 'register-payment'}>
-                    {submittingAction === 'register-payment' ? 'Registrando...' : 'Registrar pago'}
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={submittingAction === 'register-payment' || !isFeePaymentFormReady}
+                  >
+                    {submittingAction === 'register-payment'
+                      ? feePaymentForm.paymentMethodId === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago
+                        ? 'Creando checkout...'
+                        : 'Registrando...'
+                      : feePaymentForm.paymentMethodId === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago
+                        ? 'Pagar con Mercado Pago'
+                        : 'Registrar pago'}
                   </button>
+                  {!isFeePaymentFormReady && (
+                    <small className="profile-note">
+                      Completa cuota, fecha, medio de pago y referencia si corresponde para habilitar el cobro.
+                    </small>
+                  )}
                 </form>
+                </AccountingCollapsibleCard>
+
+                <AccountingCollapsibleCard
+                  title="Mercado Pago online"
+                  description="Permite seleccionar varias cuotas y generar un checkout agrupado."
+                  open={openAccountingSubsection === 'mercado-pago'}
+                  onToggle={() => toggleAccountingSubsection('mercado-pago')}
+                >
+                  <div className="accounting-action-card accounting-action-card--embedded">
+                    <div>
+                      <strong>Carrito Mercado Pago</strong>
+                      <p>
+                        Seleccioná uno o más cargos cobrables. La acreditación definitiva la hace el webhook y crea los
+                        movimientos contables por ítem.
+                      </p>
+                    </div>
+
+                    <div className="accounting-list">
+                      {mercadoPagoEligibleFeeCharges.map((charge) => {
+                        const member =
+                          snapshot.memberMap[charge.memberId ?? ''] ?? snapshot.memberMap[charge.holderMemberId ?? ''];
+                        const checked = selectedMercadoPagoChargeIds.includes(charge.id);
+
+                        return (
+                          <label key={charge.id} className="accounting-row accounting-row--selectable">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleMercadoPagoCharge(charge.id)}
+                            />
+                            <span className="accounting-row__main">
+                              <strong>{getMemberDisplayName(member)}</strong>
+                              <small>
+                                Cuota {formatPeriod(charge.period)}
+                                {' · '}
+                                {charge.status}
+                              </small>
+                            </span>
+                            <span className="accounting-row__meta">
+                              <strong>{formatCurrency(charge.finalAmountMinor)}</strong>
+                            </span>
+                          </label>
+                        );
+                      })}
+
+                      {!loading && mercadoPagoEligibleFeeCharges.length === 0 && (
+                        <div className="empty-state empty-state--inline">No hay cuotas cobrables para este período.</div>
+                      )}
+                    </div>
+
+                    <div className="accounting-inline-summary">
+                      <span>{selectedMercadoPagoCharges.length} ítems seleccionados</span>
+                      <strong>{formatCurrency(selectedMercadoPagoTotalMinor)}</strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={submittingAction === 'mercado-pago-checkout' || selectedMercadoPagoCharges.length === 0}
+                      onClick={handleCreateMercadoPagoCheckout}
+                    >
+                      {submittingAction === 'mercado-pago-checkout' ? 'Creando checkout...' : 'Pagar con Mercado Pago'}
+                    </button>
+                  </div>
+                </AccountingCollapsibleCard>
               </div>
             </section>
 
             <section className="floating-card accounting-secondary-panel">
-              <div className="accounting-section-header">
-                <div>
-                  <p className="eyebrow">Rendiciones</p>
-                  <h2>Cola administrativa</h2>
+              <AccountingCollapsibleCard
+                title="Rendiciones pendientes"
+                description="Cola administrativa para aprobar o postear gastos operativos."
+                open={openAccountingSubsection === 'expense-queue'}
+                onToggle={() => toggleAccountingSubsection('expense-queue')}
+              >
+                <div className={`search-collapse accounting-search-collapse ${isExpenseQueueSearchOpen ? 'search-collapse--open' : ''}`}>
+                  <button
+                    type="button"
+                    className="search-collapse__trigger"
+                    aria-expanded={isExpenseQueueSearchOpen}
+                    onClick={() => setIsExpenseQueueSearchOpen((current) => !current)}
+                  >
+                    <span className="search-collapse__title">
+                      <span className="search-collapse__icon" aria-hidden="true">B</span>
+                      <span>
+                        <strong>Buscar rendiciones</strong>
+                        <small>Empleado, categoria, proveedor o estado</small>
+                      </span>
+                    </span>
+                    <span className="search-collapse__chevron" aria-hidden="true">v</span>
+                  </button>
+                  {isExpenseQueueSearchOpen && (
+                    <div className="search-collapse__body">
+                      <div className="accounting-filter-row">
+                        <label className="form-field">
+                          <span>Buscar</span>
+                          <input
+                            value={expenseQueueSearch}
+                            onChange={(event) => setExpenseQueueSearch(event.target.value)}
+                            placeholder="Empleado, proveedor o categoria"
+                          />
+                        </label>
+                        <label className="form-field">
+                          <span>Estado</span>
+                          <select
+                            value={expenseQueueStatus}
+                            onChange={(event) =>
+                              setExpenseQueueStatus(event.target.value as 'all' | 'submitted' | 'approved')
+                            }
+                          >
+                            <option value="all">Todos</option>
+                            <option value="submitted">Presentadas</option>
+                            <option value="approved">Aprobadas</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              <div className="accounting-list">
-                {recentExpenseQueue.map((expense) => {
-                  const employee = snapshot.employeeMap[expense.employeeId];
-                  const canApprove = expense.status === 'submitted';
-                  const canPost = expense.status === 'approved';
+                <div className="accounting-list">
+                  {filteredRecentExpenseQueue.map((expense) => {
+                    const employee = snapshot.employeeMap[expense.employeeId];
+                    const canApprove = expense.status === 'submitted';
+                    const canPost = expense.status === 'approved';
 
-                  return (
-                    <article key={expense.id} className="accounting-row accounting-row--actions">
-                      <div className="accounting-row__main">
-                        <strong>{expense.categoryCodeSnapshot.replaceAll('_', ' ')}</strong>
-                        <small>
-                          {getEmployeeDisplayName(employee)}
-                          {' · '}
-                          {formatTimestamp(expense.expenseDate)}
-                        </small>
-                      </div>
-                      <div className="accounting-row__meta">
-                        <span className={`status-chip status-chip--${expense.status.replaceAll('_', '-')}`}>
-                          {expense.status}
-                        </span>
-                        <strong>{formatCurrency(expense.amountMinor)}</strong>
-                      </div>
-                      <div className="accounting-inline-actions">
-                        {canApprove && (
-                          <button
-                            type="button"
-                            className="btn-secondary"
-                            disabled={submittingAction === `approve-${expense.id}`}
-                            onClick={() => void handleApproveExpense(expense.id)}
-                          >
-                            {submittingAction === `approve-${expense.id}` ? 'Aprobando...' : 'Aprobar'}
-                          </button>
-                        )}
-                        {canPost && (
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            disabled={submittingAction === `post-${expense.id}`}
-                            onClick={() => void handlePostExpense(expense.id)}
-                          >
-                            {submittingAction === `post-${expense.id}` ? 'Posteando...' : 'Postear'}
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
+                    return (
+                      <article key={expense.id} className="accounting-row accounting-row--actions">
+                        <div className="accounting-row__main">
+                          <strong>{expense.categoryCodeSnapshot.replaceAll('_', ' ')}</strong>
+                          <small>
+                            {getEmployeeDisplayName(employee)}
+                            {' · '}
+                            {formatTimestamp(expense.expenseDate)}
+                          </small>
+                        </div>
+                        <div className="accounting-row__meta">
+                          <span className={`status-chip status-chip--${expense.status.replaceAll('_', '-')}`}>
+                            {expense.status}
+                          </span>
+                          <strong>{formatCurrency(expense.amountMinor)}</strong>
+                        </div>
+                        <div className="accounting-inline-actions">
+                          {canApprove && (
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={submittingAction === `approve-${expense.id}`}
+                              onClick={() => void handleApproveExpense(expense.id)}
+                            >
+                              {submittingAction === `approve-${expense.id}` ? 'Aprobando...' : 'Aprobar'}
+                            </button>
+                          )}
+                          {canPost && (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              disabled={submittingAction === `post-${expense.id}`}
+                              onClick={() => void handlePostExpense(expense.id)}
+                            >
+                              {submittingAction === `post-${expense.id}` ? 'Posteando...' : 'Postear'}
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
 
-                {!loading && recentExpenseQueue.length === 0 && (
-                  <div className="empty-state empty-state--inline">No hay rendiciones pendientes en este momento.</div>
-                )}
-              </div>
+                  {!loading && filteredRecentExpenseQueue.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay rendiciones pendientes en este momento.</div>
+                  )}
+                </div>
+              </AccountingCollapsibleCard>
             </section>
           </div>
         )}
 
         {activeSection === 'tesoreria' && dashboardRole === 'directivo' && (
-          <div className="accounting-layout">
+          <div className="accounting-subsection-stack">
             <section className="floating-card accounting-primary-panel">
               <div className="accounting-section-header">
                 <div>
@@ -2284,83 +3225,122 @@ export function AccountingDashboard() {
                 </div>
               </div>
 
-              <div className="summary-grid accounting-summary-grid">
-                <SummaryCard label="Movimientos bancarios" value={formatCurrency(bankedTotalMinor)} helper="Base real de movimientos bancarizados" />
-                <SummaryCard label="Caja no bancarizada" value={formatCurrency(cashTotalMinor)} helper="Efectivo y medios no bancarios del período" />
-                <SummaryCard label="Débito Macro neto" value={formatCurrency(macroNetTotalMinor)} helper="Liquidaciones registradas en el período" />
-              </div>
+              <AccountingCollapsibleCard
+                title="Caja, bancos y saldos"
+                description="Resumen del período y últimos movimientos bancarizados registrados."
+                open={openAccountingSubsection === 'treasury-summary'}
+                onToggle={() => toggleAccountingSubsection('treasury-summary')}
+              >
+                <div className="summary-grid accounting-summary-grid">
+                  <SummaryCard label="Movimientos bancarios" value={formatCurrency(bankedTotalMinor)} helper="Base real de movimientos bancarizados" />
+                  <SummaryCard label="Caja no bancarizada" value={formatCurrency(cashTotalMinor)} helper="Efectivo y medios no bancarios del período" />
+                  <SummaryCard label="Débito Macro neto" value={formatCurrency(macroNetTotalMinor)} helper="Liquidaciones registradas en el período" />
+                </div>
 
-              <div className="accounting-list">
-                {snapshot.recentBankedMovements.slice(0, 8).map((movement) => (
-                  <article key={movement.id} className="accounting-row">
-                    <div className="accounting-row__main">
-                      <strong>{getMovementLabel(movement)}</strong>
-                      <small>
-                        {getPaymentMethodLabel(movement.paymentMethodCodeSnapshot, paymentMethodOptions)}
-                        {' · '}
-                        {formatTimestamp(movement.operationDate)}
-                      </small>
-                    </div>
-                    <div className="accounting-row__meta">
-                      <strong>{formatCurrency(movement.netAmountMinor)}</strong>
-                      <small>{movement.originType}</small>
-                    </div>
-                  </article>
-                ))}
+                <div className="accounting-list">
+                  {snapshot.recentBankedMovements.slice(0, 8).map((movement) => (
+                    <article key={movement.id} className="accounting-row">
+                      <div className="accounting-row__main">
+                        <strong>{getMovementLabel(movement)}</strong>
+                        <small>
+                          {getPaymentMethodLabel(movement.paymentMethodCodeSnapshot, paymentMethodOptions)}
+                          {' · '}
+                          {formatTimestamp(movement.operationDate)}
+                        </small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <strong>{formatCurrency(movement.netAmountMinor)}</strong>
+                        <small>{movement.originType}</small>
+                      </div>
+                    </article>
+                  ))}
 
-                {!loading && snapshot.recentBankedMovements.length === 0 && (
-                  <div className="empty-state empty-state--inline">No hay movimientos bancarios registrados.</div>
-                )}
-              </div>
+                  {!loading && snapshot.recentBankedMovements.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay movimientos bancarios registrados.</div>
+                  )}
+                </div>
+              </AccountingCollapsibleCard>
             </section>
 
             <section className="floating-card accounting-secondary-panel">
-              <div className="accounting-section-header">
-                <div>
-                  <p className="eyebrow">Conciliaciones</p>
-                  <h2>Medios de pago y bancos</h2>
+              <AccountingCollapsibleCard
+                title="Conciliaciones"
+                description="Medios de pago, bancos, saldos, comisiones y liquidaciones del mes."
+                open={openAccountingSubsection === 'treasury-settlements'}
+                onToggle={() => toggleAccountingSubsection('treasury-settlements')}
+              >
+                <div className="accounting-topic-list">
+                  <span>Caja actual</span>
+                  <span>Bancos</span>
+                  <span>Saldos</span>
+                  <span>Conciliaciones</span>
+                  <span>Control de medios de pago</span>
+                  <span>Comisiones bancarias</span>
                 </div>
-              </div>
 
-              <div className="accounting-topic-list">
-                <span>Caja actual</span>
-                <span>Bancos</span>
-                <span>Saldos</span>
-                <span>Conciliaciones</span>
-                <span>Control de medios de pago</span>
-                <span>Comisiones bancarias</span>
-              </div>
+                <div className="accounting-list">
+                  {snapshot.monthSettlements.slice(0, 6).map((settlement) => (
+                    <article key={settlement.id} className="accounting-row">
+                      <div className="accounting-row__main">
+                        <strong>{settlement.externalBatchRef}</strong>
+                        <small>
+                          {settlement.bankName}
+                          {' · '}
+                          {formatPeriod(settlement.month)}
+                        </small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <span className={`status-chip status-chip--${settlement.status.replaceAll('_', '-')}`}>
+                          {settlement.status}
+                        </span>
+                        <strong>{formatCurrency(settlement.netAmountMinor)}</strong>
+                      </div>
+                    </article>
+                  ))}
 
-              <div className="accounting-list">
-                {snapshot.monthSettlements.slice(0, 6).map((settlement) => (
-                  <article key={settlement.id} className="accounting-row">
-                    <div className="accounting-row__main">
-                      <strong>{settlement.externalBatchRef}</strong>
-                      <small>
-                        {settlement.bankName}
-                        {' · '}
-                        {formatPeriod(settlement.month)}
-                      </small>
-                    </div>
-                    <div className="accounting-row__meta">
-                      <span className={`status-chip status-chip--${settlement.status.replaceAll('_', '-')}`}>
-                        {settlement.status}
-                      </span>
-                      <strong>{formatCurrency(settlement.netAmountMinor)}</strong>
-                    </div>
-                  </article>
-                ))}
+                  {!loading && snapshot.monthSettlements.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay conciliaciones cargadas para este período.</div>
+                  )}
+                </div>
 
-                {!loading && snapshot.monthSettlements.length === 0 && (
-                  <div className="empty-state empty-state--inline">No hay conciliaciones cargadas para este período.</div>
-                )}
-              </div>
+                <div className="accounting-action-card accounting-action-card--embedded">
+                  <div>
+                    <strong>Sesiones Mercado Pago</strong>
+                    <p>Estado operativo de los checkouts online y movimientos generados por webhook.</p>
+                  </div>
+                  <div className="accounting-list">
+                    {snapshot.recentMercadoPagoSessions.map((session) => (
+                      <article key={session.id} className="accounting-row">
+                        <div className="accounting-row__main">
+                          <strong>{session.items.map((item) => item.description).join(' + ')}</strong>
+                          <small>
+                            {session.id}
+                            {' · '}
+                            {formatTimestamp(session.updatedAt)}
+                          </small>
+                        </div>
+                        <div className="accounting-row__meta">
+                          <span className={`status-chip status-chip--${session.status.replaceAll('_', '-')}`}>
+                            {session.status}
+                          </span>
+                          <strong>{formatCurrency(session.grossAmountMinor)}</strong>
+                          <small>{session.financialMovementIds.length} movimientos</small>
+                        </div>
+                      </article>
+                    ))}
+
+                    {!loading && snapshot.recentMercadoPagoSessions.length === 0 && (
+                      <div className="empty-state empty-state--inline">No hay sesiones Mercado Pago recientes.</div>
+                    )}
+                  </div>
+                </div>
+              </AccountingCollapsibleCard>
             </section>
           </div>
         )}
 
         {activeSection === 'sensibles' && dashboardRole === 'directivo' && (
-          <div className="accounting-sensitive-layout">
+          <div className="accounting-subsection-stack">
             <section className="floating-card accounting-primary-panel">
               <div className="accounting-section-header">
                 <div>
@@ -2373,14 +3353,14 @@ export function AccountingDashboard() {
 
                 <AccountingCollapsibleCard
                   title="Registrar referencia externa"
-                  description="Carga F931, obra social, ART u otros compromisos con respaldo documental."
-                  open={openSensitivePanels.reference}
-                  onToggle={() => toggleSensitivePanel('reference')}
+                  description="Carga F931, obra social, ART u otros compromisos globales del periodo con respaldo documental."
+                  open={openAccountingSubsection === 'reference'}
+                  onToggle={() => toggleAccountingSubsection('reference')}
                 >
                 <form className="accounting-action-card accounting-action-card--embedded" onSubmit={handleRecordExternalReference}>
                   <div>
                     <strong>Registrar referencia externa</strong>
-                    <p>Cargá F931, obra social, ART u otros compromisos con respaldo documental.</p>
+                    <p>Carga F931, obra social, ART u otros compromisos globales del periodo con respaldo documental.</p>
                   </div>
 
                   <label className="form-field">
@@ -2391,6 +3371,9 @@ export function AccountingDashboard() {
                         setExternalReferenceForm((current) => ({
                           ...current,
                           referenceType: event.target.value as ExternalReferenceFormState['referenceType'],
+                          providerName: getDefaultExternalReferenceProvider(
+                            event.target.value as ExternalReferenceFormState['referenceType'],
+                          ),
                         }))
                       }
                     >
@@ -2465,14 +3448,14 @@ export function AccountingDashboard() {
                 </AccountingCollapsibleCard>
                 <AccountingCollapsibleCard
                   title="Modificar sueldo"
-                  description="Actualiza la configuracion salarial activa de un empleado. Solo Junta Directiva puede hacerlo."
-                  open={openSensitivePanels.salary}
-                  onToggle={() => toggleSensitivePanel('salary')}
+                  description="Abrí la contabilidad mensual del empleado para ajustar sueldo, horas extra y liquidación."
+                  open={openAccountingSubsection === 'salary'}
+                  onToggle={() => toggleAccountingSubsection('salary')}
                 >
                 <form className="accounting-action-card accounting-action-card--embedded" onSubmit={handleUpsertSalaryConfiguration}>
                   <div>
-                    <strong>Modificar sueldo</strong>
-                    <p>Actualizá la configuración salarial activa de un empleado. Solo Junta Directiva puede hacerlo.</p>
+                    <strong>Modificar sueldo desde el detalle del empleado</strong>
+                    <p>Elegí un empleado y abrí su ciclo mensual para ajustar sueldo, horas extra y liquidación desde una sola pantalla.</p>
                   </div>
 
                   <label className="form-field">
@@ -2492,13 +3475,15 @@ export function AccountingDashboard() {
                     </select>
                   </label>
 
-                  <label className="form-field">
-                    <span>Tipo de contrato</span>
-                    <input
-                      value={salaryConfigForm.periodicity}
-                      readOnly
-                    />
-                  </label>
+                  <div className="accounting-inline-actions accounting-inline-actions--centered">
+                    <Link
+                      className={`btn-primary ${!salaryConfigForm.employeeId ? 'btn-disabled' : ''}`}
+                      to={salaryConfigForm.employeeId ? `/accounting/employees/${salaryConfigForm.employeeId}?period=${selectedPeriod}` : '#'}
+                      aria-disabled={!salaryConfigForm.employeeId}
+                    >
+                      Ver contabilidad del empleado
+                    </Link>
+                  </div>
 
                   <label className="form-field">
                     <span>Sueldo base (ARS)</span>
@@ -2578,8 +3563,8 @@ export function AccountingDashboard() {
                 <AccountingCollapsibleCard
                   title="Anular movimiento"
                   description="Control directo sobre movimientos ya emitidos, con reverso automatico cuando aplica."
-                  open={openSensitivePanels.void}
-                  onToggle={() => toggleSensitivePanel('void')}
+                  open={openAccountingSubsection === 'void'}
+                  onToggle={() => toggleAccountingSubsection('void')}
                 >
                 <form className="accounting-action-card accounting-action-card--embedded" onSubmit={handleVoidMovement}>
                   <div>
@@ -2623,101 +3608,103 @@ export function AccountingDashboard() {
             </section>
 
             <section className="floating-card accounting-secondary-panel">
-              <div className="accounting-section-header">
-                <div>
-                  <p className="eyebrow">Liquidaciones</p>
-                  <h2>Débito Macro y compromisos externos</h2>
+              <AccountingCollapsibleCard
+                title="Débito Macro y compromisos externos"
+                description="Liquidaciones, conciliaciones y referencias externas cargadas para el período."
+                open={openAccountingSubsection === 'sensitive-settlements'}
+                onToggle={() => toggleAccountingSubsection('sensitive-settlements')}
+              >
+                <div className="accounting-list">
+                  {snapshot.monthSettlements.map((settlement) => (
+                    <article key={settlement.id} className="accounting-row accounting-row--actions">
+                      <div className="accounting-row__main">
+                        <strong>{settlement.externalBatchRef}</strong>
+                        <small>
+                          {settlement.bankName}
+                          {' · '}
+                          {formatTimestamp(settlement.accreditedAt)}
+                        </small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <span className={`status-chip status-chip--${settlement.status.replaceAll('_', '-')}`}>
+                          {settlement.status}
+                        </span>
+                        <strong>{formatCurrency(settlement.netAmountMinor)}</strong>
+                        <small>{settlement.movementCount} movimientos</small>
+                      </div>
+                      <div className="accounting-inline-actions">
+                        {settlement.status === 'imported' && (
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={submittingAction === `reconcile-${settlement.id}`}
+                            onClick={() => void handleReconcileSettlement(settlement.id)}
+                          >
+                            {submittingAction === `reconcile-${settlement.id}` ? 'Conciliando...' : 'Conciliar'}
+                          </button>
+                        )}
+                        {settlement.status === 'reconciled' && (
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={submittingAction === `close-${settlement.id}`}
+                            onClick={() => void handleReconcileSettlement(settlement.id, true)}
+                          >
+                            {submittingAction === `close-${settlement.id}` ? 'Cerrando...' : 'Cerrar'}
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+
+                  {snapshot.periodReferences.map((reference) => (
+                    <article key={reference.id} className="accounting-row">
+                      <div className="accounting-row__main">
+                        <strong>{reference.referenceType}</strong>
+                        <small>
+                          {reference.providerName ?? 'Sin proveedor'}
+                          {' · '}
+                          {reference.referenceNumber ?? 'Sin número'}
+                        </small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <span className={`status-chip status-chip--${reference.status.replaceAll('_', '-')}`}>
+                          {reference.status}
+                        </span>
+                        <strong>{formatCurrency(reference.amountMinor)}</strong>
+                        <small>{formatPeriod(reference.period)}</small>
+                      </div>
+                    </article>
+                  ))}
+
+                  {!loading && snapshot.monthSettlements.length === 0 && snapshot.periodReferences.length === 0 && (
+                    <div className="empty-state empty-state--inline">No hay liquidaciones ni referencias cargadas para este período.</div>
+                  )}
                 </div>
-              </div>
-
-              <div className="accounting-list">
-                {snapshot.monthSettlements.map((settlement) => (
-                  <article key={settlement.id} className="accounting-row accounting-row--actions">
-                    <div className="accounting-row__main">
-                      <strong>{settlement.externalBatchRef}</strong>
-                      <small>
-                        {settlement.bankName}
-                        {' · '}
-                        {formatTimestamp(settlement.accreditedAt)}
-                      </small>
-                    </div>
-                    <div className="accounting-row__meta">
-                      <span className={`status-chip status-chip--${settlement.status.replaceAll('_', '-')}`}>
-                        {settlement.status}
-                      </span>
-                      <strong>{formatCurrency(settlement.netAmountMinor)}</strong>
-                      <small>{settlement.movementCount} movimientos</small>
-                    </div>
-                    <div className="accounting-inline-actions">
-                      {settlement.status === 'imported' && (
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          disabled={submittingAction === `reconcile-${settlement.id}`}
-                          onClick={() => void handleReconcileSettlement(settlement.id)}
-                        >
-                          {submittingAction === `reconcile-${settlement.id}` ? 'Conciliando...' : 'Conciliar'}
-                        </button>
-                      )}
-                      {settlement.status === 'reconciled' && (
-                        <button
-                          type="button"
-                          className="btn-primary"
-                          disabled={submittingAction === `close-${settlement.id}`}
-                          onClick={() => void handleReconcileSettlement(settlement.id, true)}
-                        >
-                          {submittingAction === `close-${settlement.id}` ? 'Cerrando...' : 'Cerrar'}
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                ))}
-
-                {snapshot.periodReferences.map((reference) => (
-                  <article key={reference.id} className="accounting-row">
-                    <div className="accounting-row__main">
-                      <strong>{reference.referenceType}</strong>
-                      <small>
-                        {reference.providerName ?? 'Sin proveedor'}
-                        {' · '}
-                        {reference.referenceNumber ?? 'Sin número'}
-                      </small>
-                    </div>
-                    <div className="accounting-row__meta">
-                      <span className={`status-chip status-chip--${reference.status.replaceAll('_', '-')}`}>
-                        {reference.status}
-                      </span>
-                      <strong>{formatCurrency(reference.amountMinor)}</strong>
-                      <small>{formatPeriod(reference.period)}</small>
-                    </div>
-                  </article>
-                ))}
-
-                {!loading && snapshot.monthSettlements.length === 0 && snapshot.periodReferences.length === 0 && (
-                  <div className="empty-state empty-state--inline">No hay liquidaciones ni referencias cargadas para este período.</div>
-                )}
-              </div>
+              </AccountingCollapsibleCard>
             </section>
           </div>
         )}
 
         {activeSection === 'sensibles' && dashboardRole === 'directivo' && (
           <section className="floating-card accounting-owner-footer">
-            <div className="accounting-section-header">
-              <div>
-                <p className="eyebrow">Controles internos sensibles</p>
-                <h2>Sueldos, referencias y presión financiera</h2>
+            <AccountingCollapsibleCard
+              title="Controles internos sensibles"
+              description="Resumen de sueldos, referencias, movimientos bancarios y caja no bancarizada."
+              open={openAccountingSubsection === 'sensitive-summary'}
+              onToggle={() => toggleAccountingSubsection('sensitive-summary')}
+            >
+              <div className="summary-grid accounting-summary-grid">
+                <SummaryCard label="Sueldos visibles" value={formatCurrency(salaryTotalMinor)} helper="Total de salary_payments del período" />
+                <SummaryCard label="Referencias externas" value={`${snapshot.periodReferences.length}`} helper="F931, ART y compromisos cargados" />
+                <SummaryCard label="Movimientos bancarios" value={formatCurrency(bankedTotalMinor)} helper="Base para lectura de cuenta corriente" />
+                <SummaryCard label="Caja no bancarizada" value={formatCurrency(cashTotalMinor)} helper="Incluye efectivo y horas extra" />
               </div>
-            </div>
-
-            <div className="summary-grid accounting-summary-grid">
-              <SummaryCard label="Sueldos visibles" value={formatCurrency(salaryTotalMinor)} helper="Total de salary_payments del período" />
-              <SummaryCard label="Referencias externas" value={`${snapshot.periodReferences.length}`} helper="F931, ART y compromisos cargados" />
-              <SummaryCard label="Movimientos bancarios" value={formatCurrency(bankedTotalMinor)} helper="Base para lectura de cuenta corriente" />
-              <SummaryCard label="Caja no bancarizada" value={formatCurrency(cashTotalMinor)} helper="Incluye efectivo y horas extra" />
-            </div>
+            </AccountingCollapsibleCard>
           </section>
         )}
+        </div>
+        </div>
 
         {entryModal === 'income' && (
           <div className="modal-overlay" role="presentation" onClick={() => setEntryModal(null)}>
@@ -2832,10 +3819,21 @@ export function AccountingDashboard() {
                   <button type="button" className="btn-secondary" onClick={() => setEntryModal(null)}>
                     Cancelar
                   </button>
-                  <button type="submit" className="btn-primary" disabled={submittingAction === 'submit-income'}>
-                    {submittingAction === 'submit-income' ? 'Cargando...' : 'Guardar ingreso'}
+                  <button type="submit" className="btn-primary" disabled={submittingAction === 'submit-income' || !isManualIncomeFormReady}>
+                    {submittingAction === 'submit-income'
+                      ? manualIncomeForm.paymentMethodId === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago
+                        ? 'Creando checkout...'
+                        : 'Cargando...'
+                      : manualIncomeForm.paymentMethodId === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago
+                        ? 'Pagar con Mercado Pago'
+                        : 'Guardar ingreso'}
                   </button>
                 </div>
+                {!isManualIncomeFormReady && (
+                  <small className="profile-note">
+                    Completa fecha, categoria, concepto, monto, medio de pago y referencia si corresponde para continuar.
+                  </small>
+                )}
               </form>
             </section>
           </div>
@@ -2912,10 +3910,10 @@ export function AccountingDashboard() {
                       setSubmitExpenseForm((current) => ({ ...current, paymentMethodId: event.target.value }))
                     }
                   >
-                    {paymentMethodOptions.length === 0 && (
+                    {manualPaymentMethodOptions.length === 0 && (
                       <option value={submitExpenseForm.paymentMethodId}>Sin medios configurados</option>
                     )}
-                    {paymentMethodOptions.map((paymentMethod) => (
+                    {manualPaymentMethodOptions.map((paymentMethod) => (
                       <option key={paymentMethod.id} value={paymentMethod.id}>
                         {getPaymentMethodOptionLabel(paymentMethod)}
                       </option>

@@ -45,7 +45,7 @@ export function ConfirmDialog({
         </div>
 
         <div className="form-actions confirm-dialog-card__actions">
-          <button type="button" className="btn-secondary" disabled={loading} onClick={onCancel}>
+          <button type="button" className="btn-danger" disabled={loading} onClick={onCancel}>
             {cancelLabel}
           </button>
           <button

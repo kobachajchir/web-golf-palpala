@@ -15,6 +15,7 @@ import {
 import { auth, firestore } from '../lib/firebase';
 import { buildSyntheticAuthEmail } from '../lib/memberAuth';
 import type { EntityWithId, MemberDocument, UserDocument } from '../modules/users/domain/models';
+import { createUsersCallables } from '../modules/users/functions/users.callables';
 
 export type ThemeMode = 'light' | 'dark';
 export type User = EntityWithId<
@@ -70,6 +71,7 @@ function normalizeUserDocument(uid: string, data: UserDocument): User {
     authProviderMode: data.authProviderMode ?? 'member_number_password',
     mustChangePassword: data.mustChangePassword ?? false,
     passwordResetRequiredReason: data.passwordResetRequiredReason ?? null,
+    quickActionIdsByRole: data.quickActionIdsByRole ?? {},
   };
 }
 
@@ -90,12 +92,25 @@ function pickInterfaceMode(user: User | null, storedMode: unknown): RoleType {
   return user.roleIds[0] ?? ROLES.SOCIO;
 }
 
+async function ensureCurrentUserProfile(firebaseUser: FirebaseAuthUser) {
+  const callables = createUsersCallables();
+  await callables.ensureCurrentUserProfile();
+  await firebaseUser.getIdTokenResult(true);
+}
+
 async function loadUserDocument(firebaseUser: FirebaseAuthUser): Promise<User> {
   if (!firestore) {
     throw new Error('Firestore no esta inicializado.');
   }
 
-  const snapshot = await getDoc(doc(firestore, 'users', firebaseUser.uid));
+  const userRef = doc(firestore, 'users', firebaseUser.uid);
+  let snapshot = await getDoc(userRef);
+
+  if (!snapshot.exists()) {
+    await ensureCurrentUserProfile(firebaseUser);
+    snapshot = await getDoc(userRef);
+  }
+
   if (!snapshot.exists()) {
     throw new Error('No existe el perfil de usuario en Firestore.');
   }

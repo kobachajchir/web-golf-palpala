@@ -16,12 +16,20 @@ export const ACCOUNTING_COLLECTIONS = {
   macroDebitSettlements: 'macro_debit_settlements',
   salaryConfigurations: 'salary_configurations',
   salaryPayments: 'salary_payments',
+  payrollConfigs: 'payroll_configs',
   externalAccountingReferences: 'external_accounting_references',
+  employeeAccountingLinks: 'employee_accounting_links',
+  employeeCertificates: 'employee_certificates',
+  employeePayrollCycles: 'employee_payroll_cycles',
   expenseSubmissions: 'expense_submissions',
+  overtimeEntries: 'overtime_entries',
+  cashClosures: 'cash_closures',
   concessionContracts: 'concession_contracts',
   advertisingContracts: 'advertising_contracts',
   handicapCharges: 'handicap_charges',
   memberFeeCharges: 'member_fee_charges',
+  mercadoPagoCheckoutSessions: 'mercado_pago_checkout_sessions',
+  mercadoPagoEvents: 'mercado_pago_events',
 } as const;
 
 export const SYSTEM_ACTOR_UID = 'system';
@@ -41,6 +49,7 @@ export const PAYMENT_METHOD_IDS = {
   transfer: 'transfer',
   credit: 'credit',
   cash: 'cash',
+  mercadoPago: 'mercado_pago',
 } as const;
 
 export const FINANCIAL_INCOME_CATEGORY_IDS = {
@@ -116,6 +125,16 @@ export const DEFAULT_PAYMENT_METHODS: Array<{ id: string; data: Omit<PaymentMeth
       specialReportingType: null,
       active: true,
       sortOrder: 35,
+    },
+  },
+  {
+    id: PAYMENT_METHOD_IDS.mercadoPago,
+    data: {
+      name: 'Mercado Pago',
+      bancarizado: true,
+      specialReportingType: null,
+      active: true,
+      sortOrder: 38,
     },
   },
   {

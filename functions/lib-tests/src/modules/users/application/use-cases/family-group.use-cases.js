@@ -1,11 +1,11 @@
 import { assertCondition } from '../../domain/errors.js';
 import { MEMBER_TYPE_IDS } from '../../domain/constants.js';
-import { assertIsRecord, ensureAuthenticatedActor, ensureFamilyHolderEligibility, ensureMinimumFamilyGroup, ensureStaff, parseOptionalString, parseRequiredString, parseRequiredStringArray, } from '../shared.js';
+import { assertIsRecord, ensureAuthenticatedActor, ensureFamilyHolderEligibility, ensureMinimumFamilyGroup, ensureStaff, hasExecutiveAccess, parseOptionalString, parseRequiredString, parseRequiredStringArray, } from '../shared.js';
 function actorHasStaffClaims(actor) {
     const roleIds = new Set(actor.user.roleIds);
     return (actor.user.active &&
-        (roleIds.has('directivo') || roleIds.has('administrativo')) &&
-        (actor.claims.directivo === true || actor.claims.administrativo === true));
+        (hasExecutiveAccess(actor) ||
+            (roleIds.has('administrativo') && actor.claims.administrativo === true)));
 }
 function getActorMemberId(actor) {
     return actor.user.profileType === 'member' ? actor.user.profileId ?? null : null;

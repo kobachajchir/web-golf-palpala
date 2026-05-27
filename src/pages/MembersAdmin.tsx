@@ -8,11 +8,13 @@ import {
   type ChangeEvent,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
 import { collection, getCountFromServer, query, where } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
+import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import { firestore } from '../lib/firebase';
@@ -41,6 +43,7 @@ type DirectoryStats = {
   activeMembers: number;
   households: number;
   withAagMembership: number;
+  minorMembers: number;
 };
 
 const MEMBER_TYPE_OPTIONS: Array<{ value: ClubMemberTypeId; label: string }> = [
@@ -105,6 +108,67 @@ function getAutomaticFeeDeductionLabel(memberTypeId: ClubMemberTypeId) {
   return '';
 }
 
+type IconType =
+  | "calendar"
+  | "check"
+  | "clock"
+  | "chevron"
+  | "flag"
+  | "list"
+  | "plus"
+  | "search"
+  | "settings"
+  | "score"
+  | "trophy"
+  | "users";
+
+function Icon({ type }: { type: IconType }) {
+  const icons: Record<IconType, ReactNode> = {
+    calendar: (
+      <path d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1.5A2.5 2.5 0 0 1 22 6.5v12A2.5 2.5 0 0 1 19.5 21h-15A2.5 2.5 0 0 1 2 18.5v-12A2.5 2.5 0 0 1 4.5 4H6V3a1 1 0 0 1 1-1Zm12.5 8h-15v8.5a.5.5 0 0 0 .5.5h14a.5.5 0 0 0 .5-.5V10ZM5 6a.5.5 0 0 0-.5.5V8h15V6.5A.5.5 0 0 0 19 6H5Z" />
+    ),
+    check: (
+      <path d="M9.2 16.6 4.8 12.2a1 1 0 0 1 1.4-1.4l3 3 8.6-8.6a1 1 0 0 1 1.4 1.4l-9.3 9.3a1 1 0 0 1-1.4 0Z" />
+    ),
+    clock: (
+      <path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm1 5a1 1 0 1 0-2 0v5a1 1 0 0 0 .45.83l3.5 2.3a1 1 0 0 0 1.1-1.66L13 11.47V7Z" />
+    ),
+    chevron: (
+      <path d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.88a1 1 0 1 1 1.4 1.42l-4.6 4.58a1 1 0 0 1-1.4 0L6.7 10.7a1 1 0 0 1 0-1.42Z" />
+    ),
+    flag: (
+      <path d="M5 3a1 1 0 0 1 2 0v1h8.7a1 1 0 0 1 .86 1.5L15 8l1.56 2.5A1 1 0 0 1 15.7 12H7v8a1 1 0 1 1-2 0V3Z" />
+    ),
+    list: (
+      <path d="M5 6.5A1.5 1.5 0 1 1 2 6.5a1.5 1.5 0 0 1 3 0ZM8 5.5h13a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2ZM5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm3-1h13a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2Zm-3 6.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm3-1h13a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2Z" />
+    ),
+    plus: (
+      <path d="M11 5a1 1 0 1 1 2 0v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6V5Z" />
+    ),
+    search: (
+      <path d="M10.5 4a6.5 6.5 0 0 1 5.15 10.47l4.44 4.44a1 1 0 0 1-1.42 1.42l-4.44-4.44A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" />
+    ),
+    settings: (
+      <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm8.7 3.2-.93-.54a7.8 7.8 0 0 0-.7-1.7l.28-1.04a1 1 0 0 0-.26-.98l-1.03-1.03a1 1 0 0 0-.98-.26l-1.04.28a7.8 7.8 0 0 0-1.7-.7l-.54-.93A1 1 0 0 0 13.03 3h-2.06a1 1 0 0 0-.87.5l-.54.93a7.8 7.8 0 0 0-1.7.7l-1.04-.28a1 1 0 0 0-.98.26L4.81 6.14a1 1 0 0 0-.26.98l.28 1.04a7.8 7.8 0 0 0-.7 1.7l-.93.54a1 1 0 0 0-.5.87v2.06a1 1 0 0 0 .5.87l.93.54c.17.6.4 1.17.7 1.7l-.28 1.04a1 1 0 0 0 .26.98l1.03 1.03a1 1 0 0 0 .98.26l1.04-.28c.53.3 1.1.53 1.7.7l.54.93a1 1 0 0 0 .87.5h2.06a1 1 0 0 0 .87-.5l.54-.93c.6-.17 1.17-.4 1.7-.7l1.04.28a1 1 0 0 0 .98-.26l1.03-1.03a1 1 0 0 0 .26-.98l-.28-1.04c.3-.53.53-1.1.7-1.7l.93-.54a1 1 0 0 0 .5-.87v-2.06a1 1 0 0 0-.5-.87Z" />
+    ),
+    score: (
+      <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4v2h10V7H7Zm0 4v2h4v-2H7Zm6 0v2h4v-2h-4Zm-6 4v2h4v-2H7Zm6 0v2h4v-2h-4Z" />
+    ),
+    trophy: (
+      <path d="M7 3h10v2h3a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5h-.28A5 5 0 0 1 13 15.9V19h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-3.1A5 5 0 0 1 8.28 13H8a5 5 0 0 1-5-5V6a1 1 0 0 1 1-1h3V3Zm0 4H5v1a3 3 0 0 0 2.25 2.9A7.5 7.5 0 0 1 7 9V7Zm10 0v2c0 .66-.09 1.3-.25 1.9A3 3 0 0 0 19 8V7h-2Z" />
+    ),
+    users: (
+      <path d="M9 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm7 1a3 3 0 1 1 0-6 3 3 0 0 1 0 6ZM2 20a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1H2v-1Zm15 1a4 4 0 0 0-2.15-3.54A4.96 4.96 0 0 1 20 21h-3Z" />
+    ),
+  };
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      {icons[type]}
+    </svg>
+  );
+}
+
 function SummaryCard({
   label,
   value,
@@ -112,13 +176,13 @@ function SummaryCard({
 }: {
   label: string;
   value: string;
-  helper: string;
+  helper?: string;
 }) {
   return (
     <article className="summary-card">
       <span>{label}</span>
       <strong>{value}</strong>
-      <small>{helper}</small>
+      {helper && <small>{helper}</small>}
     </article>
   );
 }
@@ -151,6 +215,22 @@ function MoreIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
       <path d="M5 10.75A1.25 1.25 0 1 1 5 13.25a1.25 1.25 0 0 1 0-2.5Zm7 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm7 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M10.5 4a6.5 6.5 0 0 1 5.15 10.47l4.44 4.44a1 1 0 0 1-1.42 1.42l-4.44-4.44A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.88a1 1 0 1 1 1.4 1.42l-4.6 4.58a1 1 0 0 1-1.4 0L6.7 10.7a1 1 0 0 1 0-1.42Z" />
     </svg>
   );
 }
@@ -203,11 +283,12 @@ export function MembersAdmin() {
 
     const membersRef = collection(firestore, 'members');
     const familyGroupsRef = collection(firestore, 'family_groups');
-    const [totalMembers, activeMembers, households, withAagMembership] = await Promise.all([
+    const [totalMembers, activeMembers, households, withAagMembership, minorMembers] = await Promise.all([
       getCountFromServer(membersRef),
       getCountFromServer(query(membersRef, where('status', '==', 'active'))),
       getCountFromServer(query(familyGroupsRef, where('active', '==', true))),
       getCountFromServer(query(membersRef, where('aagMembershipNumber', '>', ''))),
+      getCountFromServer(query(membersRef, where('memberTypeId', '==', 'menor'))),
     ]);
 
     setDirectoryStats({
@@ -215,6 +296,7 @@ export function MembersAdmin() {
       activeMembers: activeMembers.data().count,
       households: households.data().count,
       withAagMembership: withAagMembership.data().count,
+      minorMembers: minorMembers.data().count,
     });
   };
 
@@ -318,6 +400,8 @@ export function MembersAdmin() {
       return matchesSearch && matchesType && matchesActivity;
     });
   }, [activityFilter, deferredSearchQuery, memberTypeFilter, members]);
+  const activeSearchCount =
+    Number(searchQuery.trim().length > 0) + Number(memberTypeFilter !== 'all') + Number(activityFilter !== 'all');
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id === selectedMemberId) ?? null,
@@ -359,13 +443,18 @@ export function MembersAdmin() {
   }, [editorState.id, editorState.memberTypeId, selectedMember]);
 
   const summary = useMemo(() => {
-    const households = new Set(members.filter((member) => member.householdSize > 1).map((member) => member.familyGroupCode));
+    const households = new Set(
+      members
+        .map((member) => member.familyGroupId ?? member.familyGroupCode)
+        .filter((groupId): groupId is string => Boolean(groupId)),
+    );
 
     return {
       totalMembers: directoryStats?.totalMembers ?? members.length,
       activeMembers: directoryStats?.activeMembers ?? members.filter((member) => member.active).length,
       households: directoryStats?.households ?? households.size,
       withAagMembership: directoryStats?.withAagMembership ?? members.filter((member) => Boolean(member.aagMembershipNumber)).length,
+      minorMembers: directoryStats?.minorMembers ?? members.filter((member) => member.memberTypeId === 'menor').length,
     };
   }, [directoryStats, members]);
 
@@ -721,89 +810,161 @@ export function MembersAdmin() {
     closeEditor();
   };
 
+  const isMemberEditorSubmitDisabled =
+    isSaving ||
+    !editorState.memberNumber.trim() ||
+    !editorState.fullName.trim() ||
+    (editorState.memberTypeId === 'grupo_familiar_asociado' && !editorState.familyHolderMemberId) ||
+    (hasAagMembership && !editorState.aagMembershipNumber?.trim());
+
   return (
-    <div className="page-container member-directory-page">
-      <div className="directory-shell directory-shell--full">
-        <section className="floating-card directory-main-card">
-          <div className="directory-hero">
+    <div className="page-container member-directory-page directory-workbench-page">
+      <div className="directory-shell directory-workbench-shell">
+        <section className="floating-card tournament-hero directory-workbench-hero">
+          <div className="tournament-hero__copy">
+            <p className="eyebrow">Gestion de socios</p>
+            <h1>Padron del club</h1>
+            <p>
+              Busca socios, revisa estado de membresia, administra grupos
+              familiares y entra a la ficha en un click.
+            </p>
+          </div>
+
+          <div className="tournament-hero__actions">
+            {canEditMembers && directorySource.canReset && (
+              <button
+                type="button"
+                className="ui-action-button ui-action-button--secondary"
+                onClick={handleResetDirectory}
+              >
+                Restaurar padron base
+              </button>
+            )}
+            {canEditMembers && (
+              <button
+                type="button"
+                className="ui-action-button ui-action-button--positive"
+                onClick={openCreateModal}
+              >
+                <Icon type="plus" />
+                <span>Nuevo socio</span>
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section
+          className="tournament-summary-grid directory-summary-grid"
+          aria-label="Resumen de socios"
+        >
+          <SummaryCard
+            label="Socios activos"
+            value={String(summary.activeMembers)}
+          />
+          <SummaryCard
+            label="Grupos familiares"
+            value={String(summary.households)}
+          />
+          <SummaryCard
+            label="Con matricula AAG"
+            value={String(summary.withAagMembership)}
+          />
+          <SummaryCard
+            label="Menores"
+            value={String(summary.minorMembers)}
+          />
+        </section>
+
+        <section className="floating-card tournament-main-panel directory-workbench-panel">
+          <div className="tournament-section-header directory-panel-header">
             <div>
-              <p className="eyebrow">Gestion de socios</p>
-              <h1>Padron del club</h1>
+              <p className="eyebrow">Listado operativo</p>
+              <h2>Socios, membresias y accesos</h2>
               <p className="profile-note">
-                Busca por apellido, nombre, numero interno, ID o DNI y entra a la ficha de membresia en un click.
+                Filtra el padron, abre fichas de membresia y ejecuta acciones
+                administrativas desde el listado.
               </p>
             </div>
-
-            <div className="directory-hero__actions">
-              {canEditMembers && directorySource.canReset && (
-                <button type="button" className="btn-secondary" onClick={handleResetDirectory}>
-                  Restaurar padron base
-                </button>
-              )}
-              {canEditMembers && (
-                <button type="button" className="btn-primary" onClick={openCreateModal}>
-                  Nuevo socio
-                </button>
-              )}
-            </div>
           </div>
 
-          <div className="summary-grid">
-            <SummaryCard label="Socios cargados" value={String(summary.totalMembers)} helper={directorySource.label} />
-            <SummaryCard label="Activos" value={String(summary.activeMembers)} helper="Disponibles para operar" />
-            <SummaryCard label="Grupos familiares" value={String(summary.households)} helper="Vinculados a un titular" />
-            <SummaryCard label="Con matricula AAG" value={String(summary.withAagMembership)} helper="Vinculables al golf" />
-          </div>
+          <div
+            className={`search-collapse ${isFiltersOpen ? "search-collapse--open" : ""}`}
+            ref={filtersRef}
+          >
+            <button
+              type="button"
+              className="search-collapse__trigger"
+              aria-expanded={isFiltersOpen}
+              onClick={() => setIsFiltersOpen((current) => !current)}
+            >
+              <span className="search-collapse__title">
+                <span className="search-collapse__icon">
+                  <SearchIcon />
+                </span>
+                <span>
+                  <strong>Busqueda y filtros</strong>
+                  <small>
+                    {activeSearchCount > 0
+                      ? `${activeSearchCount} criterio${activeSearchCount === 1 ? "" : "s"} activo${activeSearchCount === 1 ? "" : "s"}`
+                      : "Buscar por socio, nombre, DNI, matricula, tipo o estado"}
+                  </small>
+                </span>
+              </span>
+              <span className="search-collapse__meta">
+                {activeSearchCount > 0 && (
+                  <span className="status-chip">{activeSearchCount}</span>
+                )}
+                <span className="search-collapse__chevron">
+                  <ChevronIcon />
+                </span>
+              </span>
+            </button>
 
-          <div className="member-toolbar">
-            <div className="member-toolbar__row">
-              <label className="member-search member-search--wide">
-                <span>Busqueda rapida</span>
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-              </label>
+            {isFiltersOpen && (
+              <div className="search-collapse__body">
+                <div className="member-toolbar">
+                  <div className="member-toolbar__row">
+                    <label className="member-search member-search--wide">
+                      <span>Busqueda rapida</span>
+                      <input
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                      />
+                    </label>
 
-              <label className="form-field member-filter" htmlFor="memberTypeFilter">
-                <span>Tipo</span>
-                <select
-                  id="memberTypeFilter"
-                  value={memberTypeFilter}
-                  onChange={(event) => setMemberTypeFilter(event.target.value as MemberTypeFilter)}
-                >
-                  <option value="all">Todos los tipos</option>
-                  {MEMBER_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                    <label
+                      className="form-field member-filter"
+                      htmlFor="memberTypeFilter"
+                    >
+                      <span>Tipo</span>
+                      <select
+                        id="memberTypeFilter"
+                        value={memberTypeFilter}
+                        onChange={(event) =>
+                          setMemberTypeFilter(
+                            event.target.value as MemberTypeFilter,
+                          )
+                        }
+                      >
+                        <option value="all">Todos los tipos</option>
+                        {MEMBER_TYPE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
 
-              <div className="member-toolbar__actions" ref={filtersRef}>
-                <button
-                  type="button"
-                  className={`icon-button icon-button--ghost ${isFiltersOpen ? 'icon-button--active' : ''}`}
-                  aria-label="Otros filtros"
-                  aria-expanded={isFiltersOpen}
-                  onClick={() => setIsFiltersOpen((current) => !current)}
-                >
-                  <MoreIcon />
-                </button>
-
-                {isFiltersOpen && (
-                  <div className="filter-popover">
-                    <div className="filter-popover__header">
-                      <strong>Otros filtros</strong>
-                    </div>
-
-                    <div className="filter-popover__row">
+                    <label className="form-field member-filter">
                       <span>Estado</span>
                       <select
                         value={activityFilter}
-                        onChange={(event) => setActivityFilter(event.target.value as ActivityFilter)}
+                        onChange={(event) =>
+                          setActivityFilter(
+                            event.target.value as ActivityFilter,
+                          )
+                        }
                       >
                         {ACTIVITY_FILTER_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
@@ -811,12 +972,11 @@ export function MembersAdmin() {
                           </option>
                         ))}
                       </select>
-                    </div>
-
+                    </label>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {error && <div className="error-message">{error}</div>}
@@ -830,7 +990,6 @@ export function MembersAdmin() {
             <>
               <div className="directory-results">
                 <strong>{filteredMembers.length} socios cargados</strong>
-                <small>Pagina actual con cursor Firestore. Busca por socio, nombre, DNI y matricula AAG.</small>
               </div>
 
               <div className="member-table">
@@ -852,8 +1011,10 @@ export function MembersAdmin() {
                     filteredMembers.map((member) => (
                       <article
                         key={member.id}
-                        className={`member-row ${selectedMemberId === member.id ? 'member-row--selected' : ''} ${
-                          openMemberActionsId === member.id ? 'member-row--menu-open' : ''
+                        className={`member-row ${selectedMemberId === member.id ? "member-row--selected" : ""} ${
+                          openMemberActionsId === member.id
+                            ? "member-row--menu-open"
+                            : ""
                         }`}
                       >
                         <div className="member-cell">
@@ -863,31 +1024,53 @@ export function MembersAdmin() {
 
                         <div className="member-cell">
                           <strong>{member.displayName}</strong>
-                          <small>{member.dni ? `DNI ${member.dni}` : 'DNI pendiente'}</small>
+                          <small>
+                            {member.dni ? `DNI ${member.dni}` : "DNI pendiente"}
+                          </small>
                         </div>
 
                         <div className="member-cell">
-                          <span className="member-type-badge">{member.memberTypeLabel}</span>
+                          <span className="member-type-badge">
+                            {member.memberTypeLabel}
+                          </span>
                           {member.householdSize > 1 && (
-                            <small>{member.isFamilyHolder ? 'Titular familiar' : 'Integrante familiar'}</small>
+                            <small>
+                              {member.isFamilyHolder
+                                ? "Titular familiar"
+                                : "Integrante familiar"}
+                            </small>
                           )}
                         </div>
 
                         <div className="member-cell">
-                          <strong>{member.aagMembershipNumber ?? 'Sin matricula'}</strong>
-                          <small>{member.linkedUserId ? 'Con acceso app' : 'Sin acceso app'}</small>
+                          <strong>
+                            {member.aagMembershipNumber ?? "Sin matricula"}
+                          </strong>
+                          <small>
+                            {member.linkedUserId
+                              ? "Con acceso app"
+                              : "Sin acceso app"}
+                          </small>
                         </div>
 
                         <div className="member-cell">
-                          <span className={`status-pill ${member.active ? '' : 'status-pill--bloqueado'}`}>
-                            {member.active ? 'Activo' : 'No activo'}
+                          <span
+                            className={`status-pill status-pill-green ${member.active ? "" : "status-pill--bloqueado"}`}
+                          >
+                            {member.active ? "Activo" : "No activo"}
                           </span>
-                          <small>{member.status === 'license' ? 'Licencia' : member.active ? 'Activo' : 'Inactivo'}</small>
+                          <small>
+                            {member.status === "license" ? "Licencia" : null}
+                          </small>
                         </div>
 
                         <div
                           className="member-actions"
-                          ref={openMemberActionsId === member.id ? memberActionsRef : undefined}
+                          ref={
+                            openMemberActionsId === member.id
+                              ? memberActionsRef
+                              : undefined
+                          }
                         >
                           {canEditMembers && (
                             <button
@@ -909,55 +1092,66 @@ export function MembersAdmin() {
                           {canEditMembers && (
                             <button
                               type="button"
-                              className={`icon-button member-icon-button ${openMemberActionsId === member.id ? 'icon-button--active' : ''}`}
+                              className={`icon-button member-icon-button ${openMemberActionsId === member.id ? "icon-button--active" : ""}`}
                               aria-label={`Mas acciones para ${member.displayName}`}
                               aria-expanded={openMemberActionsId === member.id}
                               onClick={() =>
-                                setOpenMemberActionsId((current) => (current === member.id ? null : member.id))
+                                setOpenMemberActionsId((current) =>
+                                  current === member.id ? null : member.id,
+                                )
                               }
                             >
                               <MoreIcon />
                             </button>
                           )}
 
-                          {canEditMembers && openMemberActionsId === member.id && (
-                            <div className="member-actions-menu">
-                              <button
-                                type="button"
-                                className="member-actions-menu__item"
-                                onClick={() => void handleToggleActive(member)}
-                              >
-                                {member.active ? 'Desactivar socio' : 'Reactivar socio'}
-                              </button>
-                              {member.status === 'license' ? (
+                          {canEditMembers &&
+                            openMemberActionsId === member.id && (
+                              <div className="member-actions-menu">
                                 <button
                                   type="button"
                                   className="member-actions-menu__item"
-                                  onClick={() => void handleEndLicense(member)}
+                                  onClick={() =>
+                                    void handleToggleActive(member)
+                                  }
                                 >
-                                  Finalizar licencia
+                                  {member.active
+                                    ? "Desactivar socio"
+                                    : "Reactivar socio"}
                                 </button>
-                              ) : (
+                                {member.status === "license" ? (
+                                  <button
+                                    type="button"
+                                    className="member-actions-menu__item"
+                                    onClick={() =>
+                                      void handleEndLicense(member)
+                                    }
+                                  >
+                                    Finalizar licencia
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="member-actions-menu__item"
+                                    onClick={() =>
+                                      void handleStartLicense(member)
+                                    }
+                                  >
+                                    Iniciar licencia
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  className="member-actions-menu__item"
-                                  onClick={() => void handleStartLicense(member)}
+                                  className="member-actions-menu__item member-actions-menu__item--danger"
+                                  onClick={() => {
+                                    setOpenMemberActionsId(null);
+                                    setMemberPendingDelete(member);
+                                  }}
                                 >
-                                  Iniciar licencia
+                                  Eliminar usuario
                                 </button>
-                              )}
-                              <button
-                                type="button"
-                                className="member-actions-menu__item member-actions-menu__item--danger"
-                                onClick={() => {
-                                  setOpenMemberActionsId(null);
-                                  setMemberPendingDelete(member);
-                                }}
-                              >
-                                Eliminar usuario
-                              </button>
-                            </div>
-                          )}
+                              </div>
+                            )}
                         </div>
                       </article>
                     ))
@@ -967,8 +1161,13 @@ export function MembersAdmin() {
 
               {hasMoreMembers && (
                 <div className="directory-results">
-                  <button type="button" className="btn-secondary" disabled={isLoadingMore} onClick={handleLoadMore}>
-                    {isLoadingMore ? 'Cargando...' : 'Cargar mas socios'}
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={isLoadingMore}
+                    onClick={handleLoadMore}
+                  >
+                    {isLoadingMore ? "Cargando..." : "Cargar mas socios"}
                   </button>
                 </div>
               )}
@@ -979,17 +1178,25 @@ export function MembersAdmin() {
 
       {isEditorOpen && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
-          <section className="floating-card member-modal-card" role="dialog" aria-modal="true">
+          <section
+            className="floating-card member-modal-card"
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="member-modal__header">
               <div className="member-modal__title">
-                <p className="eyebrow">{selectedMember ? 'Edicion de socio' : 'Alta de socio'}</p>
+                <p className="eyebrow">
+                  {selectedMember ? "Edicion de socio" : "Alta de socio"}
+                </p>
                 {selectedMember ? <h2>Actualizar registro</h2> : null}
               </div>
 
               <div className="member-modal__header-actions">
                 {selectedMember && (
-                  <span className={`status-pill ${selectedMember.active ? '' : 'status-pill--bloqueado'}`}>
-                    {selectedMember.active ? 'Activo' : 'Inactivo'}
+                  <span
+                    className={`status-pill status-pill-green ${selectedMember.active ? "" : "status-pill--bloqueado"}`}
+                  >
+                    {selectedMember.active ? "Activo" : "Inactivo"}
                   </span>
                 )}
 
@@ -1005,13 +1212,14 @@ export function MembersAdmin() {
             </div>
 
             <p className="profile-note">
-              El formulario separa membresia, identificadores y observaciones sin mezclar informacion financiera.
+              El formulario separa membresia, identificadores y observaciones
+              sin mezclar informacion financiera.
             </p>
 
             {error && <div className="error-message">{error}</div>}
 
             <form className="member-editor-form" onSubmit={handleSubmit}>
-              <label className="form-field" htmlFor="memberNumber">
+              <label className="form-field member-editor-form__wide member-number-field" htmlFor="memberNumber">
                 <span>Nro. socio</span>
                 <div className="member-number-control">
                   <input
@@ -1023,27 +1231,44 @@ export function MembersAdmin() {
                     disabled={Boolean(selectedMember)}
                   />
                   {!selectedMember && (
-                    <button
+                    <UiActionButton
                       type="button"
-                      className="btn-secondary member-number-control__button"
+                      variant="secondary"
+                      compact
+                      className="member-number-control__button"
                       disabled={isSuggestingMemberNumber}
                       onClick={() => void assignAutomaticMemberNumber()}
                     >
-                      {isSuggestingMemberNumber ? 'Asignando...' : 'Asignar automaticamente'}
-                    </button>
+                      {isSuggestingMemberNumber
+                        ? "Asignando..."
+                        : "Asignar automaticamente"}
+                    </UiActionButton>
                   )}
                 </div>
                 {selectedMember && (
-                  <small>El numero de socio no puede modificarse una vez creado.</small>
+                  <small>
+                    El numero de socio no puede modificarse una vez creado.
+                  </small>
                 )}
-                {memberNumberError && <div className="field-error-message">{memberNumberError}</div>}
-                {!selectedMember && isSuggestingMemberNumber && <small>Calculando proximo numero de socio...</small>}
-                {!selectedMember && !isSuggestingMemberNumber && memberNumberSuggestion && (
-                  <small>Sugerido: {memberNumberSuggestion}. Se valida al guardar.</small>
+                {memberNumberError && (
+                  <div className="field-error-message">{memberNumberError}</div>
                 )}
+                {!selectedMember && isSuggestingMemberNumber && (
+                  <small>Calculando proximo numero de socio...</small>
+                )}
+                {!selectedMember &&
+                  !isSuggestingMemberNumber &&
+                  memberNumberSuggestion && (
+                    <small>
+                      Sugerido: {memberNumberSuggestion}. Se valida al guardar.
+                    </small>
+                  )}
               </label>
 
-              <label className="form-field member-editor-form__wide" htmlFor="fullName">
+              <label
+                className="form-field member-editor-form__wide"
+                htmlFor="fullName"
+              >
                 <span>Apellido y nombre</span>
                 <input
                   id="fullName"
@@ -1056,11 +1281,16 @@ export function MembersAdmin() {
 
               <label className="form-field" htmlFor="memberTypeId">
                 <span>Tipo interno</span>
-                {editorState.memberTypeId === 'grupo_familiar_titular' || editorState.memberTypeId === 'licencia' ? (
+                {editorState.memberTypeId === "grupo_familiar_titular" ||
+                editorState.memberTypeId === "licencia" ? (
                   <input
                     id="memberTypeId"
                     type="text"
-                    value={editorState.memberTypeId === 'licencia' ? 'Licencia' : 'Grupo familiar titular'}
+                    value={
+                      editorState.memberTypeId === "licencia"
+                        ? "Licencia"
+                        : "Grupo familiar titular"
+                    }
                     readOnly
                   />
                 ) : (
@@ -1085,7 +1315,7 @@ export function MembersAdmin() {
                   id="dni"
                   name="dni"
                   type="text"
-                  value={editorState.dni ?? ''}
+                  value={editorState.dni ?? ""}
                   onChange={handleEditorChange}
                 />
               </label>
@@ -1106,13 +1336,13 @@ export function MembersAdmin() {
                   id="aagMembershipNumber"
                   name="aagMembershipNumber"
                   type="text"
-                  value={editorState.aagMembershipNumber ?? ''}
+                  value={editorState.aagMembershipNumber ?? ""}
                   onChange={handleEditorChange}
                   disabled={!hasAagMembership}
                 />
               </label>
 
-              {editorState.memberTypeId === 'grupo_familiar_asociado' && (
+              {editorState.memberTypeId === "grupo_familiar_asociado" && (
                 <div className="member-editor-form__wide member-holder-search">
                   <label className="form-field" htmlFor="familyHolderSearch">
                     <span>Buscar titular</span>
@@ -1120,7 +1350,9 @@ export function MembersAdmin() {
                       id="familyHolderSearch"
                       type="search"
                       value={familyHolderQuery}
-                      onChange={(event) => setFamilyHolderQuery(event.target.value)}
+                      onChange={(event) =>
+                        setFamilyHolderQuery(event.target.value)
+                      }
                       placeholder="Nombre, DNI o nro. socio"
                     />
                   </label>
@@ -1131,20 +1363,28 @@ export function MembersAdmin() {
                         <strong>{selectedFamilyHolder.displayName}</strong>
                         <small>
                           Socio #{selectedFamilyHolder.memberNumber}
-                          {selectedFamilyHolder.dni ? ` | DNI ${selectedFamilyHolder.dni}` : ''}
+                          {selectedFamilyHolder.dni
+                            ? ` | DNI ${selectedFamilyHolder.dni}`
+                            : ""}
                         </small>
                       </div>
-                      <button type="button" className="member-action-link" onClick={clearSelectedFamilyHolder}>
+                      <button
+                        type="button"
+                        className="member-action-link"
+                        onClick={clearSelectedFamilyHolder}
+                      >
                         Quitar titular
                       </button>
                     </div>
                   )}
 
-                  {!selectedFamilyHolder && familyHolderQuery.trim().length < 2 && (
-                    <p className="form-helper">
-                      Busca al titular por apellido y nombre, documento o numero de socio.
-                    </p>
-                  )}
+                  {!selectedFamilyHolder &&
+                    familyHolderQuery.trim().length < 2 && (
+                      <p className="form-helper">
+                        Busca al titular por apellido y nombre, documento o
+                        numero de socio.
+                      </p>
+                    )}
 
                   {familyHolderQuery.trim().length >= 2 && (
                     <>
@@ -1160,22 +1400,30 @@ export function MembersAdmin() {
                               <strong>{holder.displayName}</strong>
                               <small>
                                 Socio #{holder.memberNumber}
-                                {holder.dni ? ` | DNI ${holder.dni}` : ''}
-                                {holder.memberTypeId === 'pleno' ? ' | Se convertira en titular' : ' | Titular actual'}
+                                {holder.dni ? ` | DNI ${holder.dni}` : ""}
+                                {holder.memberTypeId === "pleno"
+                                  ? " | Se convertira en titular"
+                                  : " | Titular actual"}
                               </small>
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <p className="form-helper">No encontramos titulares coincidentes con esa busqueda.</p>
+                        <p className="form-helper">
+                          No encontramos titulares coincidentes con esa
+                          busqueda.
+                        </p>
                       )}
                     </>
                   )}
                 </div>
               )}
 
-              {editorState.memberTypeId !== 'pleno' && (
-                <label className="form-field member-editor-form__wide" htmlFor="feeDeductionPreview">
+              {editorState.memberTypeId !== "pleno" && (
+                <label
+                  className="form-field member-editor-form__wide"
+                  htmlFor="feeDeductionPreview"
+                >
                   <span>Cuota deducida</span>
                   <input
                     id="feeDeductionPreview"
@@ -1187,24 +1435,39 @@ export function MembersAdmin() {
                 </label>
               )}
 
-              <label className="form-field member-editor-form__wide" htmlFor="notes">
+              <label
+                className="form-field member-editor-form__wide member-editor-form__notes"
+                htmlFor="notes"
+              >
                 <span>Observaciones</span>
                 <textarea
                   id="notes"
                   name="notes"
-                  value={editorState.notes ?? ''}
+                  value={editorState.notes ?? ""}
                   onChange={handleEditorChange}
                   rows={4}
                 />
               </label>
 
-              <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={closeEditor}>
+              <div className="form-actions form-actions--split member-editor-actions">
+                <UiActionButton
+                  type="button"
+                  variant="secondary"
+                  onClick={closeEditor}
+                >
                   Cerrar
-                </button>
-                <button type="submit" className="btn-primary" disabled={isSaving}>
-                  {isSaving ? 'Guardando...' : selectedMember ? 'Guardar cambios' : 'Dar de alta socio'}
-                </button>
+                </UiActionButton>
+                <UiActionButton
+                  type="submit"
+                  variant="positive"
+                  disabled={isMemberEditorSubmitDisabled}
+                >
+                  {isSaving
+                    ? "Guardando..."
+                    : selectedMember
+                      ? "Guardar cambios"
+                      : "Dar de alta socio"}
+                </UiActionButton>
               </div>
             </form>
           </section>
@@ -1213,9 +1476,11 @@ export function MembersAdmin() {
 
       <TemporaryCredentialsDialog
         open={Boolean(credentialsDialog)}
-        title={credentialsDialog?.title ?? ''}
-        memberNumber={credentialsDialog?.credentials.memberNumber ?? ''}
-        temporaryPassword={credentialsDialog?.credentials.temporaryPassword ?? ''}
+        title={credentialsDialog?.title ?? ""}
+        memberNumber={credentialsDialog?.credentials.memberNumber ?? ""}
+        temporaryPassword={
+          credentialsDialog?.credentials.temporaryPassword ?? ""
+        }
         onClose={() => setCredentialsDialog(null)}
       />
       <ConfirmDialog
@@ -1224,8 +1489,9 @@ export function MembersAdmin() {
         description={
           memberPendingDelete ? (
             <>
-              Vas a dejar inactivo a {memberPendingDelete.displayName}. La ficha, el historial y los movimientos
-              vinculados se conservan para auditoria.
+              Vas a dejar inactivo a {memberPendingDelete.displayName}. La
+              ficha, el historial y los movimientos vinculados se conservan para
+              auditoria.
             </>
           ) : null
         }

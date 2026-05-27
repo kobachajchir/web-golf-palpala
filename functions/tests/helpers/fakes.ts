@@ -538,9 +538,11 @@ export function createActor(user: EntityWithId<UserDocument>, claims?: Partial<C
     uid: user.id,
     user,
     claims: {
-      directivo: user.roleIds.includes('directivo'),
+      comite_ejecutivo: user.roleIds.includes('comite_ejecutivo') || user.roleIds.includes('directivo'),
+      directivo: user.roleIds.includes('comite_ejecutivo') || user.roleIds.includes('directivo'),
       administrativo: user.roleIds.includes('administrativo'),
       empleado: user.roleIds.includes('empleado'),
+      comision_directiva: user.roleIds.includes('comision_directiva'),
       socio: user.roleIds.includes('socio'),
       claimsVersion: user.claimsVersion,
       ...claims,

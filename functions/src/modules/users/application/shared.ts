@@ -1,5 +1,14 @@
 import { HttpsError } from 'firebase-functions/v2/https';
-import { CLAIM_ROLE_IDS, DEFAULT_PRIMARY_ROLE_ID, MAX_LICENSE_MONTHS, PRIMARY_ROLE_PRECEDENCE, STAFF_ROLE_IDS } from '../domain/constants.js';
+import {
+  CLAIM_ROLE_IDS,
+  DEFAULT_PRIMARY_ROLE_ID,
+  EXECUTIVE_ACCESS_ROLE_IDS,
+  EXECUTIVE_COMMITTEE_ROLE_ID,
+  LEGACY_DIRECTIVO_ROLE_ID,
+  MAX_LICENSE_MONTHS,
+  PRIMARY_ROLE_PRECEDENCE,
+  STAFF_ROLE_IDS,
+} from '../domain/constants.js';
 import { AppError, assertCondition, isRecord } from '../domain/errors.js';
 import type {
   Actor,
@@ -33,15 +42,22 @@ export function ensureAuthenticatedActor(actor: Actor | null): Actor {
   return actor;
 }
 
+export function hasExecutiveAccess(actor: Actor): boolean {
+  const roleIds = new Set(actor.user.roleIds);
+  const hasExecutiveRole = EXECUTIVE_ACCESS_ROLE_IDS.some((roleId) => roleIds.has(roleId));
+  const hasExecutiveClaim = actor.claims.comite_ejecutivo === true || actor.claims.directivo === true;
+
+  return actor.user.active && hasExecutiveRole && hasExecutiveClaim;
+}
+
 export function ensureDirectivo(actor: Actor | null): Actor {
   const authenticatedActor = ensureAuthenticatedActor(actor);
-  const roleIds = new Set(authenticatedActor.user.roleIds);
 
   assertCondition(authenticatedActor.user.active, 'permission-denied', 'El usuario no está activo.');
   assertCondition(
-    roleIds.has('directivo') && authenticatedActor.claims.directivo === true,
+    hasExecutiveAccess(authenticatedActor),
     'permission-denied',
-    'Solo un directivo puede realizar esta operación.',
+    'Solo el Comité Ejecutivo puede realizar esta operación.',
   );
 
   return authenticatedActor;
@@ -51,7 +67,10 @@ export function ensureStaff(actor: Actor | null): Actor {
   const authenticatedActor = ensureAuthenticatedActor(actor);
   const roleIds = new Set(authenticatedActor.user.roleIds);
   const isStaffByRole = STAFF_ROLE_IDS.some((roleId) => roleIds.has(roleId));
-  const isStaffByClaim = authenticatedActor.claims.directivo === true || authenticatedActor.claims.administrativo === true;
+  const isStaffByClaim =
+    authenticatedActor.claims.comite_ejecutivo === true ||
+    authenticatedActor.claims.directivo === true ||
+    authenticatedActor.claims.administrativo === true;
 
   assertCondition(authenticatedActor.user.active, 'permission-denied', 'El usuario no está activo.');
   assertCondition(
@@ -78,12 +97,17 @@ export function pickPrimaryRoleId(roleIds: readonly string[]): string {
 
 export function buildCustomClaims(roleIds: readonly string[], claimsVersion: number, active: boolean): CustomClaims {
   const roleSet = new Set(roleIds);
+  const hasExecutiveRole =
+    roleSet.has(EXECUTIVE_COMMITTEE_ROLE_ID) ||
+    roleSet.has(LEGACY_DIRECTIVO_ROLE_ID);
   const baseClaims = Object.fromEntries(
     CLAIM_ROLE_IDS.map((roleId) => [roleId, active && roleSet.has(roleId)]),
   ) as Omit<CustomClaims, 'claimsVersion'>;
 
   return {
     ...baseClaims,
+    [EXECUTIVE_COMMITTEE_ROLE_ID]: active && hasExecutiveRole,
+    [LEGACY_DIRECTIVO_ROLE_ID]: active && hasExecutiveRole,
     claimsVersion,
   };
 }
@@ -312,9 +336,11 @@ export async function resolveActor(
   return {
     uid,
     claims: {
+      comite_ejecutivo: token.comite_ejecutivo === true,
       directivo: token.directivo === true,
       administrativo: token.administrativo === true,
       empleado: token.empleado === true,
+      comision_directiva: token.comision_directiva === true,
       socio: token.socio === true,
       claimsVersion: typeof token.claimsVersion === 'number' ? token.claimsVersion : user.claimsVersion,
     },

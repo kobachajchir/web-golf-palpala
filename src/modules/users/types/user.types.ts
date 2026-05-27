@@ -39,6 +39,21 @@ export interface SetMemberAuthAccessActivePayload {
   active: boolean;
 }
 
+export interface LinkEmployeeAuthUserPayload {
+  employeeId: string;
+  email: string;
+  displayName?: string;
+}
+
+export interface EmployeeAuthInviteResult {
+  uid: string;
+  employeeId: string;
+  email: string;
+  inviteLink: string;
+  createdAuthUser?: boolean;
+  claimsVersion?: number;
+}
+
 export interface RequestMemberPasswordResetPayload {
   memberNumber: string;
 }

@@ -1,26 +1,49 @@
 export const ACCOUNTING_CALLABLE_NAMES = {
   upsertFinancialConfig: 'accountingUpsertFinancialConfig',
+  setCreditCommissionRule: 'accountingSetCreditCommissionRule',
   upsertSalaryConfiguration: 'accountingUpsertSalaryConfiguration',
+  upsertPayrollConfig: 'accountingUpsertPayrollConfig',
   generateCuota: 'accountingGenerateCuota',
   registerPayment: 'accountingRegisterPayment',
   submitExpense: 'accountingSubmitExpense',
   reviewExpense: 'accountingReviewExpense',
   postExpenseMovement: 'accountingPostExpenseMovement',
   recordExternalReference: 'accountingRecordExternalReference',
+  upsertEmployeeExternalReference: 'accountingUpsertEmployeeExternalReference',
+  createOvertimeEntry: 'accountingCreateOvertimeEntry',
+  reviewOvertimeEntry: 'accountingReviewOvertimeEntry',
+  listEmployeePayrollCycle: 'accountingListEmployeePayrollCycle',
+  postEmployeePayrollCycle: 'accountingPostEmployeePayrollCycle',
+  recordEmployeeCertificate: 'accountingRecordEmployeeCertificate',
+  linkExternalReferenceToEmployee: 'accountingLinkExternalReferenceToEmployee',
+  createCashClosure: 'accountingCreateCashClosure',
+  closeCashClosure: 'accountingCloseCashClosure',
+  markMembershipRenewals: 'accountingMarkMembershipRenewals',
   reconcileMacroSettlement: 'accountingReconcileMacroSettlement',
+  createMercadoPagoCheckout: 'accountingCreateMercadoPagoCheckout',
+  getMercadoPagoCheckoutStatus: 'accountingGetMercadoPagoCheckoutStatus',
   voidFinancialMovement: 'accountingVoidFinancialMovement',
 } as const;
 
 export const ACCOUNTING_COLLECTIONS = {
   financialConfigs: 'financial_configs',
   paymentMethods: 'payment_methods',
+  paymentCommissionRules: 'payment_commission_rules',
   financialMovements: 'financial_movements',
   macroDebitSettlements: 'macro_debit_settlements',
   expenseSubmissions: 'expense_submissions',
   salaryPayments: 'salary_payments',
+  payrollConfigs: 'payroll_configs',
   externalAccountingReferences: 'external_accounting_references',
+  employeeAccountingLinks: 'employee_accounting_links',
+  employeeCertificates: 'employee_certificates',
+  employeePayrollCycles: 'employee_payroll_cycles',
+  overtimeEntries: 'overtime_entries',
+  cashClosures: 'cash_closures',
   handicapCharges: 'handicap_charges',
   memberFeeCharges: 'member_fee_charges',
+  mercadoPagoCheckoutSessions: 'mercado_pago_checkout_sessions',
+  mercadoPagoEvents: 'mercado_pago_events',
 } as const;
 
 export const ACCOUNTING_PAYMENT_METHOD_IDS = {
@@ -29,6 +52,7 @@ export const ACCOUNTING_PAYMENT_METHOD_IDS = {
   transfer: 'transfer',
   credit: 'credit',
   cash: 'cash',
+  mercadoPago: 'mercado_pago',
 } as const;
 
 export const ACCOUNTING_INCOME_CATEGORY_IDS = {
@@ -48,6 +72,11 @@ export const ACCOUNTING_INCOME_CATEGORY_IDS = {
 } as const;
 
 export const ACCOUNTING_EXPENSE_CATEGORY_IDS = {
+  sueldo: 'sueldo',
+  f931: 'f931',
+  obraSocial: 'obra_social',
+  art: 'art',
+  horasExtra: 'horas_extra',
   proveedores: 'proveedores',
   insumosAgropecuarios: 'insumos_agropecuarios',
   combustible: 'combustible',

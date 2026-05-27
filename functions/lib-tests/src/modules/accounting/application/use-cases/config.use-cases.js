@@ -1,12 +1,12 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { DEFAULT_CURRENCY, DEFAULT_FINANCIAL_CONFIG, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureDirectivo, ensureStaff, parseOptionalBoolean, parseOptionalBps, parseOptionalInteger, parseOptionalIsoDate, parseOptionalNullableString, parseRequiredAmountMinor, parseRequiredBps, parseRequiredEnum, parseRequiredInteger, } from '../shared.js';
+import { assertIsRecord, ensureDirectivo, ensureStaff, hasExecutiveAccess, parseOptionalBoolean, parseOptionalBps, parseOptionalInteger, parseOptionalIsoDate, parseOptionalNullableString, parseRequiredAmountMinor, parseRequiredBps, parseRequiredEnum, parseRequiredInteger, } from '../shared.js';
 function isDirectivoActor(actor) {
-    return actor.user.roleIds.includes('directivo') && actor.claims.directivo === true;
+    return hasExecutiveAccess(actor);
 }
 function assertConfigValueUnchanged(field, nextValue, currentValue) {
-    assertCondition(Object.is(nextValue, currentValue), 'permission-denied', `Administración solo puede modificar precio base y descuentos por tipo de socio. El campo ${field} requiere Junta Directiva.`);
+    assertCondition(Object.is(nextValue, currentValue), 'permission-denied', `Administración solo puede modificar precio base y descuentos por tipo de socio. El campo ${field} requiere Comité Ejecutivo.`);
 }
 function assertAdministrativeFeeOnlyUpdate(input, activeConfig) {
     assertCondition(activeConfig, 'permission-denied', 'Administración solo puede actualizar cuotas sobre una configuración contable activa.');

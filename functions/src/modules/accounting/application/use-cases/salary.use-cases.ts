@@ -9,9 +9,11 @@ import type { AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   ensureDirectivo,
+  hasExecutiveAccess,
   parseOptionalAccountingPeriod,
   parseOptionalAmountMinor,
   parseOptionalBoolean,
+  parseOptionalFiniteNumber,
   parseOptionalIsoDate,
   parseOptionalNullableString,
   parseOptionalStringArray,
@@ -192,9 +194,9 @@ export async function postSalaryPaymentUseCase(params: {
       const activeConfig = await dataAccess.financialConfigs.getActive();
       assertCondition(activeConfig, 'failed-precondition', 'No existe una configuración financiera activa.');
       assertCondition(
-        !activeConfig.requireApprovalForOvertimePosting || actor.claims.directivo === true,
+        !activeConfig.requireApprovalForOvertimePosting || hasExecutiveAccess(actor),
         'permission-denied',
-        'Las horas extra requieren aprobación de directivo.',
+        'Las horas extra requieren aprobación del Comité Ejecutivo.',
       );
 
       const overtimeMovement = await createPostedMovement({
@@ -287,7 +289,7 @@ export function parsePostSalaryPaymentInput(payload: unknown): PostSalaryPayment
     period: parseOptionalAccountingPeriod(data, 'period') ?? parseRequiredAccountingPeriod(data, 'period'),
     salaryConfigurationId: parseOptionalNullableString(data, 'salaryConfigurationId'),
     salaryGrossMinor: parseOptionalAmountMinor(data, 'salaryGrossMinor'),
-    overtimeHours: parseOptionalAmountMinor(data, 'overtimeHours') ?? null,
+    overtimeHours: parseOptionalFiniteNumber(data, 'overtimeHours') ?? null,
     overtimeAmountMinor: parseOptionalAmountMinor(data, 'overtimeAmountMinor') ?? null,
     bankedAmountMinor: parseOptionalAmountMinor(data, 'bankedAmountMinor'),
     nonBankedAmountMinor: parseOptionalAmountMinor(data, 'nonBankedAmountMinor'),

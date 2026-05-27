@@ -99,14 +99,35 @@ export async function voidFinancialMovementUseCase(params: {
     );
 
     if (movement.originCollection === 'member_fee_charges' && movement.originId) {
+      const memberFeeCharge = await dataAccess.memberFeeCharges.getById(movement.originId);
       await dataAccess.memberFeeCharges.update(
         movement.originId,
         {
           status: 'pending',
           paidMovementId: null,
+          paidAt: null,
+          paidAmountMinor: null,
+          paymentDiscountPctBps: null,
+          paymentDiscountAmountMinor: null,
         },
         actor.uid,
       );
+
+      const memberIdToUpdate = memberFeeCharge?.memberId ?? memberFeeCharge?.holderMemberId ?? null;
+      if (memberIdToUpdate) {
+        await dataAccess.members.update(
+          memberIdToUpdate,
+          {
+            membershipRenewalStatus: 'needs_renewal',
+            membershipRenewalDueAt: null,
+            lastFeePaymentAt: null,
+            lastFeePaidAmountMinor: null,
+            lastFeeDiscountPctBps: null,
+            lastFeeDiscountAmountMinor: null,
+          },
+          actor.uid,
+        );
+      }
     }
 
     if (movement.originCollection === 'handicap_charges' && movement.originId) {

@@ -1,4 +1,4 @@
-import { ROLE_LABELS } from '../constants/roles';
+import { normalizeRoleId, ROLE_LABELS } from '../constants/roles';
 import type { User } from '../context/AuthContext';
 
 function toTitleCase(value: string): string {
@@ -43,8 +43,10 @@ export function getUserInitial(
 }
 
 export function getRoleLabel(roleId: string | undefined): string {
-  return roleId && roleId in ROLE_LABELS
-    ? ROLE_LABELS[roleId as keyof typeof ROLE_LABELS]
+  const normalizedRoleId = normalizeRoleId(roleId);
+
+  return normalizedRoleId
+    ? ROLE_LABELS[normalizedRoleId]
     : roleId || 'Sin rol';
 }
 

@@ -1,8 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
-import { getUserDisplayName } from '../utils/user';
+import { firestore } from '../lib/firebase';
+import { getRoleLabel, getUserDisplayName } from '../utils/user';
 
 type ActionIconType =
   | 'calendar'
@@ -12,58 +14,84 @@ type ActionIconType =
   | 'badge'
   | 'chart'
   | 'shield'
-  | 'flag';
+  | 'flag'
+  | 'pencil';
+
+type QuickActionCategory = 'Socios' | 'Caja' | 'Empleados' | 'Torneos' | 'Reportes' | 'Perfil' | 'Club';
 
 type RoleAction = {
   id: string;
+  category: QuickActionCategory;
   label: string;
   helper: string;
   icon: ActionIconType;
+  roles: RoleType[];
+  route?: string;
+  notice?: string;
 };
 
-type RoleView = {
-  eyebrow: string;
-  actions: RoleAction[];
+const MAX_QUICK_ACTIONS = 6;
+const MEMBER_ROLES = [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA];
+const STAFF_ROLES = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
+
+const QUICK_ACTION_LIBRARY: RoleAction[] = [
+  { id: 'profile', category: 'Perfil', label: 'Mi perfil', helper: 'Datos personales', icon: 'badge', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO], route: '/perfil' },
+  { id: 'change-password', category: 'Perfil', label: 'Cambiar contrasena', helper: 'Seguridad de acceso', icon: 'shield', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO], route: '/perfil?panel=password' },
+  { id: 'membership', category: 'Socios', label: 'Mi membresia', helper: 'Estado de socio', icon: 'wallet', roles: MEMBER_ROLES, route: '/mi-membresia' },
+  { id: 'member-payments', category: 'Socios', label: 'Mis pagos', helper: 'Cuota y estado de pago', icon: 'wallet', roles: [ROLES.SOCIO], route: '/mi-membresia?focus=payments' },
+  { id: 'family-group', category: 'Socios', label: 'Grupo familiar', helper: 'Vinculos y titulares', icon: 'people', roles: MEMBER_ROLES, route: '/mi-membresia?focus=family' },
+  { id: 'courts', category: 'Club', label: 'Solicitar cancha', helper: 'Fechas y horarios', icon: 'calendar', roles: MEMBER_ROLES, route: '/canchas' },
+  { id: 'club-contact', category: 'Club', label: 'Contacto del club', helper: 'Direccion y consulta', icon: 'people', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO, ROLES.ADMINISTRATIVO], route: '/club#contacto' },
+  { id: 'club-board', category: 'Club', label: 'Comision Directiva', helper: 'Cargos institucionales', icon: 'people', roles: [ROLES.COMISION_DIRECTIVA, ROLES.DIRECTIVO], route: '/directiva' },
+  { id: 'tournaments', category: 'Torneos', label: 'Torneos abiertos', helper: 'Inscripciones disponibles', icon: 'flag', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO, ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO], route: '/torneos?status=registration_open&open=search' },
+  { id: 'tournament-results', category: 'Torneos', label: 'Resultados', helper: 'Tarjetas y posiciones', icon: 'flag', roles: MEMBER_ROLES, route: '/torneos?tab=leaderboard&open=results' },
+  { id: 'report-expense', category: 'Empleados', label: 'Cargar gasto', helper: 'Tickets y rendiciones', icon: 'clipboard', roles: [ROLES.EMPLEADO], notice: 'La carga propia de gastos queda preparada para conectarse al portal del empleado.' },
+  { id: 'my-expenses', category: 'Empleados', label: 'Mis rendiciones', helper: 'Estado de cargas', icon: 'wallet', roles: [ROLES.EMPLEADO], notice: 'El seguimiento propio de rendiciones queda preparado para conectarse al portal del empleado.' },
+  { id: 'expense-status', category: 'Empleados', label: 'Estado de comprobantes', helper: 'Revision administrativa', icon: 'clipboard', roles: [ROLES.EMPLEADO], notice: 'El estado de comprobantes propios queda preparado para el portal del empleado.' },
+  { id: 'employee-certificate', category: 'Empleados', label: 'Comprobante laboral', helper: 'Documentacion propia', icon: 'badge', roles: [ROLES.EMPLEADO], notice: 'La carga de documentacion laboral propia queda preparada para el portal del empleado.' },
+  { id: 'register-payment', category: 'Caja', label: 'Registrar cobro', helper: 'Cuotas e ingresos', icon: 'wallet', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/collections' },
+  { id: 'generate-fee', category: 'Socios', label: 'Generar cuota', helper: 'Cuota societaria', icon: 'wallet', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/member-dues' },
+  { id: 'renewals', category: 'Socios', label: 'Renovaciones', helper: 'Socios por renovar', icon: 'calendar', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/member-dues?tab=renewals' },
+  { id: 'cash-closures', category: 'Caja', label: 'Cierre de caja', helper: 'Arqueos diarios', icon: 'chart', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/cash-closures' },
+  { id: 'expense-review', category: 'Empleados', label: 'Rendiciones', helper: 'Revision y aprobacion', icon: 'clipboard', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/expenses?tab=queue' },
+  { id: 'manage-members', category: 'Socios', label: 'Socios', helper: 'Padron y membresias', icon: 'people', roles: [ROLES.ADMINISTRATIVO], route: '/admin/members' },
+  { id: 'manage-employees', category: 'Empleados', label: 'Empleados', helper: 'Legajos y accesos', icon: 'people', roles: STAFF_ROLES, route: '/admin/employees' },
+  { id: 'employee-documents', category: 'Empleados', label: 'Comprobantes laborales', helper: 'F931, ART y obra social', icon: 'badge', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/external-docs' },
+  { id: 'manual-expense', category: 'Caja', label: 'Registrar egreso', helper: 'Gastos operativos', icon: 'clipboard', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/expenses' },
+  { id: 'daily-movements', category: 'Caja', label: 'Movimientos del dia', helper: 'Caja operativa', icon: 'chart', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/expenses?tab=movements' },
+  { id: 'cash-flow', category: 'Reportes', label: 'Flujo de caja', helper: 'Entradas y salidas', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/reports?tab=stats' },
+  { id: 'reports', category: 'Reportes', label: 'Reportes', helper: 'Balances y resumen', icon: 'flag', roles: [ROLES.DIRECTIVO], route: '/accounting/reports' },
+  { id: 'payroll', category: 'Empleados', label: 'Liquidaciones', helper: 'Nomina mensual', icon: 'clipboard', roles: [ROLES.DIRECTIVO], route: '/accounting/employees' },
+  { id: 'salary-overtime', category: 'Empleados', label: 'Sueldos y horas extra', helper: 'Configuracion y control', icon: 'wallet', roles: [ROLES.DIRECTIVO], route: '/accounting/employees?focus=salary' },
+  { id: 'bank-movements', category: 'Caja', label: 'Movimientos bancarios', helper: 'Bancos y saldos', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/bank-settlements' },
+  { id: 'void-movement', category: 'Caja', label: 'Anular movimiento', helper: 'Reversos controlados', icon: 'shield', roles: [ROLES.DIRECTIVO], route: '/accounting/expenses?tab=movements' },
+  { id: 'membership-pricing', category: 'Socios', label: 'Configurar cuota', helper: 'Precio societario', icon: 'wallet', roles: [ROLES.DIRECTIVO], route: '/accounting/member-dues?tab=config' },
+  { id: 'macro-settlements', category: 'Caja', label: 'Macro y conciliaciones', helper: 'Debito y liquidaciones', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/bank-settlements' },
+  { id: 'external-references', category: 'Empleados', label: 'F931 / ART / Obra social', helper: 'Referencias externas', icon: 'badge', roles: [ROLES.DIRECTIVO], route: '/accounting/external-docs' },
+  { id: 'stats', category: 'Reportes', label: 'Estadisticas', helper: 'Indicadores completos', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/reports?tab=stats' },
+];
+
+const DEFAULT_QUICK_ACTION_IDS: Record<RoleType, string[]> = {
+  [ROLES.SOCIO]: ['membership', 'tournaments', 'courts', 'member-payments', 'family-group', 'club-contact'],
+  [ROLES.COMISION_DIRECTIVA]: ['profile', 'membership', 'tournaments', 'club-board', 'club-contact', 'courts'],
+  [ROLES.EMPLEADO]: ['report-expense', 'my-expenses', 'profile', 'change-password', 'club-contact'],
+  [ROLES.ADMINISTRATIVO]: ['register-payment', 'generate-fee', 'renewals', 'cash-closures', 'expense-review', 'manage-members'],
+  [ROLES.DIRECTIVO]: ['cash-flow', 'reports', 'payroll', 'salary-overtime', 'bank-movements', 'void-movement'],
 };
 
-const ROLE_VIEWS: Record<RoleType, RoleView> = {
-  [ROLES.SOCIO]: {
-    eyebrow: 'Tu cuenta',
-    actions: [
-      { id: 'profile', label: 'Mi perfil', helper: 'Datos personales', icon: 'badge' },
-      { id: 'membership', label: 'Mi membresia', helper: 'Estado de socio', icon: 'wallet' },
-      { id: 'courts', label: 'Solicitar cancha', helper: 'Fechas y horarios', icon: 'calendar' },
-      { id: 'tournaments', label: 'Inscribirme', helper: 'Torneos del club', icon: 'flag' },
-    ],
-  },
-  [ROLES.EMPLEADO]: {
-    eyebrow: 'Acciones rapidas',
-    actions: [
-      { id: 'cash-income', label: 'Registrar ingresos', helper: 'Cobros y entradas', icon: 'wallet' },
-      { id: 'cash-expense', label: 'Registrar egresos', helper: 'Pagos y salidas', icon: 'clipboard' },
-      { id: 'report-expense', label: 'Cargar gasto', helper: 'Tickets y rendiciones', icon: 'clipboard' },
-      { id: 'view-users', label: 'Ver socios', helper: 'Busqueda y consulta', icon: 'people' },
-    ],
-  },
-  [ROLES.ADMINISTRATIVO]: {
-    eyebrow: 'Gestion interna',
-    actions: [
-      { id: 'manage-users', label: 'Gestionar usuarios', helper: 'Altas, bajas y perfiles', icon: 'people' },
-      { id: 'expense-review', label: 'Validar gastos', helper: 'Revision y aprobacion', icon: 'clipboard' },
-      { id: 'cash-movements', label: 'Caja y movimientos', helper: 'Ingresos y egresos', icon: 'chart' },
-      { id: 'fees-admin', label: 'Cobros y cuotas', helper: 'Generacion y seguimiento', icon: 'wallet' },
-    ],
-  },
-  [ROLES.DIRECTIVO]: {
-    eyebrow: 'Acciones rápidas',
-    actions: [
-      { id: 'cash-flow', label: 'Flujo de caja', helper: 'Entradas y salidas', icon: 'chart' },
-      { id: 'approvals', label: 'Aprobar gastos', helper: 'Control de egresos', icon: 'clipboard' },
-      { id: 'monthly-reports', label: 'Reportes mensuales', helper: 'Balance y resumen', icon: 'flag' },
-      { id: 'budget-followup', label: 'Seguimiento presupuestario', helper: 'Desvios y decisiones', icon: 'shield' },
-    ],
-  },
-};
+const QUICK_ACTION_CATEGORY_ORDER: QuickActionCategory[] = ['Socios', 'Caja', 'Empleados', 'Torneos', 'Reportes', 'Perfil', 'Club'];
+
+function getValidQuickActionIds(
+  actionIds: readonly string[] | null | undefined,
+  allowedActionIds: ReadonlySet<string>,
+  fallbackIds: readonly string[],
+) {
+  const validIds = (actionIds ?? [])
+    .filter((actionId) => allowedActionIds.has(actionId))
+    .slice(0, MAX_QUICK_ACTIONS);
+
+  return validIds.length > 0 ? validIds : fallbackIds.slice(0, MAX_QUICK_ACTIONS);
+}
 
 function Icon({ type }: { type: ActionIconType }) {
   const icons: Record<ActionIconType, ReactNode> = {
@@ -91,6 +119,9 @@ function Icon({ type }: { type: ActionIconType }) {
     flag: (
       <path d="M5 3a1 1 0 0 1 2 0v1h8.7a1 1 0 0 1 .86 1.5L15 8l1.56 2.5A1 1 0 0 1 15.7 12H7v8a1 1 0 1 1-2 0V3Z" />
     ),
+    pencil: (
+      <path d="m4.75 15.9-.7 3.5a.75.75 0 0 0 .88.88l3.5-.7a2.5 2.5 0 0 0 1.24-.67l8.9-8.9a2.12 2.12 0 0 0 0-3l-1.58-1.58a2.12 2.12 0 0 0-3 0l-8.9 8.9a2.5 2.5 0 0 0-.34 1.57Zm10.3-9.4a.62.62 0 0 1 .88 0l1.58 1.58a.62.62 0 0 1 0 .88l-1.1 1.1-2.46-2.46 1.1-1.1ZM12.9 8.65l2.46 2.46-6.75 6.75a1 1 0 0 1-.5.27l-2.34.47.47-2.34a1 1 0 0 1 .27-.5l6.39-6.39Z" />
+    ),
   };
 
   return (
@@ -101,72 +132,103 @@ function Icon({ type }: { type: ActionIconType }) {
 }
 
 export function Home() {
-  const { user, interfaceMode } = useAuth();
+  const { user, interfaceMode, updateUser } = useAuth();
   const navigate = useNavigate();
   const [notice, setNotice] = useState('');
+  const [isQuickActionsEditorOpen, setIsQuickActionsEditorOpen] = useState(false);
+  const [isSavingQuickActions, setIsSavingQuickActions] = useState(false);
+  const [selectedQuickActionIds, setSelectedQuickActionIds] = useState<string[]>([]);
   const displayName = getUserDisplayName(user);
-  const roleView = ROLE_VIEWS[interfaceMode];
   const reservationSummary = 'Sin reservas';
+  const availableActions = useMemo(
+    () => QUICK_ACTION_LIBRARY.filter((action) => action.roles.includes(interfaceMode)),
+    [interfaceMode],
+  );
+  const defaultActionIds = DEFAULT_QUICK_ACTION_IDS[interfaceMode];
+
+  useEffect(() => {
+    const roleActionIds = new Set(availableActions.map((action) => action.id));
+    const validDefaultIds = defaultActionIds.filter((actionId) => roleActionIds.has(actionId));
+    setSelectedQuickActionIds(
+      getValidQuickActionIds(user?.quickActionIdsByRole?.[interfaceMode], roleActionIds, validDefaultIds),
+    );
+  }, [availableActions, defaultActionIds, interfaceMode, user?.quickActionIdsByRole]);
+
+  const quickActions = useMemo(() => {
+    const selectedSet = new Set(selectedQuickActionIds);
+    const visibleActions = availableActions.filter((action) => selectedSet.has(action.id));
+    return visibleActions.length > 0
+      ? visibleActions
+      : availableActions.filter((action) => defaultActionIds.includes(action.id)).slice(0, MAX_QUICK_ACTIONS);
+  }, [availableActions, defaultActionIds, selectedQuickActionIds]);
+
+  const availableActionsByCategory = useMemo(
+    () =>
+      QUICK_ACTION_CATEGORY_ORDER.map((category) => ({
+        category,
+        actions: availableActions.filter((action) => action.category === category),
+      })).filter((group) => group.actions.length > 0),
+    [availableActions],
+  );
+
+  const toggleQuickAction = (actionId: string) => {
+    setSelectedQuickActionIds((current) => {
+      if (current.includes(actionId)) {
+        return current.filter((currentActionId) => currentActionId !== actionId);
+      }
+
+      if (current.length >= MAX_QUICK_ACTIONS) {
+        setNotice(`Podes elegir hasta ${MAX_QUICK_ACTIONS} acciones rapidas.`);
+        return current;
+      }
+
+      return [...current, actionId];
+    });
+  };
+
+  const saveQuickActions = async () => {
+    if (!user || !firestore) {
+      setNotice('No pudimos guardar las acciones porque falta el usuario o Firestore no esta inicializado.');
+      return;
+    }
+
+    const roleActionIds = new Set(availableActions.map((action) => action.id));
+    const validDefaultIds = defaultActionIds.filter((actionId) => roleActionIds.has(actionId));
+    const nextSelectedIds = getValidQuickActionIds(selectedQuickActionIds, roleActionIds, validDefaultIds);
+    const nextQuickActionIdsByRole = {
+      ...(user.quickActionIdsByRole ?? {}),
+      [interfaceMode]: nextSelectedIds,
+    };
+
+    setIsSavingQuickActions(true);
+    setNotice('');
+
+    try {
+      await updateDoc(doc(firestore, 'users', user.id), {
+        quickActionIdsByRole: nextQuickActionIdsByRole,
+        updatedAt: serverTimestamp(),
+      });
+      updateUser({
+        ...user,
+        quickActionIdsByRole: nextQuickActionIdsByRole,
+      });
+      setSelectedQuickActionIds(nextSelectedIds);
+      setIsQuickActionsEditorOpen(false);
+      setNotice('Acciones rapidas guardadas en tu usuario.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'No pudimos guardar las acciones rapidas.');
+    } finally {
+      setIsSavingQuickActions(false);
+    }
+  };
 
   const handleRoleAction = (action: RoleAction) => {
-    if (
-      action.id === 'manage-users' &&
-      (user?.roleIds.includes(ROLES.ADMINISTRATIVO) || user?.roleIds.includes(ROLES.DIRECTIVO))
-    ) {
-      navigate('/admin/members');
+    if (action.route) {
+      navigate(action.route);
       return;
     }
 
-    if (
-      [
-        'expense-review',
-        'cash-movements',
-        'fees-admin',
-        'cash-flow',
-        'approvals',
-        'monthly-reports',
-        'budget-followup',
-      ].includes(action.id)
-    ) {
-      navigate('/accounting');
-      return;
-    }
-
-    if (action.id === 'profile') {
-      navigate('/perfil');
-      return;
-    }
-
-    if (action.id === 'membership') {
-      navigate('/mi-membresia');
-      return;
-    }
-
-    if (action.id === 'view-users') {
-      navigate('/admin/members');
-      return;
-    }
-
-    if (action.id === 'cash-income' || action.id === 'cash-expense' || action.id === 'report-expense') {
-      setNotice('Esta accion operativa queda preparada para conectar desde el modulo contable.');
-      return;
-    }
-
-    if (action.id === 'courts') {
-      navigate('/canchas');
-      return;
-    }
-
-    if (action.id === 'tournaments') {
-      setNotice('No hay torneos abiertos.');
-      return;
-    }
-
-    console.log('Accion por rol pendiente de conectar', {
-      role: interfaceMode,
-      action_id: action.id,
-      user_id: user?.id,
-    });
+    setNotice(action.notice ?? 'Esta accion queda preparada para conectar cuando exista su pantalla operativa.');
   };
 
   return (
@@ -186,12 +248,20 @@ export function Home() {
         <section className="floating-card role-card">
           <div className="role-card__header">
             <div>
-              <p className="eyebrow">{roleView.eyebrow}</p>
+              <p className="eyebrow">Acciones rapidas - {getRoleLabel(interfaceMode)}</p>
             </div>
+            <button
+              type="button"
+              className="ui-action-button ui-action-button--compact quick-actions-edit-button"
+              onClick={() => setIsQuickActionsEditorOpen(true)}
+            >
+              <Icon type="pencil" />
+              <span>Modificar</span>
+            </button>
           </div>
 
           <div className="action-grid">
-            {roleView.actions.map((action) => (
+            {quickActions.map((action) => (
               <button
                 key={action.id}
                 type="button"
@@ -208,6 +278,83 @@ export function Home() {
           </div>
         </section>
       </div>
+
+      {isQuickActionsEditorOpen && (
+        <div className="modal-overlay quick-actions-modal-overlay" role="presentation">
+          <section className="member-modal-card quick-actions-modal" role="dialog" aria-modal="true" aria-labelledby="quickActionsTitle">
+            <div className="member-modal__header quick-actions-modal__header">
+              <div>
+                <p className="eyebrow-light">Acciones rapidas</p>
+                <h2 id="quickActionsTitle">
+                  Modificar acciones del rol
+                </h2>
+                <p className="quick-actions-modal__copy">
+                  Elegi hasta {MAX_QUICK_ACTIONS} accesos. Solo se muestran acciones disponibles para tu rol actual.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modal-close-button"
+                aria-label="Cerrar"
+                onClick={() => setIsQuickActionsEditorOpen(false)}
+              >
+                x
+              </button>
+            </div>
+
+            <div className="quick-actions-picker">
+              <div className="quick-actions-picker__header">
+                <p className="eyebrow-light">Disponibles</p>
+                <span className="quick-actions-counter">
+                  {selectedQuickActionIds.length} / {MAX_QUICK_ACTIONS} seleccionadas
+                </span>
+              </div>
+              {availableActionsByCategory.map((group) => (
+                <div key={group.category} className="quick-actions-category">
+                  <p className='eyebrow-dark'>{group.category}</p>
+                  <div className="quick-actions-category__list">
+                    {group.actions.map((action) => {
+                      const selected = selectedQuickActionIds.includes(action.id);
+                      const canAddAction = selected || selectedQuickActionIds.length < MAX_QUICK_ACTIONS;
+
+                      return (
+                        <button
+                          key={action.id}
+                          type="button"
+                          className={`quick-action-option ${selected ? 'quick-action-option--selected' : ''} ${!canAddAction ? 'quick-action-option--disabled' : ''}`}
+                          onClick={() => toggleQuickAction(action.id)}
+                          disabled={!canAddAction}
+                          aria-pressed={selected}
+                        >
+                          <span className="action-icon">
+                            <Icon type={action.icon} />
+                          </span>
+                          <span>
+                            <strong>{action.label}</strong>
+                            <small>{action.helper}</small>
+                          </span>
+                          <span className={`quick-action-option__check ${selected ? 'quick-action-option__check--selected' : ''}`}>
+                            {selected ? 'Agregado' : canAddAction ? 'Agregar' : 'Maximo'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="form-actions">
+              <button type="button" className="ui-action-button ui-action-button--secondary" onClick={() => setIsQuickActionsEditorOpen(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="ui-action-button ui-action-button--positive" disabled={isSavingQuickActions} onClick={() => void saveQuickActions()}>
+                {isSavingQuickActions ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

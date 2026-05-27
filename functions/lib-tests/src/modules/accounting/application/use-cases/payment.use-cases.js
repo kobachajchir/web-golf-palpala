@@ -1,17 +1,8 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureStaff, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalRecord, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
+import { assertIsRecord, calculateEarlyPaymentDiscount, calculateMembershipRenewalDueDate, ensureStaff, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalRecord, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, toClubAccountingPeriod, } from '../shared.js';
 import { createPostedMovement } from '../movement-helpers.js';
-function getMembershipValidUntil(period) {
-    const [yearRaw, monthRaw] = period.split('-');
-    const year = Number(yearRaw);
-    const month = Number(monthRaw);
-    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-        return null;
-    }
-    return new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-}
 export async function registerPaymentUseCase(params) {
     const actor = ensureStaff(params.actor);
     return params.transactions.runInTransaction(async (dataAccess) => {
@@ -27,8 +18,12 @@ export async function registerPaymentUseCase(params) {
         if (params.input.memberId) {
             const member = await dataAccess.members.getById(params.input.memberId);
             assertCondition(member, 'not-found', `No existe members/${params.input.memberId}.`);
+            assertCondition(member.status !== 'inactive' && member.status !== 'suspended', 'failed-precondition', 'No se pueden registrar pagos nuevos para socios dados de baja o suspendidos.');
         }
         let memberFeeChargeToPay = null;
+        let feePaymentSnapshot = null;
+        let feePaymentAccountingPeriod = null;
+        let isFeePaymentOutsidePeriod = false;
         if (params.input.sourceType === 'member_fee_charge') {
             assertCondition(params.input.sourceId, 'invalid-argument', 'sourceId es obligatorio para member_fee_charge.');
             const memberFeeCharge = await dataAccess.memberFeeCharges.getById(params.input.sourceId);
@@ -44,6 +39,21 @@ export async function registerPaymentUseCase(params) {
                 };
             }
             assertCondition(memberFeeCharge.status === 'pending' || memberFeeCharge.status === 'overdue', 'failed-precondition', 'Solo se pueden cobrar cuotas pendientes o vencidas.');
+            const chargeMemberId = memberFeeCharge.memberId ?? memberFeeCharge.holderMemberId ?? null;
+            assertCondition(chargeMemberId, 'failed-precondition', 'La cuota no tiene socio asociado para validar el cobro.');
+            const chargeMember = await dataAccess.members.getById(chargeMemberId);
+            assertCondition(chargeMember, 'not-found', `No existe members/${chargeMemberId}.`);
+            assertCondition(chargeMember.status !== 'inactive' && chargeMember.status !== 'suspended', 'failed-precondition', 'No se pueden cobrar cuotas de socios dados de baja o suspendidos.');
+            const activeConfig = await dataAccess.financialConfigs.getActive();
+            assertCondition(activeConfig, 'failed-precondition', 'No existe una configuración financiera activa.');
+            feePaymentAccountingPeriod = toClubAccountingPeriod(params.input.operationDate);
+            isFeePaymentOutsidePeriod = feePaymentAccountingPeriod !== memberFeeCharge.period;
+            feePaymentSnapshot = calculateEarlyPaymentDiscount({
+                chargeAmountMinor: memberFeeCharge.finalAmountMinor,
+                config: activeConfig,
+                chargePeriod: memberFeeCharge.period,
+                operationDate: params.input.operationDate,
+            });
         }
         let handicapChargeId = null;
         if (params.input.sourceType === 'handicap' && params.input.sourceId) {
@@ -95,18 +105,21 @@ export async function registerPaymentUseCase(params) {
                     notes: params.input.notes ?? null,
                 }, actor.uid);
         }
+        const feeMemberId = memberFeeChargeToPay?.memberId ?? memberFeeChargeToPay?.holderMemberId ?? null;
+        const resolvedMemberId = feeMemberId ?? params.input.memberId ?? null;
         const thirdPartyType = params.input.thirdPartyType
-            ?? (params.input.memberId ? 'member' : null);
+            ?? (resolvedMemberId ? 'member' : null);
         const thirdPartyId = params.input.thirdPartyId
-            ?? params.input.memberId
+            ?? resolvedMemberId
             ?? null;
+        const effectiveGrossAmountMinor = feePaymentSnapshot?.paidAmountMinor ?? params.input.grossAmountMinor;
         const movement = await createPostedMovement({
             dataAccess,
             actorUid: actor.uid,
             movementType: 'income',
             categoryId: category.id,
             categoryCodeSnapshot: category.id,
-            grossAmountMinor: params.input.grossAmountMinor,
+            grossAmountMinor: effectiveGrossAmountMinor,
             operationDate: params.input.operationDate,
             originType: params.input.sourceType,
             originCollection: params.input.sourceType === 'member_fee_charge'
@@ -124,6 +137,17 @@ export async function registerPaymentUseCase(params) {
                 ...(params.input.metadata ?? {}),
                 ...(paymentReference ? { paymentReference } : {}),
                 specialReportingType: paymentMethod.specialReportingType ?? null,
+                ...(feePaymentSnapshot
+                    ? {
+                        originalFeeAmountMinor: memberFeeChargeToPay?.finalAmountMinor ?? params.input.grossAmountMinor,
+                        earlyPaymentDiscountPctBps: feePaymentSnapshot.discountPctBps,
+                        earlyPaymentDiscountAmountMinor: feePaymentSnapshot.discountAmountMinor,
+                        paidWithinEarlyPaymentWindow: feePaymentSnapshot.qualifies,
+                        feeChargePeriod: memberFeeChargeToPay?.period ?? null,
+                        feePaymentAccountingPeriod,
+                        isFeePaymentOutsidePeriod,
+                    }
+                    : {}),
             },
             notes: params.input.notes ?? null,
             applyPaymentCommission: paymentMethod.id === 'credit',
@@ -133,15 +157,19 @@ export async function registerPaymentUseCase(params) {
                 status: 'paid',
                 paidMovementId: movement.movementId,
                 paidAt: Timestamp.fromDate(params.input.operationDate),
-                paidAmountMinor: movement.netAmountMinor,
+                paidAmountMinor: effectiveGrossAmountMinor,
+                paymentDiscountPctBps: feePaymentSnapshot?.discountPctBps ?? 0,
+                paymentDiscountAmountMinor: feePaymentSnapshot?.discountAmountMinor ?? 0,
             }, actor.uid);
-            const memberIdToUpdate = memberFeeChargeToPay?.memberId ?? memberFeeChargeToPay?.holderMemberId ?? null;
-            const membershipValidUntil = memberFeeChargeToPay ? getMembershipValidUntil(memberFeeChargeToPay.period) : null;
+            const memberIdToUpdate = feeMemberId;
             if (memberIdToUpdate) {
                 await dataAccess.members.update(memberIdToUpdate, {
                     lastFeePaymentAt: Timestamp.fromDate(params.input.operationDate),
-                    ...(membershipValidUntil ? { membershipRenewalDueAt: Timestamp.fromDate(membershipValidUntil) } : {}),
+                    membershipRenewalDueAt: Timestamp.fromDate(calculateMembershipRenewalDueDate(params.input.operationDate)),
                     membershipRenewalStatus: 'current',
+                    lastFeePaidAmountMinor: effectiveGrossAmountMinor,
+                    lastFeeDiscountPctBps: feePaymentSnapshot?.discountPctBps ?? 0,
+                    lastFeeDiscountAmountMinor: feePaymentSnapshot?.discountAmountMinor ?? 0,
                 }, actor.uid);
             }
         }

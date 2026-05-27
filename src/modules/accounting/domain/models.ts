@@ -24,12 +24,35 @@ export type ThirdPartyType = 'member' | 'employee' | 'vendor' | 'association' | 
 export type BillingMode = 'per_member' | 'single_group_charge';
 export type MemberFeeChargeStatus = 'pending' | 'paid' | 'exempt' | 'cancelled' | 'overdue';
 export type ExpenseSubmissionStatus = 'submitted' | 'approved' | 'rejected' | 'posted';
-export type SalaryPaymentStatus = 'draft' | 'posted' | 'voided';
+export type SalaryPaymentStatus = 'draft' | 'ready_to_liquidate' | 'liquidated' | 'paid' | 'posted' | 'voided';
 export type SalaryPeriodicity = 'monthly' | 'daily' | 'hourly' | 'seasonal' | 'honorarios';
+export type OvertimeEntryStatus = 'submitted' | 'approved' | 'rejected' | 'liquidated';
+export type EmployeePayrollCycleStatus = 'draft' | 'ready_to_liquidate' | 'liquidated' | 'paid' | 'ready' | 'posted' | 'voided';
+export type EmployeeAccountingLinkStatus = 'recorded' | 'linked' | 'paid';
+export type EmployeeCertificateStatus = 'active' | 'expired' | 'archived';
+export type CashClosureStatus = 'open' | 'closed' | 'voided';
 export type MacroDebitSettlementStatus = 'imported' | 'reconciled' | 'closed';
 export type ExternalReferenceType = 'F931' | 'OBRA_SOCIAL' | 'ART' | 'OTHER';
 export type ExternalReferenceStatus = 'recorded' | 'linked' | 'paid';
 export type HandicapChargeStatus = 'pending_collection' | 'collected' | 'transferred' | 'closed';
+export type MercadoPagoCheckoutSourceType =
+  | 'member_fee_charge'
+  | 'tournament_registration'
+  | 'green_fee'
+  | 'handicap_charge'
+  | 'concession_charge'
+  | 'advertising_charge'
+  | 'manual_income';
+export type MercadoPagoCheckoutSessionStatus =
+  | 'creating'
+  | 'ready'
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'expired'
+  | 'refunded'
+  | 'failed';
 
 export interface FinancialConfigDocument extends AuditFields {
   version: number;
@@ -63,6 +86,72 @@ export interface PaymentMethodDocument extends AuditFields {
   specialReportingType?: 'macro_debit' | null;
   active: boolean;
   sortOrder: number;
+}
+
+export interface PaymentCommissionBreakdownItem {
+  id: DocId;
+  label: string;
+  percentageBps: Bps;
+  isActive: boolean;
+}
+
+export interface PaymentCommissionRuleDocument extends AuditFields {
+  paymentMethodId: DocId;
+  percentageBps: Bps;
+  isActive: boolean;
+  validFrom: Timestamp;
+  validTo?: Timestamp | null;
+  setByUid: UID;
+  breakdown?: PaymentCommissionBreakdownItem[];
+  notes?: string | null;
+}
+
+export interface MercadoPagoCheckoutSessionItem {
+  sourceType: MercadoPagoCheckoutSourceType;
+  sourceId?: DocId | null;
+  memberId?: DocId | null;
+  thirdPartyType?: ThirdPartyType | null;
+  thirdPartyId?: DocId | null;
+  categoryId: DocId;
+  description: string;
+  amountMinor: AmountMinor;
+  originCollection?: string | null;
+  originId?: DocId | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface MercadoPagoCheckoutSessionDocument extends AuditFields {
+  items: MercadoPagoCheckoutSessionItem[];
+  memberIds: DocId[];
+  grossAmountMinor: AmountMinor;
+  currency: 'ARS';
+  status: MercadoPagoCheckoutSessionStatus;
+  preferenceId?: string | null;
+  checkoutUrl?: string | null;
+  paymentId?: string | null;
+  merchantOrderId?: string | null;
+  externalReference: string;
+  providerStatus?: string | null;
+  providerStatusDetail?: string | null;
+  financialMovementIds: DocId[];
+  idempotencyKey: string;
+  createdByUid: UID;
+  notes?: string | null;
+}
+
+export interface MercadoPagoEventDocument extends AuditFields {
+  eventId: string;
+  type: string;
+  action: string;
+  dataId: string;
+  paymentId?: string | null;
+  merchantOrderId?: string | null;
+  externalReference?: string | null;
+  payloadSnapshot: Record<string, unknown>;
+  headersSnapshot: Record<string, string>;
+  processed: boolean;
+  processedAt?: Timestamp | null;
+  processingError?: string | null;
 }
 
 export interface FinancialMovementDocument extends AuditFields {
@@ -166,10 +255,97 @@ export interface SalaryPaymentDocument extends AuditFields {
   financialMovementIds: DocId[];
   status: SalaryPaymentStatus;
   approvedByUid?: UID | null;
+  liquidatedAt?: Timestamp | null;
+  liquidatedByUid?: UID | null;
+  paidAt?: Timestamp | null;
+  paidByUid?: UID | null;
+  paymentMethodId?: DocId | null;
+  notes?: string | null;
+}
+
+export interface PayrollConfigDocument extends AuditFields {
+  paymentDay: number;
+  prepareReceiptsDaysBefore?: number | null;
+  isActive: boolean;
+  effectiveFrom: Timestamp;
+}
+
+export interface OvertimeEntryDocument extends AuditFields {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  workDate: Timestamp;
+  hours: number;
+  amountMinor: AmountMinor;
+  reason: string;
+  status: OvertimeEntryStatus;
+  createdByUid: UID;
+  approvedByUid?: UID | null;
+  approvedAt?: Timestamp | null;
+  rejectionReason?: string | null;
+  linkedSalaryPaymentId?: DocId | null;
+  linkedMovementId?: DocId | null;
+  notes?: string | null;
+}
+
+export interface EmployeePayrollCycleDocument extends AuditFields {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  salaryPaymentId?: DocId | null;
+  salaryConfigurationId?: DocId | null;
+  salaryGrossMinor: AmountMinor;
+  overtimeTotalHours: number;
+  overtimeTotalMinor: AmountMinor;
+  bankedAmountMinor: AmountMinor;
+  nonBankedAmountMinor: AmountMinor;
+  linkedReferenceIds: DocId[];
+  linkedCertificateIds: DocId[];
+  financialMovementIds: DocId[];
+  status: EmployeePayrollCycleStatus;
+  paidAt?: Timestamp | null;
+  notes?: string | null;
+}
+
+export interface EmployeeAccountingLinkDocument extends AuditFields {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  referenceId: DocId;
+  referenceType: ExternalReferenceType;
+  allocatedAmountMinor?: AmountMinor | null;
+  paidAt?: Timestamp | null;
+  status: EmployeeAccountingLinkStatus;
+  notes?: string | null;
+}
+
+export interface EmployeeCertificateDocument extends AuditFields {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  certificateType: string;
+  documentNumber?: string | null;
+  issuedAt?: Timestamp | null;
+  expiresAt?: Timestamp | null;
+  attachmentUrl?: string | null;
+  status: EmployeeCertificateStatus;
+  notes?: string | null;
+}
+
+export interface CashClosureDocument extends AuditFields {
+  period: AccountingPeriod;
+  closureDate: Timestamp;
+  openedByUid: UID;
+  openingBalanceMinor?: AmountMinor | null;
+  closedByUid?: UID | null;
+  closedAt?: Timestamp | null;
+  cashExpectedMinor: AmountMinor;
+  expectedByPaymentMethod?: Record<string, AmountMinor>;
+  cashCountedMinor?: AmountMinor | null;
+  differenceMinor?: AmountMinor | null;
+  movementIds: DocId[];
+  status: CashClosureStatus;
   notes?: string | null;
 }
 
 export interface ExternalAccountingReferenceDocument extends AuditFields {
+  employeeId?: DocId | null;
   referenceType: ExternalReferenceType;
   providerName?: string | null;
   period: AccountingPeriod;
@@ -179,6 +355,8 @@ export interface ExternalAccountingReferenceDocument extends AuditFields {
   documentDate?: Timestamp | null;
   attachmentUrl?: string | null;
   linkedMovementId?: DocId | null;
+  paidAt?: Timestamp | null;
+  paidByUid?: UID | null;
   status: ExternalReferenceStatus;
   notes?: string | null;
 }
@@ -232,6 +410,40 @@ export interface RegisterPaymentResult {
   duplicate: boolean;
 }
 
+export interface CreateMercadoPagoCheckoutItemPayload {
+  sourceType: MercadoPagoCheckoutSourceType;
+  sourceId?: DocId | null;
+  memberId?: DocId | null;
+  thirdPartyType?: ThirdPartyType | null;
+  thirdPartyId?: DocId | null;
+  categoryId?: DocId | null;
+  description?: string | null;
+  amountMinor?: AmountMinor | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateMercadoPagoCheckoutPayload {
+  items: CreateMercadoPagoCheckoutItemPayload[];
+  notes?: string | null;
+}
+
+export interface CreateMercadoPagoCheckoutResult {
+  sessionId: DocId;
+  preferenceId: string | null;
+  checkoutUrl: string | null;
+  status: MercadoPagoCheckoutSessionStatus;
+  reused: boolean;
+}
+
+export interface GetMercadoPagoCheckoutStatusPayload {
+  sessionId: DocId;
+}
+
+export interface GetMercadoPagoCheckoutStatusResult {
+  session: EntityWithId<MercadoPagoCheckoutSessionDocument>;
+  message: string;
+}
+
 export interface UpsertFinancialConfigPayload {
   effectiveFrom?: string;
   fullMemberFeeMinor: AmountMinor;
@@ -259,6 +471,17 @@ export interface UpsertFinancialConfigResult {
   version: number;
 }
 
+export interface SetCreditCommissionRulePayload {
+  percentageBps: Bps;
+  validFrom?: string;
+  notes?: string | null;
+}
+
+export interface SetCreditCommissionRuleResult {
+  ruleId: DocId;
+  percentageBps: Bps;
+}
+
 export interface UpsertSalaryConfigurationPayload {
   employeeId: DocId;
   contractType: string;
@@ -271,6 +494,18 @@ export interface UpsertSalaryConfigurationPayload {
 
 export interface UpsertSalaryConfigurationResult {
   salaryConfigurationId: DocId;
+}
+
+export interface UpsertPayrollConfigPayload {
+  paymentDay: number;
+  prepareReceiptsDaysBefore?: number | null;
+  effectiveFrom?: string;
+}
+
+export interface UpsertPayrollConfigResult {
+  payrollConfigId: 'current';
+  paymentDay: number;
+  prepareReceiptsDaysBefore: number | null;
 }
 
 export interface ReviewExpensePayload {
@@ -311,21 +546,35 @@ export interface PostExpenseMovementResult {
 }
 
 export interface RecordExternalReferencePayload {
+  employeeId?: DocId | null;
   referenceType: ExternalReferenceType;
   period: AccountingPeriod;
   amountMinor: AmountMinor;
+  allocatedAmountMinor?: AmountMinor | null;
   providerName?: string | null;
   referenceNumber?: string | null;
   dueDate?: string | null;
   documentDate?: string | null;
   attachmentUrl?: string | null;
   linkedMovementId?: DocId | null;
+  paidAt?: string | null;
   notes?: string | null;
 }
 
 export interface RecordExternalReferenceResult {
   referenceId: DocId;
-  status: 'recorded' | 'linked';
+  status: 'recorded' | 'linked' | 'paid';
+}
+
+export interface UpsertEmployeeExternalReferencePayload extends RecordExternalReferencePayload {
+  employeeId: DocId;
+}
+
+export interface UpsertEmployeeExternalReferenceResult {
+  referenceId: DocId;
+  linkId: DocId;
+  status: 'recorded' | 'linked' | 'paid';
+  duplicate: boolean;
 }
 
 export interface ReconcileMacroSettlementPayload {
@@ -351,4 +600,119 @@ export interface VoidFinancialMovementResult {
   movementId: DocId;
   reversalMovementId?: DocId;
   duplicate: boolean;
+}
+
+export interface CreateOvertimeEntryPayload {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  workDate: string;
+  hours: number;
+  amountMinor: AmountMinor;
+  reason: string;
+  notes?: string | null;
+}
+
+export interface CreateOvertimeEntryResult {
+  overtimeEntryId: DocId;
+  status: OvertimeEntryStatus;
+}
+
+export interface ReviewOvertimeEntryPayload {
+  overtimeEntryId: DocId;
+  decision: 'approved' | 'rejected';
+  rejectionReason?: string | null;
+}
+
+export interface ReviewOvertimeEntryResult {
+  overtimeEntryId: DocId;
+  status: OvertimeEntryStatus;
+}
+
+export interface ListEmployeePayrollCyclePayload {
+  employeeId: DocId;
+  period: AccountingPeriod;
+}
+
+export interface ListEmployeePayrollCycleResult {
+  payrollCycle: EntityWithId<EmployeePayrollCycleDocument> | null;
+  salaryPayment: EntityWithId<SalaryPaymentDocument> | null;
+  overtimeEntries: Array<EntityWithId<OvertimeEntryDocument>>;
+  accountingLinks: Array<EntityWithId<EmployeeAccountingLinkDocument>>;
+  certificates: Array<EntityWithId<EmployeeCertificateDocument>>;
+}
+
+export interface PostEmployeePayrollCyclePayload {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  salaryConfigurationId?: DocId | null;
+  salaryGrossMinor?: AmountMinor;
+  bankedAmountMinor?: AmountMinor;
+  nonBankedAmountMinor?: AmountMinor;
+  linkedExternalReferenceIds?: DocId[];
+  operationDate?: string;
+  notes?: string | null;
+}
+
+export interface PostEmployeePayrollCycleResult {
+  payrollCycleId: DocId;
+  salaryPaymentId: DocId;
+  financialMovementIds: DocId[];
+  duplicate: boolean;
+}
+
+export interface RecordEmployeeCertificatePayload {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  certificateType: string;
+  documentNumber?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  attachmentUrl?: string | null;
+  notes?: string | null;
+}
+
+export interface RecordEmployeeCertificateResult {
+  certificateId: DocId;
+  status: EmployeeCertificateStatus;
+}
+
+export interface LinkExternalReferenceToEmployeePayload {
+  employeeId: DocId;
+  period: AccountingPeriod;
+  referenceId: DocId;
+  allocatedAmountMinor?: AmountMinor | null;
+  paidAt?: string | null;
+  notes?: string | null;
+}
+
+export interface LinkExternalReferenceToEmployeeResult {
+  linkId: DocId;
+  duplicate: boolean;
+}
+
+export interface CreateCashClosurePayload {
+  period: AccountingPeriod;
+  closureDate: string;
+  openingBalanceMinor?: AmountMinor;
+  movementIds?: DocId[];
+  notes?: string | null;
+}
+
+export interface CreateCashClosureResult {
+  cashClosureId: DocId;
+  cashExpectedMinor: AmountMinor;
+  expectedByPaymentMethod?: Record<string, AmountMinor>;
+  movementCount: number;
+}
+
+export interface CloseCashClosurePayload {
+  cashClosureId: DocId;
+  cashCountedMinor: AmountMinor;
+  notes?: string | null;
+}
+
+export interface CloseCashClosureResult {
+  cashClosureId: DocId;
+  status: CashClosureStatus;
+  differenceMinor: AmountMinor;
 }

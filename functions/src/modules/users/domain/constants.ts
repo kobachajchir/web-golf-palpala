@@ -14,9 +14,27 @@ export const USERS_COLLECTIONS = {
 
 export const SYSTEM_ACTOR_UID = 'system';
 export const DEFAULT_PRIMARY_ROLE_ID = 'socio';
-export const STAFF_ROLE_IDS = ['directivo', 'administrativo'] as const;
-export const CLAIM_ROLE_IDS = ['directivo', 'administrativo', 'empleado', 'socio'] as const;
-export const PRIMARY_ROLE_PRECEDENCE = ['directivo', 'administrativo', 'empleado', 'socio'] as const;
+export const EXECUTIVE_COMMITTEE_ROLE_ID = 'comite_ejecutivo';
+export const LEGACY_DIRECTIVO_ROLE_ID = 'directivo';
+export const BOARD_COMMISSION_ROLE_ID = 'comision_directiva';
+export const EXECUTIVE_ACCESS_ROLE_IDS = [EXECUTIVE_COMMITTEE_ROLE_ID, LEGACY_DIRECTIVO_ROLE_ID] as const;
+export const STAFF_ROLE_IDS = [EXECUTIVE_COMMITTEE_ROLE_ID, LEGACY_DIRECTIVO_ROLE_ID, 'administrativo'] as const;
+export const CLAIM_ROLE_IDS = [
+  EXECUTIVE_COMMITTEE_ROLE_ID,
+  LEGACY_DIRECTIVO_ROLE_ID,
+  'administrativo',
+  'empleado',
+  BOARD_COMMISSION_ROLE_ID,
+  'socio',
+] as const;
+export const PRIMARY_ROLE_PRECEDENCE = [
+  EXECUTIVE_COMMITTEE_ROLE_ID,
+  LEGACY_DIRECTIVO_ROLE_ID,
+  'administrativo',
+  'empleado',
+  BOARD_COMMISSION_ROLE_ID,
+  'socio',
+] as const;
 export const MAX_LICENSE_MONTHS = 6;
 export const MAX_FAMILY_GROUP_SIZE = 99;
 
@@ -31,12 +49,20 @@ export const MEMBER_TYPE_IDS = {
 
 export const DEFAULT_ROLES = [
   {
-    name: 'Directivo',
+    name: 'Comité Ejecutivo',
     description: 'Administra permisos, roles y decisiones sensibles del club.',
     permissionIds: ['users.roles.manage', 'users.members.manage', 'users.employees.manage', 'users.handicaps.manage'],
     system: true,
     active: true,
     sortOrder: 10,
+  },
+  {
+    name: 'Directivo legado',
+    description: 'Alias técnico de compatibilidad para usuarios creados antes de Comité Ejecutivo.',
+    permissionIds: ['users.roles.manage', 'users.members.manage', 'users.employees.manage', 'users.handicaps.manage'],
+    system: true,
+    active: false,
+    sortOrder: 15,
   },
   {
     name: 'Administrativo',
@@ -53,6 +79,14 @@ export const DEFAULT_ROLES = [
     system: true,
     active: true,
     sortOrder: 30,
+  },
+  {
+    name: 'Comisión Directiva',
+    description: 'Cargo institucional visible para socios de comisión, sin permisos administrativos extra.',
+    permissionIds: [],
+    system: true,
+    active: true,
+    sortOrder: 35,
   },
   {
     name: 'Socio',
@@ -101,8 +135,40 @@ export const DEFAULT_PERMISSIONS = [
 
 export const DEFAULT_ROLE_PERMISSIONS = [
   {
+    id: 'comite_ejecutivo__users.roles.manage',
+    roleId: EXECUTIVE_COMMITTEE_ROLE_ID,
+    permissionId: 'users.roles.manage',
+    active: true,
+    grantedByUid: SYSTEM_ACTOR_UID,
+    grantedAt: null as never,
+  },
+  {
+    id: 'comite_ejecutivo__users.members.manage',
+    roleId: EXECUTIVE_COMMITTEE_ROLE_ID,
+    permissionId: 'users.members.manage',
+    active: true,
+    grantedByUid: SYSTEM_ACTOR_UID,
+    grantedAt: null as never,
+  },
+  {
+    id: 'comite_ejecutivo__users.employees.manage',
+    roleId: EXECUTIVE_COMMITTEE_ROLE_ID,
+    permissionId: 'users.employees.manage',
+    active: true,
+    grantedByUid: SYSTEM_ACTOR_UID,
+    grantedAt: null as never,
+  },
+  {
+    id: 'comite_ejecutivo__users.handicaps.manage',
+    roleId: EXECUTIVE_COMMITTEE_ROLE_ID,
+    permissionId: 'users.handicaps.manage',
+    active: true,
+    grantedByUid: SYSTEM_ACTOR_UID,
+    grantedAt: null as never,
+  },
+  {
     id: 'directivo__users.roles.manage',
-    roleId: 'directivo',
+    roleId: LEGACY_DIRECTIVO_ROLE_ID,
     permissionId: 'users.roles.manage',
     active: true,
     grantedByUid: SYSTEM_ACTOR_UID,
@@ -110,7 +176,7 @@ export const DEFAULT_ROLE_PERMISSIONS = [
   },
   {
     id: 'directivo__users.members.manage',
-    roleId: 'directivo',
+    roleId: LEGACY_DIRECTIVO_ROLE_ID,
     permissionId: 'users.members.manage',
     active: true,
     grantedByUid: SYSTEM_ACTOR_UID,
@@ -118,7 +184,7 @@ export const DEFAULT_ROLE_PERMISSIONS = [
   },
   {
     id: 'directivo__users.employees.manage',
-    roleId: 'directivo',
+    roleId: LEGACY_DIRECTIVO_ROLE_ID,
     permissionId: 'users.employees.manage',
     active: true,
     grantedByUid: SYSTEM_ACTOR_UID,
@@ -126,7 +192,7 @@ export const DEFAULT_ROLE_PERMISSIONS = [
   },
   {
     id: 'directivo__users.handicaps.manage',
-    roleId: 'directivo',
+    roleId: LEGACY_DIRECTIVO_ROLE_ID,
     permissionId: 'users.handicaps.manage',
     active: true,
     grantedByUid: SYSTEM_ACTOR_UID,

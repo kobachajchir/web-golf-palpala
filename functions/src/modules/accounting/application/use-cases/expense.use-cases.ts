@@ -7,6 +7,7 @@ import {
   assertIsRecord,
   ensureEmployeeOrStaff,
   ensureStaff,
+  hasExecutiveAccess,
   parseOptionalAmountMinor,
   parseOptionalFiniteNumber,
   parseOptionalIsoDate,
@@ -55,7 +56,7 @@ export async function submitExpenseUseCase(params: {
     assertCondition(category, 'not-found', `No existe financial_expense_categories/${params.input.categoryId}.`);
     assertCondition(category.active, 'failed-precondition', `La categoría ${params.input.categoryId} está inactiva.`);
 
-    const isStaff = actor.claims.directivo === true || actor.claims.administrativo === true;
+    const isStaff = hasExecutiveAccess(actor) || actor.claims.administrativo === true;
     if (!isStaff) {
       assertCondition(actor.user.profileType === 'employee', 'permission-denied', 'El usuario autenticado no está vinculado a un empleado.');
       assertCondition(actor.user.profileId === params.input.employeeId, 'permission-denied', 'Solo podés cargar tus propias rendiciones.');

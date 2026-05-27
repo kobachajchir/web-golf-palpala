@@ -3,7 +3,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { USERS_COLLECTIONS } from '../users/domain/constants.js';
+import { EXECUTIVE_ACCESS_ROLE_IDS, USERS_COLLECTIONS } from '../users/domain/constants.js';
 import { assertCondition } from '../users/domain/errors.js';
 import type { Actor, CustomClaims, MemberDocument, UserDocument } from '../users/domain/models.js';
 import {
@@ -97,7 +97,7 @@ async function getOrCreateAuthUser(params: {
 }
 
 function ensureRoleAssignmentAllowed(actor: Actor | null, roleIds: readonly string[]): Actor {
-  if (roleIds.includes('directivo')) {
+  if (EXECUTIVE_ACCESS_ROLE_IDS.some((roleId) => roleIds.includes(roleId))) {
     return ensureDirectivo(actor);
   }
 
@@ -105,7 +105,7 @@ function ensureRoleAssignmentAllowed(actor: Actor | null, roleIds: readonly stri
 }
 
 function ensureAuthUserMutationAllowed(actor: Actor | null, targetUser: UserDocument | null): Actor {
-  if (targetUser?.roleIds.includes('directivo')) {
+  if (targetUser && EXECUTIVE_ACCESS_ROLE_IDS.some((roleId) => targetUser.roleIds.includes(roleId))) {
     return ensureDirectivo(actor);
   }
 

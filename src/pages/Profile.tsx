@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PasswordChangePanel } from '../components/PasswordChangePanel';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
@@ -17,14 +17,25 @@ type LoadedProfile = {
 
 const STAFF_MODE_OPTIONS = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO] as const;
 
+function ChevronIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M7.3 9.3a1 1 0 0 1 1.4 0L12 12.58l3.3-3.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 0-1.42Z" />
+    </svg>
+  );
+}
+
 export function Profile() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { firebaseUser, refreshUser, user: currentUser, interfaceMode } = useAuth();
   const [profile, setProfile] = useState<LoadedProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
+  const [isMoreDataOpen, setIsMoreDataOpen] = useState(false);
   const canSeeAdminProfile = (STAFF_MODE_OPTIONS as readonly string[]).includes(interfaceMode);
+  const requestedPanel = searchParams.get('panel');
 
   useEffect(() => {
     let mounted = true;
@@ -83,6 +94,16 @@ export function Profile() {
     };
   }, [canSeeAdminProfile, currentUser, id]);
 
+  useEffect(() => {
+    if (requestedPanel === 'password' && profile?.user.id === currentUser?.id) {
+      setIsPasswordChangeOpen(true);
+    }
+
+    if (requestedPanel === 'more' && canSeeAdminProfile) {
+      setIsMoreDataOpen(true);
+    }
+  }, [canSeeAdminProfile, currentUser?.id, profile?.user.id, requestedPanel]);
+
   if (loading) {
     return (
       <div className="loading-state">
@@ -103,6 +124,7 @@ export function Profile() {
   const displayName =
     profile.member ? `${profile.member.firstName} ${profile.member.lastName}` : getUserDisplayName(profile.user);
   const memberNumber = profile.member?.memberNumber ?? profile.user.memberNumber ?? 'Sin numero vinculado';
+  const roleIds = profile.user.roleIds?.length ? profile.user.roleIds : [profile.user.primaryRoleId];
 
   return (
     <div className="page-container profile-page">
@@ -128,14 +150,13 @@ export function Profile() {
             <strong>{memberNumber}</strong>
           </div>
 
-          <div className="public-profile-field">
-            <span>Rol principal</span>
-            <strong>{getRoleLabel(profile.user.primaryRoleId)}</strong>
-          </div>
-
-          <div className="public-profile-field">
-            <span>Se unio</span>
-            <strong>{formatTimestamp(profile.member?.joinedAt ?? profile.user.createdAt)}</strong>
+          <div className="public-profile-field public-profile-field--roles">
+            <span>Roles</span>
+            <strong className="profile-role-list">
+              {roleIds.map((roleId) => (
+                <span key={roleId}>{getRoleLabel(roleId)}</span>
+              ))}
+            </strong>
           </div>
         </div>
 
@@ -143,17 +164,44 @@ export function Profile() {
           <div className="profile-actions">
             {profile.member && (
               <Link
-                className="btn-secondary"
+                className="ui-action-button ui-action-button--secondary"
                 to={canSeeAdminProfile ? `/admin/members/${profile.member.id}` : '/mi-membresia'}
               >
                 Ver membresia
               </Link>
             )}
             {canSeeAdminProfile && (
-              <Link className="btn-secondary" to={`/admin/users/${profile.user.id}`}>
-                Ver ficha administrativa
-              </Link>
+              <button
+                type="button"
+                className={`ui-action-button ui-action-button--compact profile-more-button ${isMoreDataOpen ? 'profile-more-button--open' : ''}`}
+                aria-expanded={isMoreDataOpen}
+                onClick={() => setIsMoreDataOpen((current) => !current)}
+              >
+                Mas datos
+                <span className="profile-more-chevron" aria-hidden="true">
+                  <ChevronIcon />
+                </span>
+              </button>
             )}
+          </div>
+        )}
+
+        {canSeeAdminProfile && isMoreDataOpen && (
+          <div className="profile-more-data">
+            <div className="public-profile-field">
+              <span>Tipo de socio</span>
+              <strong>{(profile.member?.typeCodeSnapshot ?? profile.member?.typeId ?? 'Sin tipo vinculado')
+                .toString()
+                .replace(/\b\w/g, (char) => char.toUpperCase())}</strong>
+            </div>
+            <div className="public-profile-field">
+              <span>Ultimo acceso</span>
+              <strong>{formatTimestamp(profile.user.lastLoginAt)}</strong>
+            </div>
+            <div className="public-profile-field">
+              <span>Actualizado</span>
+              <strong>{formatTimestamp(profile.member?.updatedAt ?? profile.user.updatedAt)}</strong>
+            </div>
           </div>
         )}
 
@@ -162,7 +210,7 @@ export function Profile() {
             <p className="eyebrow">Seguridad</p>
             <h2>Cambiar contraseña</h2>
             {!isPasswordChangeOpen ? (
-              <button type="button" className="btn-secondary" onClick={() => setIsPasswordChangeOpen(true)}>
+              <button type="button" className="ui-action-button ui-action-button--secondary" onClick={() => setIsPasswordChangeOpen(true)}>
                 Cambiar contraseña
               </button>
             ) : (
