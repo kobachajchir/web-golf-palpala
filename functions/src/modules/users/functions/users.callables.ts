@@ -52,6 +52,7 @@ import {
   generateMemberTemporaryPassword,
   normalizeMemberNumber,
 } from '../../auth/member-number-auth.js';
+import { emitRoleNotification } from '../../notifications/notifications.service.js';
 
 const transactions = new FirestoreUsersTransactionManager(new SystemClock());
 const authGateway = new FirebaseAuthGateway();
@@ -429,6 +430,28 @@ export const usersCreateMember = onCall(async (request) => {
       actorUid: staffActor.uid,
       memberId: result.memberId,
     });
+
+    try {
+      await emitRoleNotification({
+        type: 'membership_created',
+        sourceModule: 'users',
+        sourceCollection: USERS_COLLECTIONS.members,
+        sourceId: result.memberId,
+        title: 'Nueva membresía cargada',
+        body: `Se cargó el socio ${accessResult.memberNumber}.`,
+        severity: 'success',
+        roleIds: ['administrativo', 'directivo'],
+        deliveryScope: 'role_info',
+        route: `/admin/members/${result.memberId}`,
+        metadata: {
+          memberId: result.memberId,
+          memberNumber: accessResult.memberNumber,
+        },
+        actorUid: staffActor.uid,
+      });
+    } catch (notificationError) {
+      logger.warn('usersCreateMember notification emit failed', notificationError);
+    }
 
     return {
       ...result,

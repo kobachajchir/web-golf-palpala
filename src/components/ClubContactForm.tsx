@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import clubLogo from '../assets/ClubLogo.png';
+import { createNotificationsCallables } from '../modules/notifications/functions/notifications.callables';
 
 const CLUB_ADDRESS = 'Avda. El Inti 598, Loma Golf, Palpala';
 const CLUB_PHONE = '388 - 4111111';
@@ -11,11 +12,67 @@ type ClubContactFormProps = {
 };
 
 export function ClubContactForm({ compact = false, showPersonalFields = true }: ClubContactFormProps) {
+  const notificationsCallables = useMemo(() => createNotificationsCallables(), []);
+  const [formState, setFormState] = useState({
+    senderName: '',
+    senderEmail: '',
+    senderPhone: '',
+    subject: '',
+    message: '',
+  });
+  const [messageError, setMessageError] = useState('');
   const [messageSent, setMessageSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
+    setFormState((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setMessageSent(true);
+    setMessageError('');
+    setMessageSent(false);
+
+    if (!formState.subject.trim() || !formState.message.trim()) {
+      setMessageError('Asunto y mensaje son obligatorios.');
+      return;
+    }
+
+    if (showPersonalFields && !formState.senderEmail.trim() && !formState.senderPhone.trim()) {
+      setMessageError('Dejanos un email o telefono de contacto.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (showPersonalFields) {
+        await notificationsCallables.submitPublicInquiry({
+          senderName: formState.senderName.trim(),
+          senderEmail: formState.senderEmail.trim() || null,
+          senderPhone: formState.senderPhone.trim() || null,
+          subject: formState.subject.trim(),
+          message: formState.message.trim(),
+        });
+      } else {
+        await notificationsCallables.submitMemberInquiry({
+          subject: formState.subject.trim(),
+          message: formState.message.trim(),
+        });
+      }
+      setFormState({
+        senderName: '',
+        senderEmail: '',
+        senderPhone: '',
+        subject: '',
+        message: '',
+      });
+      setMessageSent(true);
+    } catch (error) {
+      setMessageError(error instanceof Error ? error.message : 'No pudimos enviar la consulta.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const panelClassName = [
@@ -69,30 +126,35 @@ export function ClubContactForm({ compact = false, showPersonalFields = true }: 
             <>
               <label className="form-field">
                 <span>Nombre</span>
-                <input type="text" placeholder="Tu nombre" required />
+                <input name="senderName" type="text" placeholder="Tu nombre" value={formState.senderName} onChange={handleChange} required />
               </label>
               <label className="form-field">
                 <span>Email</span>
-                <input type="email" placeholder="tu@email.com" required />
+                <input name="senderEmail" type="email" placeholder="tu@email.com" value={formState.senderEmail} onChange={handleChange} />
               </label>
               <label className="form-field">
                 <span>Telefono</span>
-                <input type="tel" placeholder={CLUB_PHONE} />
+                <input name="senderPhone" type="tel" placeholder={CLUB_PHONE} value={formState.senderPhone} onChange={handleChange} />
               </label>
             </>
           )}
+          <label className="form-field">
+            <span>Asunto</span>
+            <input name="subject" type="text" placeholder="Motivo de la consulta" value={formState.subject} onChange={handleChange} required />
+          </label>
           <label className="form-field club-contact-form__message">
             <span>Mensaje</span>
-            <textarea rows={4} placeholder="Escribi tu consulta" required />
+            <textarea name="message" rows={4} placeholder="Escribi tu consulta" value={formState.message} onChange={handleChange} required />
           </label>
+          {messageError && <div className="error-message">{messageError}</div>}
           {messageSent && (
             <div className="accounting-success">
-              Consulta preparada. Cuando conectemos el canal de contacto, se enviara desde aca.
+              Consulta enviada. Administracion y directiva la veran en notificaciones.
             </div>
           )}
           <div className="form-actions">
-            <button type="submit" className="btn-primary">
-              Enviar consulta
+            <button type="submit" className="btn-primary" disabled={isSubmitting}>
+              {isSubmitting ? 'Enviando...' : 'Enviar consulta'}
             </button>
           </div>
         </form>

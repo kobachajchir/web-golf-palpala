@@ -79,3 +79,13 @@ export {
   tournamentsRecordRegistrationPayment,
   tournamentsRegisterParticipant,
 } from './modules/tournaments/functions/tournaments.callables.js';
+export {
+  contactSubmitMemberInquiry,
+  contactSubmitPublicInquiry,
+  notifications,
+  notificationsDismiss,
+  notificationsExecuteAction,
+  notificationsListAdmin,
+  notificationsMarkRead,
+  notificationsScanMemberLifecycle,
+} from './modules/notifications/notifications.callables.js';

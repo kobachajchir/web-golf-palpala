@@ -14,6 +14,7 @@ import { Login } from './pages/Login';
 import { MemberMembershipProfile } from './pages/MemberMembershipProfile';
 import { MercadoPagoReturn } from './pages/MercadoPagoReturn';
 import { MembersAdmin } from './pages/MembersAdmin';
+import { NotificationsPortal } from './pages/NotificationsPortal';
 import { EmployeesAdmin } from './pages/EmployeesAdmin';
 import { NotFound } from './pages/NotFound';
 import { Profile } from './pages/Profile';
@@ -107,6 +108,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <MemberMembershipProfile />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/notificaciones"
+            element={
+              <ProtectedRoute>
+                <NotificationsPortal />
               </ProtectedRoute>
             }
           />

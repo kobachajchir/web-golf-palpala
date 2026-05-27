@@ -26,6 +26,22 @@ service cloud.firestore {
       return isDirectivo() || isAdministrativo();
     }
 
+    function hasDeliveryRole(roleIds) {
+      return (roleIds.hasAny(['directivo']) && isDirectivo())
+        || (roleIds.hasAny(['administrativo']) && isAdministrativo())
+        || (roleIds.hasAny(['empleado']) && isEmpleado())
+        || (roleIds.hasAny(['socio']) && hasClaim('socio'));
+    }
+
+    function canReadNotificationDelivery() {
+      return isSignedIn()
+        && (
+          resource.data.recipientUserId == request.auth.uid
+          || isStaff()
+          || hasDeliveryRole(resource.data.recipientRoleIds)
+        );
+    }
+
     function isAccountingStaff() {
       return isDirectivo() || isAdministrativo();
     }
@@ -255,6 +271,26 @@ service cloud.firestore {
     }
 
     match /password_reset_requests/{requestId} {
+      allow read: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /notification_deliveries/{deliveryId} {
+      allow read: if canReadNotificationDelivery();
+      allow create, update, delete: if false;
+    }
+
+    match /notification_action_logs/{logId} {
+      allow read: if isStaff();
+      allow create, update, delete: if false;
+    }
+
+    match /contact_inquiries/{inquiryId} {
       allow read: if isStaff();
       allow create, update, delete: if false;
     }

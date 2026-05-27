@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import type { EntityWithId as AccountingEntityWithId, MemberFeeChargeDocument } from '../modules/accounting/domain/models';
 import { createAccountingCallables } from '../modules/accounting/functions/accounting.callables';
 import { createMemberFeeChargesRepository } from '../modules/accounting/infrastructure/firestore/repositories';
+import { createNotificationsCallables } from '../modules/notifications/functions/notifications.callables';
 import { createUsersCallables } from '../modules/users/functions/users.callables';
 import type { EntityWithId, MemberDocument } from '../modules/users/domain/models';
 import { createMembersRepository } from '../modules/users/infrastructure/firestore/repositories';
@@ -210,11 +211,21 @@ export function MemberMembershipProfile() {
     title: string;
     credentials: TemporaryMemberCredentials;
   } | null>(null);
+  const [memberInquiryForm, setMemberInquiryForm] = useState({
+    subject: '',
+    message: '',
+  });
+  const [memberInquiryError, setMemberInquiryError] = useState('');
+  const [memberInquirySuccess, setMemberInquirySuccess] = useState('');
+  const [isMemberInquirySubmitting, setIsMemberInquirySubmitting] = useState(false);
   const accountingCallables = useMemo(() => createAccountingCallables(), []);
+  const notificationsCallables = useMemo(() => createNotificationsCallables(), []);
   const usersCallables = useMemo(() => createUsersCallables(), []);
   const resolvedMemberId = memberId ?? (user?.profileType === 'member' ? user.profileId ?? undefined : undefined);
+  const actorMemberId = user?.profileType === 'member' ? user.profileId ?? null : null;
   const canManageMembership = (STAFF_MODE_OPTIONS as readonly string[]).includes(interfaceMode);
   const isDirectivo = hasRole(ROLES.DIRECTIVO) && interfaceMode === ROLES.DIRECTIVO;
+  const canSubmitMemberInquiry = Boolean(actorMemberId && resolvedMemberId && actorMemberId === resolvedMemberId);
   const requestedFocus = searchParams.get('focus');
 
   const loadMembershipData = useCallback(async () => {
@@ -402,6 +413,39 @@ export function MemberMembershipProfile() {
     }
   };
 
+  const handleMemberInquiryChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
+    setMemberInquiryForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  };
+
+  const handleMemberInquirySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMemberInquiryError('');
+    setMemberInquirySuccess('');
+
+    if (!memberInquiryForm.subject.trim() || !memberInquiryForm.message.trim()) {
+      setMemberInquiryError('Asunto y mensaje son obligatorios.');
+      return;
+    }
+
+    setIsMemberInquirySubmitting(true);
+    try {
+      await notificationsCallables.submitMemberInquiry({
+        subject: memberInquiryForm.subject.trim(),
+        message: memberInquiryForm.message.trim(),
+      });
+      setMemberInquiryForm({ subject: '', message: '' });
+      setMemberInquirySuccess('Consulta enviada. El equipo administrativo y directivo la vera en notificaciones.');
+    } catch (error) {
+      setMemberInquiryError(error instanceof Error ? error.message : 'No pudimos enviar la consulta.');
+    } finally {
+      setIsMemberInquirySubmitting(false);
+    }
+  };
+
   const assignedRoleOptions = useMemo(() => normalizeRoleIds(authStatus?.roleIds ?? []), [authStatus?.roleIds]);
   const missingRoleOptions = useMemo(() => {
     const assignedRoleIds = new Set(assignedRoleOptions);
@@ -541,7 +585,6 @@ export function MemberMembershipProfile() {
           : 'Disponible';
   const payableFeeCharges = feeCharges.filter((charge) => charge.status === 'pending' || charge.status === 'overdue');
   const payableFeeTotalMinor = payableFeeCharges.reduce((total, charge) => total + charge.finalAmountMinor, 0);
-  const actorMemberId = user?.profileType === 'member' ? user.profileId ?? null : null;
   const isActorFamilyHolder = Boolean(actorMemberId && holderMember?.id === actorMemberId);
   const canOpenFamilyActions = (relative: ClubMemberRecord) => {
     if (!relative.familyGroupId) {
@@ -903,6 +946,49 @@ export function MemberMembershipProfile() {
                   </>
                 )}
               </div>
+            </article>
+          )}
+
+          {canSubmitMemberInquiry && (
+            <article className="membership-panel member-contact-panel" id="membership-contact">
+              <p className="eyebrow">Consulta interna</p>
+              <h2>Contactar al club</h2>
+              <p className="profile-note">
+                Se envia con tus datos de socio para que administracion y directiva puedan responder desde el circuito interno.
+              </p>
+
+              {memberInquiryError && <div className="error-message">{memberInquiryError}</div>}
+              {memberInquirySuccess && <div className="success-message">{memberInquirySuccess}</div>}
+
+              <form className="member-contact-form" onSubmit={handleMemberInquirySubmit}>
+                <label className="form-field" htmlFor="memberInquirySubject">
+                  <span>Asunto</span>
+                  <input
+                    id="memberInquirySubject"
+                    name="subject"
+                    type="text"
+                    value={memberInquiryForm.subject}
+                    onChange={handleMemberInquiryChange}
+                  />
+                </label>
+
+                <label className="form-field" htmlFor="memberInquiryMessage">
+                  <span>Mensaje</span>
+                  <textarea
+                    id="memberInquiryMessage"
+                    name="message"
+                    value={memberInquiryForm.message}
+                    onChange={handleMemberInquiryChange}
+                    rows={4}
+                  />
+                </label>
+
+                <div className="form-actions membership-action-buttons">
+                  <UiActionButton type="submit" variant="secondary" disabled={isMemberInquirySubmitting}>
+                    {isMemberInquirySubmitting ? 'Enviando...' : 'Enviar consulta'}
+                  </UiActionButton>
+                </div>
+              </form>
             </article>
           )}
 

@@ -285,6 +285,46 @@ after(async () => {
   await testEnv.cleanup();
 });
 
+function createNotificationDelivery(overrides: Record<string, unknown> = {}) {
+  const now = Timestamp.fromDate(new Date('2026-01-04T00:00:00.000Z'));
+
+  return {
+    notificationId: 'notification-1',
+    type: 'test_notification',
+    sourceModule: 'tests',
+    sourceCollection: null,
+    sourceId: null,
+    recipientUserId: 'user-1',
+    recipientDisplayName: 'User 1',
+    recipientMemberNumber: '0001',
+    recipientProfileType: 'member',
+    recipientProfileId: 'member-1',
+    recipientRoleIds: ['socio'],
+    titleSnapshot: 'Aviso de prueba',
+    bodySnapshot: 'Cuerpo del aviso',
+    severity: 'info',
+    deliveryScope: 'per_user',
+    route: '/mi-membresia',
+    action: null,
+    attachments: [],
+    metadata: {},
+    status: 'unread',
+    readAt: null,
+    readByUid: null,
+    readBySnapshot: null,
+    actionedAt: null,
+    actionedByUid: null,
+    actionedBySnapshot: null,
+    dismissedAt: null,
+    dismissedByUid: null,
+    createdAt: now,
+    createdBy: 'system',
+    updatedAt: now,
+    updatedBy: 'system',
+    ...overrides,
+  };
+}
+
 test('user solo lee su propio users/{uid}', async () => {
   const ownDb = testEnv.authenticatedContext('user-1').firestore();
   const otherDb = testEnv.authenticatedContext('user-2').firestore();
@@ -467,4 +507,69 @@ test('empleado no puede aprobar rendición', async () => {
 test('no hard delete de financial_movements', async () => {
   const directivoDb = testEnv.authenticatedContext('directivo-1', { directivo: true }).firestore();
   await assertFails(deleteDoc(doc(directivoDb, 'financial_movements/movement-1')));
+});
+
+test('usuario especifico solo lee su propia entrega de notificacion', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'notification_deliveries/delivery-user-1'),
+      createNotificationDelivery(),
+    );
+  });
+
+  const ownDb = testEnv.authenticatedContext('user-1', { socio: true }).firestore();
+  const otherDb = testEnv.authenticatedContext('user-2', { socio: true }).firestore();
+  const adminDb = testEnv.authenticatedContext('admin-1', { administrativo: true }).firestore();
+
+  await assertSucceeds(getDoc(doc(ownDb, 'notification_deliveries/delivery-user-1')));
+  await assertFails(getDoc(doc(otherDb, 'notification_deliveries/delivery-user-1')));
+  await assertSucceeds(getDoc(doc(adminDb, 'notification_deliveries/delivery-user-1')));
+});
+
+test('entrega por rol permite lectura del rol y bloquea roles no destinatarios', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'notification_deliveries/delivery-role-1'),
+      createNotificationDelivery({
+        notificationId: 'notification-role-1',
+        recipientUserId: 'admin-1',
+        recipientDisplayName: 'Administrativo',
+        recipientRoleIds: ['administrativo', 'directivo'],
+        deliveryScope: 'shared_role_action',
+      }),
+    );
+  });
+
+  const directivoDb = testEnv.authenticatedContext('directivo-1', { directivo: true }).firestore();
+  const employeeDb = testEnv.authenticatedContext('employee-user-1', { empleado: true }).firestore();
+
+  await assertSucceeds(getDoc(doc(directivoDb, 'notification_deliveries/delivery-role-1')));
+  await assertFails(getDoc(doc(employeeDb, 'notification_deliveries/delivery-role-1')));
+});
+
+test('cliente no escribe notificaciones ni consultas de contacto', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'notification_deliveries/delivery-readonly-1'),
+      createNotificationDelivery(),
+    );
+  });
+
+  const ownDb = testEnv.authenticatedContext('user-1', { socio: true }).firestore();
+  const adminDb = testEnv.authenticatedContext('admin-1', { administrativo: true }).firestore();
+
+  await assertFails(updateDoc(doc(ownDb, 'notification_deliveries/delivery-readonly-1'), { status: 'read' }));
+  await assertFails(setDoc(doc(adminDb, 'contact_inquiries/inquiry-1'), {
+    channel: 'public_login_contact',
+    senderName: 'Visitante',
+    senderEmail: 'visitante@example.test',
+    senderPhone: null,
+    subject: 'Consulta',
+    message: 'Mensaje',
+    status: 'open',
+    createdAt: Timestamp.fromDate(new Date('2026-01-04T00:00:00.000Z')),
+    createdBy: 'admin-1',
+    updatedAt: Timestamp.fromDate(new Date('2026-01-04T00:00:00.000Z')),
+    updatedBy: 'admin-1',
+  }));
 });

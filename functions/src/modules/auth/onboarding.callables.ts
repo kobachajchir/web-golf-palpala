@@ -24,6 +24,7 @@ import {
   generateMemberTemporaryPassword,
   normalizeMemberNumber,
 } from './member-number-auth.js';
+import { emitRoleNotification } from '../notifications/notifications.service.js';
 
 const transactions = new FirestoreUsersTransactionManager(new SystemClock());
 
@@ -390,8 +391,11 @@ export const authOnboardingRequestMemberPasswordReset = onCall(async (request) =
         : null;
       const member = memberSnapshot?.exists ? (memberSnapshot.data() as MemberDocument) : null;
       const displayName = member ? `${member.firstName} ${member.lastName}`.trim() : null;
+      const requestRef = db.collection(USERS_COLLECTIONS.passwordResetRequests).doc(normalizedMemberNumber);
+      const previousRequestSnapshot = await requestRef.get();
+      const wasAlreadyPending = previousRequestSnapshot.exists && previousRequestSnapshot.get('status') === 'pending';
 
-      await db.collection(USERS_COLLECTIONS.passwordResetRequests).doc(normalizedMemberNumber).set(
+      await requestRef.set(
         {
           memberNumber: identifier.memberNumber ?? member?.memberNumber ?? memberNumber,
           normalizedMemberNumber,
@@ -407,6 +411,41 @@ export const authOnboardingRequestMemberPasswordReset = onCall(async (request) =
         },
         { merge: true },
       );
+
+      if (!wasAlreadyPending && identifier.memberId) {
+        try {
+          await emitRoleNotification({
+            type: 'password_reset_request',
+            sourceModule: 'users',
+            sourceCollection: USERS_COLLECTIONS.passwordResetRequests,
+            sourceId: normalizedMemberNumber,
+            title: 'Solicitud de contraseña',
+            body: `${displayName ?? `Socio ${identifier.memberNumber ?? memberNumber}`} pidió restablecer su contraseña.`,
+            severity: 'warning',
+            roleIds: ['administrativo', 'directivo'],
+            deliveryScope: 'shared_role_action',
+            route: `/admin/members/${identifier.memberId}`,
+            action: {
+              key: 'users.reset_member_password_request',
+              label: 'Restablecer contraseña',
+              requiresConfirmation: true,
+              route: `/admin/members/${identifier.memberId}`,
+              payload: {
+                memberId: identifier.memberId,
+                requestId: normalizedMemberNumber,
+              },
+            },
+            metadata: {
+              memberId: identifier.memberId,
+              memberNumber: identifier.memberNumber ?? member?.memberNumber ?? memberNumber,
+              normalizedMemberNumber,
+            },
+            actorUid: 'public-password-reset',
+          });
+        } catch (notificationError) {
+          logger.warn('authOnboardingRequestMemberPasswordReset notification emit failed', notificationError);
+        }
+      }
     }
 
     return { ok: true };

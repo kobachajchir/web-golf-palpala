@@ -17,6 +17,7 @@ import { createMercadoPagoCheckoutUseCase, getMercadoPagoCheckoutStatusUseCase, 
 import { parseUpsertPayrollConfigInput, upsertPayrollConfigUseCase } from '../application/use-cases/payroll-config.use-cases.js';
 import { assertIsRecord, ensureStaff, resolveActor, toHttpsError } from '../application/shared.js';
 import { FirestoreAccountingTransactionManager, SystemClock } from '../infrastructure/firestore/repositories.js';
+import { emitMemberPaymentNotification } from '../../notifications/notifications.service.js';
 const transactions = new FirestoreAccountingTransactionManager(new SystemClock());
 const clock = new SystemClock();
 function readEnv(name) {
@@ -210,11 +211,29 @@ export const accountingGenerateCuota = onCall(async (request) => {
 export const accountingRegisterPayment = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return registerPaymentUseCase({
+        const input = parseRegisterPaymentInput(request.data);
+        const result = await registerPaymentUseCase({
             actor,
-            input: parseRegisterPaymentInput(request.data),
+            input,
             transactions,
         });
+        if (!result.duplicate && input.sourceType === 'member_fee_charge') {
+            const memberId = input.memberId ?? input.thirdPartyId ?? null;
+            if (memberId) {
+                try {
+                    await emitMemberPaymentNotification({
+                        memberId,
+                        movementId: result.movementId,
+                        amountMinor: result.netAmountMinor,
+                        actorUid: actor?.uid ?? 'system',
+                    });
+                }
+                catch (notificationError) {
+                    logger.warn('accountingRegisterPayment notification emit failed', notificationError);
+                }
+            }
+        }
+        return result;
     }
     catch (error) {
         withCallableLogging('accountingRegisterPayment', error);

@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import clubLogo from '../assets/ClubLogo.png';
 import { ROLE_LABELS, ROLES, type RoleType } from '../constants/roles';
 import type { ThemeMode } from '../context/AuthContext';
 import { useAuth } from '../hooks/useAuth';
-import clubLogo from '../assets/ClubLogo.png';
-import { firestore } from '../lib/firebase';
-import type { PasswordResetRequestDocument } from '../modules/users/domain/models';
+import { createNotificationsCallables } from '../modules/notifications/functions/notifications.callables';
+import { useNotifications } from '../modules/notifications/hooks/useNotifications';
 import { getUserDisplayName, getUserInitial } from '../utils/user';
 
 const DEFAULT_MODE_OPTIONS: RoleType[] = [
@@ -17,12 +16,6 @@ const DEFAULT_MODE_OPTIONS: RoleType[] = [
   ROLES.DIRECTIVO,
 ];
 const STAFF_MODE_OPTIONS: readonly RoleType[] = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  detail: string;
-};
 
 type NavIconType = 'home' | 'club' | 'tournaments' | 'members' | 'employees' | 'accounting';
 
@@ -145,81 +138,10 @@ export function Navbar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
-  const [passwordResetNotifications, setPasswordResetNotifications] = useState<NotificationItem[]>([]);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const notificationsByMode: Record<RoleType, NotificationItem[]> = useMemo(
-    () => ({
-      [ROLES.SOCIO]: [
-        { id: 'n1', title: 'Comprobante disponible', detail: 'Ya podes revisar el ultimo recibo emitido.' },
-        { id: 'n2', title: 'Cuota proxima a vencer', detail: 'Tu cuota vence en 3 dias.' },
-      ],
-      [ROLES.EMPLEADO]: [
-        { id: 'n1', title: 'Ingreso por registrar', detail: 'Hay 2 cobros pendientes de carga.' },
-        { id: 'n2', title: 'Caja pendiente', detail: 'Se registro un movimiento sin medio de pago.' },
-        { id: 'n3', title: 'Egreso en espera', detail: 'Hay un pago manual pendiente de confirmacion.' },
-        { id: 'n4', title: 'Gasto cargado', detail: 'Hay un ticket pendiente de revision.' },
-      ],
-      [ROLES.COMISION_DIRECTIVA]: [
-        { id: 'n1', title: 'Actividad institucional', detail: 'Podes consultar las novedades y espacios del club.' },
-      ],
-      [ROLES.ADMINISTRATIVO]: [
-        { id: 'n1', title: 'Gastos por aprobar', detail: 'Hay 4 gastos pendientes de validacion.' },
-        { id: 'n2', title: 'Cobros conciliados', detail: 'Se acreditaron 3 pagos durante la manana.' },
-        { id: 'n3', title: 'Auditoria disponible', detail: 'Se registraron cambios en caja y movimientos.' },
-      ],
-      [ROLES.DIRECTIVO]: [
-        { id: 'n1', title: 'Cierre financiero listo', detail: 'El Comité Ejecutivo ya puede revisar el resumen del dia.' },
-      ],
-    }),
-    [],
-  );
-
-  useEffect(() => {
-    if (!STAFF_MODE_OPTIONS.includes(interfaceMode) || !firestore) {
-      setPasswordResetNotifications([]);
-      return;
-    }
-
-    let mounted = true;
-
-    void getDocs(
-      query(
-        collection(firestore, 'password_reset_requests'),
-        where('status', '==', 'pending'),
-        limit(5),
-      ),
-    )
-      .then((snapshot) => {
-        if (!mounted) {
-          return;
-        }
-
-        setPasswordResetNotifications(
-          snapshot.docs.map((entry) => {
-            const request = entry.data() as PasswordResetRequestDocument;
-            return {
-              id: `password-reset-${entry.id}`,
-              title: 'Solicitud de contraseña',
-              detail: `${request.displayName ?? `Socio ${request.memberNumber}`} pidió restablecer su contraseña.`,
-            };
-          }),
-        );
-      })
-      .catch(() => {
-        if (mounted) {
-          setPasswordResetNotifications([]);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [interfaceMode]);
-
-  const notifications = [...passwordResetNotifications, ...notificationsByMode[interfaceMode]];
-  const pendingNotifications = notifications.length;
+  const notificationsCallables = createNotificationsCallables();
+  const { items: notifications, unreadCount: pendingNotifications } = useNotifications(user?.id ?? null);
   const displayName = getUserDisplayName(user);
   const normalizedMemberNumber = user?.memberNumber?.replace(/^0+/, '') || user?.memberNumber;
   const modeOptions = user?.roleIds.length ? user.roleIds : DEFAULT_MODE_OPTIONS;
@@ -267,6 +189,12 @@ export function Navbar() {
     navigate('/perfil');
   };
 
+  const handleNotificationsPortalClick = () => {
+    setIsUserMenuOpen(false);
+    setIsNotificationsOpen(false);
+    navigate('/notificaciones');
+  };
+
   const handleLogout = () => {
     setIsUserMenuOpen(false);
     setIsNotificationsOpen(false);
@@ -301,9 +229,17 @@ export function Navbar() {
 
   const handleViewAllNotifications = () => {
     setIsNotificationsOpen(false);
-    if (passwordResetNotifications.length > 0) {
-      navigate('/admin/members');
+    navigate('/notificaciones');
+  };
+
+  const handleOpenNotification = async (deliveryId: string, route?: string | null) => {
+    setIsNotificationsOpen(false);
+    try {
+      await notificationsCallables.markRead(deliveryId);
+    } catch {
+      // The portal lets the user retry if the read marker fails.
     }
+    navigate(route || '/notificaciones');
   };
 
   return (
@@ -382,11 +318,22 @@ export function Navbar() {
               </div>
 
               <div className="notification-list">
-                {notifications.map((notification) => (
-                  <div key={notification.id} className="notification-item">
-                    <strong>{notification.title}</strong>
-                    <p>{notification.detail}</p>
+                {notifications.length === 0 && (
+                  <div className="notification-item">
+                    <strong>Sin novedades</strong>
+                    <p>No hay notificaciones recientes.</p>
                   </div>
+                )}
+                {notifications.map((notification) => (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    className="notification-item notification-item--button"
+                    onClick={() => void handleOpenNotification(notification.id, notification.route)}
+                  >
+                    <strong>{notification.titleSnapshot}</strong>
+                    <p>{notification.bodySnapshot}</p>
+                  </button>
                 ))}
               </div>
 
@@ -468,6 +415,10 @@ export function Navbar() {
                   </div>
                 </div>
               )}
+
+              <button type="button" className="nav-menu-item" onClick={handleNotificationsPortalClick}>
+                Administrar notificaciones
+              </button>
 
               <div className="nav-settings-row">
                 <div className="nav-settings-copy">
