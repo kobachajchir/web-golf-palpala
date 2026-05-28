@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   collection,
   limit,
@@ -10,6 +10,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
+import { UiActionButton } from '../components/UiActionButton';
 import { ROLE_LABELS, ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import { firestore } from '../lib/firebase';
@@ -24,7 +25,7 @@ import { createNotificationsCallables } from '../modules/notifications/functions
 import type { TemporaryMemberCredentials } from '../modules/users/types/user.types';
 
 const DELIVERY_COLLECTION = 'notification_deliveries';
-const STAFF_ROLES = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO] as const;
+const STAFF_ROLES: readonly RoleType[] = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
 const STATUS_OPTIONS: Array<{ value: NotificationDeliveryStatus | 'all'; label: string }> = [
   { value: 'all', label: 'Todos' },
   { value: 'unread', label: 'Pendientes' },
@@ -40,6 +41,7 @@ const ROLE_OPTIONS: Array<{ value: RoleType | 'all'; label: string }> = [
   { value: ROLES.SOCIO, label: ROLE_LABELS[ROLES.SOCIO] },
 ];
 
+type NotificationIconType = 'bell' | 'chevron' | 'search';
 type TimestampLike = {
   toDate?: () => Date;
   seconds?: number;
@@ -49,6 +51,26 @@ type TimestampLike = {
 };
 
 type PortalView = 'mine' | 'admin';
+
+function NotificationIcon({ type }: { type: NotificationIconType }) {
+  const icons: Record<NotificationIconType, ReactNode> = {
+    bell: (
+      <path d="M12 3a6 6 0 0 1 6 6v2.55c0 .72.2 1.43.58 2.05l1.1 1.84A1.5 1.5 0 0 1 18.39 18H5.61a1.5 1.5 0 0 1-1.29-2.56l1.1-1.84A3.98 3.98 0 0 0 6 11.55V9a6 6 0 0 1 6-6Zm0 19a3 3 0 0 1-2.82-2h5.64A3 3 0 0 1 12 22Z" />
+    ),
+    chevron: (
+      <path d="M6.7 9.3a1 1 0 0 1 1.4 0L12 13.17l3.9-3.88a1 1 0 1 1 1.4 1.42l-4.6 4.58a1 1 0 0 1-1.4 0L6.7 10.7a1 1 0 0 1 0-1.42Z" />
+    ),
+    search: (
+      <path d="M10.5 4a6.5 6.5 0 0 1 5.15 10.47l4.44 4.44a1 1 0 0 1-1.42 1.42l-4.44-4.44A6.5 6.5 0 1 1 10.5 4Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Z" />
+    ),
+  };
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      {icons[type]}
+    </svg>
+  );
+}
 
 function normalizeDelivery(id: string, data: NotificationDeliveryDocument): NotificationDelivery {
   return {
@@ -143,16 +165,17 @@ function updateDeliveryStatus(
 function matchesLocalFilters(
   delivery: NotificationDelivery,
   filters: NotificationsAdminFilters,
+  options?: { includeRecipientFilters?: boolean },
 ): boolean {
   const normalizedType = filters.type?.trim().toLowerCase();
-  const normalizedUserQuery = filters.userQuery?.trim().toLowerCase();
+  const normalizedUserQuery = options?.includeRecipientFilters ? filters.userQuery?.trim().toLowerCase() : '';
   const normalizedActionKey = filters.actionKey?.trim().toLowerCase();
 
   if (filters.status && filters.status !== 'all' && delivery.status !== filters.status) {
     return false;
   }
 
-  if (filters.roleId && filters.roleId !== 'all' && !delivery.recipientRoleIds.includes(filters.roleId)) {
+  if (options?.includeRecipientFilters && filters.roleId && filters.roleId !== 'all' && !delivery.recipientRoleIds.includes(filters.roleId)) {
     return false;
   }
 
@@ -188,8 +211,8 @@ function matchesLocalFilters(
 
 export function NotificationsPortal() {
   const navigate = useNavigate();
-  const { user, hasAnyRole } = useAuth();
-  const canManageNotifications = hasAnyRole(STAFF_ROLES);
+  const { user, interfaceMode } = useAuth();
+  const canManageNotifications = STAFF_ROLES.includes(interfaceMode);
   const notificationsCallables = useMemo(() => createNotificationsCallables(), []);
   const [view, setView] = useState<PortalView>('mine');
   const [ownItems, setOwnItems] = useState<NotificationDelivery[]>([]);
@@ -197,6 +220,7 @@ export function NotificationsPortal() {
   const [loadingOwnItems, setLoadingOwnItems] = useState(true);
   const [loadingAdminItems, setLoadingAdminItems] = useState(false);
   const [error, setError] = useState('');
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<NotificationsAdminFilters>({
     status: 'all',
     roleId: 'all',
@@ -209,12 +233,28 @@ export function NotificationsPortal() {
   const [pendingActionDelivery, setPendingActionDelivery] = useState<NotificationDelivery | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [credentialsDialog, setCredentialsDialog] = useState<TemporaryMemberCredentials | null>(null);
+  const filtersRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!canManageNotifications && view === 'admin') {
       setView('mine');
     }
   }, [canManageNotifications, view]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      if (filtersRef.current && !filtersRef.current.contains(target)) {
+        setIsFiltersOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, []);
 
   useEffect(() => {
     if (!firestore || !user?.id) {
@@ -284,18 +324,29 @@ export function NotificationsPortal() {
     }
   }, [loadAdminItems, view]);
 
-  const activeItems = view === 'admin' ? adminItems : ownItems;
+  const isAdminView = canManageNotifications && view === 'admin';
+  const activeItems = isAdminView ? adminItems : ownItems;
   const filteredItems = useMemo(
-    () => (view === 'admin' ? adminItems : ownItems.filter((item) => matchesLocalFilters(item, filters))),
-    [adminItems, filters, ownItems, view],
+    () => (isAdminView ? adminItems : ownItems.filter((item) => matchesLocalFilters(item, filters))),
+    [adminItems, filters, isAdminView, ownItems],
   );
   const pendingCount = activeItems.filter((item) => item.status === 'unread').length;
   const actionCount = activeItems.filter((item) => item.action && item.status !== 'actioned' && item.status !== 'dismissed').length;
-  const isLoading = view === 'admin' ? loadingAdminItems : loadingOwnItems;
+  const isLoading = isAdminView ? loadingAdminItems : loadingOwnItems;
+  const activeFilterCount = useMemo(
+    () =>
+      Number(filters.status !== 'all') +
+      Number(Boolean(filters.type?.trim())) +
+      Number(Boolean(filters.actionKey?.trim())) +
+      (isAdminView
+        ? Number(Boolean(filters.userQuery?.trim())) + Number(filters.roleId !== 'all')
+        : 0),
+    [filters, isAdminView],
+  );
 
   const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (view === 'admin') {
+    if (isAdminView) {
       void loadAdminItems();
     }
   };
@@ -381,140 +432,203 @@ export function NotificationsPortal() {
   };
 
   return (
-    <div className="page-container profile-page notifications-page">
-      <section className="floating-card notifications-card">
-        <div className="public-profile-card__header membership-profile-card__header">
-          <div className="public-profile-avatar">N</div>
-          <div className="public-profile-card__copy">
+    <div className="page-container tournament-page notifications-page">
+      <div className="notifications-shell">
+        <section className="floating-card tournament-hero notifications-hero">
+          <div className="tournament-hero__copy">
             <p className="eyebrow">Centro de notificaciones</p>
             <h1>Notificaciones</h1>
-            <p className="profile-note">
-              Avisos internos, acciones pendientes e historial de lecturas sin correo ni push.
+            <p>
+              Avisos internos, acciones pendientes e historial de lectura desde el mismo panel operativo.
             </p>
           </div>
-        </div>
 
-        <div className="notification-summary-grid">
-          <article className="summary-card">
-            <span>Pendientes</span>
-            <strong>{pendingCount}</strong>
-            <small>Del panel actual</small>
-          </article>
-          <article className="summary-card">
-            <span>Con accion</span>
-            <strong>{actionCount}</strong>
-            <small>Sin tomar o cerrar</small>
-          </article>
-          <article className="summary-card">
-            <span>Mostradas</span>
-            <strong>{filteredItems.length}</strong>
-            <small>Segun filtros aplicados</small>
-          </article>
-        </div>
-
-        <div className="notification-tabs" role="tablist" aria-label="Vista de notificaciones">
-          <button
-            type="button"
-            className={`notification-tab ${view === 'mine' ? 'notification-tab--active' : ''}`}
-            onClick={() => setView('mine')}
-          >
-            Mis notificaciones
-          </button>
           {canManageNotifications && (
-            <button
-              type="button"
-              className={`notification-tab ${view === 'admin' ? 'notification-tab--active' : ''}`}
-              onClick={() => setView('admin')}
-            >
-              Administracion
-            </button>
+            <div className="tournament-hero__actions notifications-hero__actions">
+              <span className="action-icon notifications-hero__icon">
+                <NotificationIcon type="bell" />
+              </span>
+              <div className="notifications-hero__status">
+                <strong>{pendingCount} pendientes</strong>
+                <small>{isAdminView ? 'Vista administrativa' : 'Vista personal'}</small>
+              </div>
+            </div>
           )}
-        </div>
+        </section>
 
-        <form className="member-toolbar notifications-toolbar" onSubmit={handleFilterSubmit}>
-          <div className="member-toolbar__row notifications-toolbar__row">
-            <label className="member-search member-search--wide" htmlFor="notificationUserSearch">
-              <span>{view === 'admin' ? 'Buscar usuario o socio' : 'Buscar en mis avisos'}</span>
-              <input
-                id="notificationUserSearch"
-                type="search"
-                value={filters.userQuery ?? ''}
-                onChange={(event) => setFilters((current) => ({ ...current, userQuery: event.target.value }))}
-                placeholder="Nombre, socio, UID o texto"
-              />
-            </label>
+        {canManageNotifications && (
+          <section className="tournament-summary-grid notification-summary-grid" aria-label="Resumen de notificaciones">
+            <article className="summary-card">
+              <span>Pendientes</span>
+              <strong>{pendingCount}</strong>
+              <small>Del panel actual</small>
+            </article>
+            <article className="summary-card">
+              <span>Con accion</span>
+              <strong>{actionCount}</strong>
+              <small>Sin tomar o cerrar</small>
+            </article>
+            <article className="summary-card">
+              <span>Mostradas</span>
+              <strong>{filteredItems.length}</strong>
+              <small>Segun filtros aplicados</small>
+            </article>
+          </section>
+        )}
 
-            <label className="form-field member-filter" htmlFor="notificationStatus">
-              <span>Estado</span>
-              <select
-                id="notificationStatus"
-                value={filters.status ?? 'all'}
-                onChange={(event) =>
-                  setFilters((current) => ({
-                    ...current,
-                    status: event.target.value as NotificationDeliveryStatus | 'all',
-                  }))
-                }
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="member-toolbar__actions notifications-toolbar__actions">
-              <button type="submit" className="btn-secondary" disabled={isLoading}>
-                {isLoading ? 'Cargando...' : 'Aplicar'}
-              </button>
+        <section className="floating-card tournament-main-panel notifications-card">
+          <div className="tournament-section-header notifications-section-header">
+            <div>
+              <p className="eyebrow">{canManageNotifications ? 'Administrar notificaciones' : 'Mis notificaciones'}</p>
+              <h2>Bandeja e historial</h2>
             </div>
           </div>
 
-          <div className="notifications-filter-row">
-            <label className="form-field" htmlFor="notificationType">
-              <span>Tipo</span>
-              <input
-                id="notificationType"
-                type="search"
-                value={filters.type ?? ''}
-                onChange={(event) => setFilters((current) => ({ ...current, type: event.target.value }))}
-                placeholder="Ej. contacto, licencia"
-              />
-            </label>
-
-            <label className="form-field" htmlFor="notificationRole">
-              <span>Destinatario por rol</span>
-              <select
-                id="notificationRole"
-                value={filters.roleId ?? 'all'}
-                onChange={(event) =>
-                  setFilters((current) => ({
-                    ...current,
-                    roleId: event.target.value as RoleType | 'all',
-                  }))
-                }
+          {canManageNotifications && (
+            <div className="notification-tabs" role="tablist" aria-label="Vista de notificaciones">
+              <button
+                type="button"
+                className={`tournament-tab notification-tab ${view === 'mine' ? 'tournament-tab--active notification-tab--active' : ''}`}
+                onClick={() => setView('mine')}
               >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                Mis notificaciones
+              </button>
+              <button
+                type="button"
+                className={`tournament-tab notification-tab ${view === 'admin' ? 'tournament-tab--active notification-tab--active' : ''}`}
+                onClick={() => setView('admin')}
+              >
+                Administracion
+              </button>
+            </div>
+          )}
 
-            <label className="form-field" htmlFor="notificationActionKey">
-              <span>Accion</span>
-              <input
-                id="notificationActionKey"
-                type="search"
-                value={filters.actionKey ?? ''}
-                onChange={(event) => setFilters((current) => ({ ...current, actionKey: event.target.value }))}
-                placeholder="Clave de accion"
-              />
-            </label>
+          <div
+            className={`search-collapse notifications-search-collapse ${isFiltersOpen ? 'search-collapse--open' : ''}`}
+            ref={filtersRef}
+          >
+            <button
+              type="button"
+              className="search-collapse__trigger"
+              aria-expanded={isFiltersOpen}
+              onClick={() => setIsFiltersOpen((current) => !current)}
+            >
+              <span className="search-collapse__title">
+                <span className="search-collapse__icon">
+                  <NotificationIcon type="search" />
+                </span>
+                <span>
+                  <strong>Busqueda y filtros</strong>
+                  <small>
+                    {activeFilterCount > 0
+                      ? `${activeFilterCount} criterio${activeFilterCount === 1 ? '' : 's'} activo${activeFilterCount === 1 ? '' : 's'}`
+                      : isAdminView
+                        ? 'Buscar por usuario, tipo, rol, estado o accion'
+                        : 'Filtrar por tipo, estado o accion'}
+                  </small>
+                </span>
+              </span>
+              <span className="search-collapse__meta">
+                {activeFilterCount > 0 && <span className="status-chip">{activeFilterCount}</span>}
+                <span className="search-collapse__chevron">
+                  <NotificationIcon type="chevron" />
+                </span>
+              </span>
+            </button>
+
+            {isFiltersOpen && (
+              <form className="search-collapse__body notifications-search-collapse__body" onSubmit={handleFilterSubmit}>
+                <div className="member-toolbar notifications-toolbar">
+                  <div className="member-toolbar__row notifications-toolbar__row">
+                    {isAdminView && (
+                      <label className="member-search member-search--wide" htmlFor="notificationUserSearch">
+                        <span>Buscar usuario o socio</span>
+                        <input
+                          id="notificationUserSearch"
+                          type="search"
+                          value={filters.userQuery ?? ''}
+                          onChange={(event) => setFilters((current) => ({ ...current, userQuery: event.target.value }))}
+                          placeholder="Nombre, socio, UID o texto"
+                        />
+                      </label>
+                    )}
+
+                    <label className="form-field member-filter" htmlFor="notificationStatus">
+                      <span>Estado</span>
+                      <select
+                        id="notificationStatus"
+                        value={filters.status ?? 'all'}
+                        onChange={(event) =>
+                          setFilters((current) => ({
+                            ...current,
+                            status: event.target.value as NotificationDeliveryStatus | 'all',
+                          }))
+                        }
+                      >
+                        {STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div className="member-toolbar__actions notifications-toolbar__actions">
+                      <UiActionButton type="submit" variant="secondary" disabled={isLoading}>
+                        {isLoading ? 'Cargando...' : 'Aplicar'}
+                      </UiActionButton>
+                    </div>
+                  </div>
+
+                  <div className="notifications-filter-row">
+                    <label className="form-field" htmlFor="notificationType">
+                      <span>Tipo</span>
+                      <input
+                        id="notificationType"
+                        type="search"
+                        value={filters.type ?? ''}
+                        onChange={(event) => setFilters((current) => ({ ...current, type: event.target.value }))}
+                        placeholder="Ej. contacto, licencia"
+                      />
+                    </label>
+
+                    {isAdminView && (
+                      <label className="form-field" htmlFor="notificationRole">
+                        <span>Destinatario por rol</span>
+                        <select
+                          id="notificationRole"
+                          value={filters.roleId ?? 'all'}
+                          onChange={(event) =>
+                            setFilters((current) => ({
+                              ...current,
+                              roleId: event.target.value as RoleType | 'all',
+                            }))
+                          }
+                        >
+                          {ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
+                    <label className="form-field" htmlFor="notificationActionKey">
+                      <span>Accion</span>
+                      <input
+                        id="notificationActionKey"
+                        type="search"
+                        value={filters.actionKey ?? ''}
+                        onChange={(event) => setFilters((current) => ({ ...current, actionKey: event.target.value }))}
+                        placeholder="Clave de accion"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </form>
+            )}
           </div>
-        </form>
 
         {error && <div className="error-message">{error}</div>}
 
@@ -628,24 +742,24 @@ export function NotificationsPortal() {
 
                 <div className="form-actions notification-detail__actions">
                   {selectedDelivery.route && (
-                    <button type="button" className="btn-secondary" onClick={() => navigate(selectedDelivery.route ?? '/notificaciones')}>
+                    <UiActionButton type="button" variant="secondary" onClick={() => navigate(selectedDelivery.route ?? '/notificaciones')}>
                       Abrir destino
-                    </button>
+                    </UiActionButton>
                   )}
                   {selectedDelivery.status === 'unread' && (
-                    <button type="button" className="btn-secondary" disabled={actionLoading} onClick={() => void markRead(selectedDelivery)}>
+                    <UiActionButton type="button" variant="secondary" disabled={actionLoading} onClick={() => void markRead(selectedDelivery)}>
                       Marcar leida
-                    </button>
+                    </UiActionButton>
                   )}
                   {selectedDelivery.action && selectedDelivery.status !== 'actioned' && selectedDelivery.status !== 'dismissed' && (
-                    <button type="button" className="btn-primary" disabled={actionLoading} onClick={() => handleExecuteAction(selectedDelivery)}>
+                    <UiActionButton type="button" variant="positive" disabled={actionLoading} onClick={() => handleExecuteAction(selectedDelivery)}>
                       {selectedDelivery.action.label}
-                    </button>
+                    </UiActionButton>
                   )}
                   {selectedDelivery.status !== 'dismissed' && selectedDelivery.status !== 'actioned' && (
-                    <button type="button" className="btn-secondary" disabled={actionLoading} onClick={() => void handleDismiss(selectedDelivery)}>
+                    <UiActionButton type="button" variant="secondary" disabled={actionLoading} onClick={() => void handleDismiss(selectedDelivery)}>
                       Descartar
-                    </button>
+                    </UiActionButton>
                   )}
                 </div>
               </>
@@ -655,6 +769,7 @@ export function NotificationsPortal() {
           </aside>
         </div>
       </section>
+      </div>
 
       <ConfirmDialog
         open={Boolean(pendingActionDelivery)}

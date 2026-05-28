@@ -48,9 +48,9 @@ function NavIcon({ type }: { type: NavIconType }) {
   );
 }
 
-function BellIcon() {
+function BellIcon({ className = 'button-icon margin-left-10px' }: { className?: string } = {}) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon margin-left-10px">
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={className}>
       <path d="M12 3a6 6 0 0 1 6 6v2.55c0 .72.2 1.43.58 2.05l1.1 1.84A1.5 1.5 0 0 1 18.39 18H5.61a1.5 1.5 0 0 1-1.29-2.56l1.1-1.84A3.98 3.98 0 0 0 6 11.55V9a6 6 0 0 1 6-6Zm0 19a3 3 0 0 1-2.82-2h5.64A3 3 0 0 1 12 22Z" />
     </svg>
   );
@@ -150,6 +150,7 @@ export function Navbar() {
   const canViewMembers = canManageMembers || interfaceMode === ROLES.EMPLEADO;
   const canAccessAccounting = STAFF_MODE_OPTIONS.includes(interfaceMode);
   const canAccessEmployees = STAFF_MODE_OPTIONS.includes(interfaceMode);
+  const canManageNotifications = STAFF_MODE_OPTIONS.includes(interfaceMode);
 
   useEffect(() => {
     setIsOpen(false);
@@ -301,13 +302,13 @@ export function Navbar() {
           <button
             className="navbar-notification"
             type="button"
-            aria-label={`Abrir notificaciones${pendingNotifications > 0 ? `, ${pendingNotifications} pendientes` : ''}`}
+            aria-label={`Abrir notificaciones, ${pendingNotifications} pendientes`}
             aria-expanded={isNotificationsOpen}
             onClick={handleNotificationsToggle}
           >
             <BellIcon />
             <span className="navbar-notification__label">Notificaciones</span>
-            {pendingNotifications > 0 && <span className="notification-badge margin-right-10px">{pendingNotifications}</span>}
+            <span className="notification-badge margin-right-10px">{pendingNotifications}</span>
           </button>
 
           {isNotificationsOpen && (
@@ -417,7 +418,8 @@ export function Navbar() {
               )}
 
               <button type="button" className="nav-menu-item" onClick={handleNotificationsPortalClick}>
-                Administrar notificaciones
+                <BellIcon className="button-icon button-icon--menu" />
+                <span>{canManageNotifications ? 'Administrar notificaciones' : 'Notificaciones'}</span>
               </button>
 
               <div className="nav-settings-row">
