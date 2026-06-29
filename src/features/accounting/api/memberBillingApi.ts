@@ -81,6 +81,7 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
 
   return {
     movementIds: results.map((result) => result.movementId),
+    receiptNumbers: results.map((result) => result.receiptNumber).filter((value): value is string => Boolean(value)),
     totalAmountMinor: validCharges.reduce((total, charge) => total + charge.finalAmountMinor, 0),
     duplicate: results.every((result) => result.duplicate),
   };

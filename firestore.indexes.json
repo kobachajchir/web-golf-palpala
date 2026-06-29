@@ -987,6 +987,20 @@
       ]
     },
     {
+      "collectionGroup": "tournament_registrations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tournamentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "participantEmailNormalized",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "tournament_receipts",
       "queryScope": "COLLECTION",
       "fields": [

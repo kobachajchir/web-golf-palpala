@@ -1,8 +1,12 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ClubContactForm } from '../components/ClubContactForm';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UiActionButton } from '../components/UiActionButton';
 import { useAuth } from '../hooks/useAuth';
+import { createTournamentCallables } from '../modules/tournaments/functions/tournaments.callables';
+import { subscribeOpenTournaments } from '../modules/tournaments/repositories';
+import type { EntityWithId, TournamentDocument } from '../modules/tournaments/domain/models';
 import clubLogo from '../assets/ClubLogo.png';
 import '../styles/pages.css';
 
@@ -11,14 +15,7 @@ type LoginFormState = {
   password: string;
 };
 
-type PublicTournament = {
-  id: string;
-  name: string;
-  date: string;
-  format: string;
-  regularAmountMinor: number;
-  reducedAmountMinor: number;
-};
+type PublicTournament = EntityWithId<TournamentDocument>;
 
 type PublicTournamentRegistrationState = {
   fullName: string;
@@ -28,17 +25,6 @@ type PublicTournamentRegistrationState = {
   aagLicense: string;
   notes: string;
 };
-
-const PUBLIC_OPEN_TOURNAMENTS: PublicTournament[] = [
-  {
-    id: 'apertura-palpala-2026',
-    name: 'Apertura Palpala 2026',
-    date: '2026-05-24',
-    format: 'Medal',
-    regularAmountMinor: 1500000,
-    reducedAmountMinor: 1000000,
-  },
-];
 
 function formatPublicTournamentDate(date: string) {
   const parsedDate = new Date(`${date}T12:00:00`);
@@ -51,6 +37,16 @@ function formatPublicTournamentDate(date: string) {
 
 function formatAmountMinor(amountMinor: number) {
   return `$${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(amountMinor / 100)}`;
+}
+
+function getPublicTournamentFormatLabel(format: string) {
+  const labels: Record<string, string> = {
+    medal: 'Medal',
+    stableford: 'Stableford',
+    scramble: 'Scramble',
+    laguneada: 'Laguneada',
+  };
+  return labels[format] ?? format;
 }
 
 function EyeIcon({ visible }: { visible: boolean }) {
@@ -91,6 +87,7 @@ function ForwardChevronIcon() {
 export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const tournamentCallables = useMemo(() => createTournamentCallables(), []);
   const [formData, setFormData] = useState<LoginFormState>({
     memberNumber: '',
     password: '',
@@ -100,6 +97,9 @@ export function Login() {
   const [showContactForm, setShowContactForm] = useState(false);
   const [showOpenTournaments, setShowOpenTournaments] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [publicOpenTournaments, setPublicOpenTournaments] = useState<PublicTournament[]>([]);
+  const [publicTournamentsLoading, setPublicTournamentsLoading] = useState(false);
+  const [publicTournamentsError, setPublicTournamentsError] = useState('');
   const [selectedPublicTournamentId, setSelectedPublicTournamentId] = useState<string | null>(null);
   const [publicRegistration, setPublicRegistration] = useState<PublicTournamentRegistrationState>({
     fullName: '',
@@ -109,7 +109,32 @@ export function Login() {
     aagLicense: '',
     notes: '',
   });
-  const [publicRegistrationSent, setPublicRegistrationSent] = useState(false);
+  const [publicRegistrationConfirmationOpen, setPublicRegistrationConfirmationOpen] = useState(false);
+  const [publicRegistrationError, setPublicRegistrationError] = useState('');
+  const [isPublicRegistrationSubmitting, setIsPublicRegistrationSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!showOpenTournaments) {
+      return undefined;
+    }
+
+    setPublicTournamentsLoading(true);
+    setPublicTournamentsError('');
+    return subscribeOpenTournaments({
+      onNext: (items) => {
+        setPublicOpenTournaments(items);
+        setPublicTournamentsLoading(false);
+        setSelectedPublicTournamentId((current) =>
+          current && items.some((tournament) => tournament.id === current) ? current : null,
+        );
+      },
+      onError: (snapshotError) => {
+        setPublicOpenTournaments([]);
+        setPublicTournamentsError(`No pudimos cargar torneos abiertos: ${snapshotError.message}`);
+        setPublicTournamentsLoading(false);
+      },
+    });
+  }, [showOpenTournaments]);
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -124,12 +149,51 @@ export function Login() {
     setPublicRegistration((current) => ({ ...current, [name]: value }));
   };
 
-  const handlePublicTournamentSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handlePublicTournamentSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setPublicRegistrationSent(true);
+    setPublicRegistrationConfirmationOpen(false);
+    setPublicRegistrationError('');
+
+    if (!selectedPublicTournament) {
+      setPublicRegistrationError('Selecciona un torneo abierto.');
+      return;
+    }
+
+    const handicap = Number(publicRegistration.handicap);
+    if (!Number.isFinite(handicap)) {
+      setPublicRegistrationError('Ingresa un handicap valido.');
+      return;
+    }
+
+    setIsPublicRegistrationSubmitting(true);
+    try {
+      await tournamentCallables.registerExternalParticipant({
+        tournamentId: selectedPublicTournament.id,
+        fullName: publicRegistration.fullName.trim(),
+        email: publicRegistration.email.trim(),
+        phone: publicRegistration.phone.trim() || null,
+        handicap,
+        aagLicense: publicRegistration.aagLicense.trim() || null,
+        notes: publicRegistration.notes.trim() || null,
+      });
+      setSelectedPublicTournamentId(null);
+      setPublicRegistrationConfirmationOpen(true);
+      setPublicRegistration({
+        fullName: '',
+        email: '',
+        phone: '',
+        handicap: '',
+        aagLicense: '',
+        notes: '',
+      });
+    } catch (submitError) {
+      setPublicRegistrationError(submitError instanceof Error ? submitError.message : 'No pudimos enviar la solicitud.');
+    } finally {
+      setIsPublicRegistrationSubmitting(false);
+    }
   };
 
-  const selectedPublicTournament = PUBLIC_OPEN_TOURNAMENTS.find(
+  const selectedPublicTournament = publicOpenTournaments.find(
     (tournament) => tournament.id === selectedPublicTournamentId,
   ) ?? null;
 
@@ -175,7 +239,7 @@ export function Login() {
               onClick={() => {
                 setShowOpenTournaments(false);
                 setSelectedPublicTournamentId(null);
-                setPublicRegistrationSent(false);
+                setPublicRegistrationConfirmationOpen(false);
               }}
             >
               <span className="auth-back-button__icon" aria-hidden="true">
@@ -192,31 +256,38 @@ export function Login() {
 
             <div className="public-tournaments-panel">
               <div className="public-tournaments-list">
-                {PUBLIC_OPEN_TOURNAMENTS.map((tournament) => (
-                  <button
-                    key={tournament.id}
-                    type="button"
-                    className={`public-tournament-card ${selectedPublicTournamentId === tournament.id ? 'public-tournament-card--selected' : ''}`}
-                    onClick={() => {
-                      if (selectedPublicTournamentId === tournament.id) {
-                        setSelectedPublicTournamentId(null);
-                        setPublicRegistrationSent(false);
-                        return;
-                      }else {
-                      setSelectedPublicTournamentId(tournament.id);
-                      setPublicRegistrationSent(false);
-                      }
-                    }}
-                  >
-                    <span>
-                      <strong>{tournament.name}</strong>
-                      <small>{formatPublicTournamentDate(tournament.date)} - {tournament.format}</small>
-                    </span>
-                    <span className="member-type-badge">
-                      {formatAmountMinor(tournament.regularAmountMinor)}
-                    </span>
-                  </button>
-                ))}
+                {publicTournamentsLoading ? (
+                  <div className="empty-state empty-state--inline">Cargando torneos abiertos...</div>
+                ) : publicTournamentsError ? (
+                  <div className="error-message">{publicTournamentsError}</div>
+                ) : publicOpenTournaments.length === 0 ? (
+                  <div className="empty-state empty-state--inline">No hay torneos con inscripcion abierta.</div>
+                ) : (
+                  publicOpenTournaments.map((tournament) => (
+                    <button
+                      key={tournament.id}
+                      type="button"
+                      className={`public-tournament-card ${selectedPublicTournamentId === tournament.id ? 'public-tournament-card--selected' : ''}`}
+                      onClick={() => {
+                        if (selectedPublicTournamentId === tournament.id) {
+                          setSelectedPublicTournamentId(null);
+                          setPublicRegistrationConfirmationOpen(false);
+                          return;
+                        }
+                        setSelectedPublicTournamentId(tournament.id);
+                        setPublicRegistrationConfirmationOpen(false);
+                      }}
+                    >
+                      <span>
+                        <strong>{tournament.name}</strong>
+                        <small>{formatPublicTournamentDate(tournament.date)} - {getPublicTournamentFormatLabel(tournament.format)}</small>
+                      </span>
+                      <span className="member-type-badge">
+                        {formatAmountMinor(tournament.registrationFeeMinor)}
+                      </span>
+                    </button>
+                  ))
+                )}
               </div>
 
               {selectedPublicTournament && (
@@ -224,14 +295,14 @@ export function Login() {
                   <div className="club-contact-form__section-label public-tournament-rules">
                     <span>Politicas del torneo</span>
                     <p>
-                      {selectedPublicTournament.format} con inscripcion abierta para participantes externos.
+                      {getPublicTournamentFormatLabel(selectedPublicTournament.format)} con inscripcion abierta para participantes externos.
                       La confirmacion queda pendiente hasta validar la matricula AAG y los datos declarados.
                     </p>
                   </div>
                   <div className="tournament-receipt-summary public-tournament-amount">
                     <div>
                       <span>Monto</span>
-                      <strong>{formatAmountMinor(selectedPublicTournament.regularAmountMinor)}</strong>
+                      <strong>{formatAmountMinor(selectedPublicTournament.registrationFeeMinor)}</strong>
                     </div>
                   </div>
                   <div className="tournament-cost-form__row">
@@ -298,14 +369,10 @@ export function Login() {
                       placeholder="Categoria, club de origen u observaciones"
                     />
                   </label>
-                  {publicRegistrationSent && (
-                    <div className="accounting-success">
-                      Solicitud preparada. Administracion debe validar la matricula AAG para confirmar la inscripcion.
-                    </div>
-                  )}
+                  {publicRegistrationError && <div className="error-message">{publicRegistrationError}</div>}
                   <div className="form-actions">
-                    <UiActionButton type="submit" variant="positive">
-                      Enviar solicitud de inscripcion
+                    <UiActionButton type="submit" variant="positive" disabled={isPublicRegistrationSubmitting}>
+                      {isPublicRegistrationSubmitting ? 'Enviando...' : 'Enviar solicitud de inscripcion'}
                     </UiActionButton>
                   </div>
                 </form>
@@ -402,6 +469,15 @@ export function Login() {
             </section>
           </>
         )}
+        <ConfirmDialog
+          open={publicRegistrationConfirmationOpen}
+          title="Inscripcion recibida"
+          description="Aprobacion pendiente, nos comunicaremos contigo."
+          confirmLabel="Entendido"
+          cancelLabel={null}
+          onCancel={() => setPublicRegistrationConfirmationOpen(false)}
+          onConfirm={() => setPublicRegistrationConfirmationOpen(false)}
+        />
       </div>
     </div>
   );

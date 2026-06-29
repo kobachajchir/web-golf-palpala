@@ -80,6 +80,14 @@ class FirestoreTournamentRegistrationsStore {
         const snapshot = this.transaction ? await this.transaction.get(query) : await query.get();
         return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
     }
+    async findExternalDuplicate(params) {
+        const query = this.collection
+            .where('tournamentId', '==', params.tournamentId)
+            .where('participantEmailNormalized', '==', params.participantEmailNormalized)
+            .limit(1);
+        const snapshot = this.transaction ? await this.transaction.get(query) : await query.get();
+        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+    }
     async create(data, actorUid) {
         const docRef = this.collection.doc();
         const document = createAuditedDocument(data, actorUid);
@@ -93,6 +101,34 @@ class FirestoreTournamentRegistrationsStore {
     async update(registrationId, patch, actorUid) {
         const document = createAuditedPatch(patch, actorUid);
         const docRef = this.collection.doc(registrationId);
+        if (this.transaction) {
+            this.transaction.update(docRef, document);
+            return;
+        }
+        await docRef.update(document);
+    }
+}
+class FirestoreTournamentsStore {
+    transaction;
+    collection;
+    constructor(db, transaction) {
+        this.transaction = transaction;
+        this.collection = getCollection(db, TOURNAMENTS_COLLECTIONS.tournaments);
+    }
+    async getById(tournamentId) {
+        const snapshot = this.transaction
+            ? await this.transaction.get(this.collection.doc(tournamentId))
+            : await this.collection.doc(tournamentId).get();
+        return snapshot.exists ? withId(snapshot) : null;
+    }
+    async listRegistrationWindowCandidates() {
+        const query = this.collection.where('status', 'in', ['scheduled', 'registration_open']);
+        const snapshot = this.transaction ? await this.transaction.get(query) : await query.get();
+        return snapshot.docs.map((doc) => withId(doc));
+    }
+    async update(tournamentId, patch, actorUid) {
+        const document = createAuditedPatch(patch, actorUid);
+        const docRef = this.collection.doc(tournamentId);
         if (this.transaction) {
             this.transaction.update(docRef, document);
             return;
@@ -126,6 +162,7 @@ class FirestoreTournamentReceiptsStore {
 }
 function createDataAccess(db, transaction) {
     return {
+        tournaments: new FirestoreTournamentsStore(db, transaction),
         registrations: new FirestoreTournamentRegistrationsStore(db, transaction),
         receipts: new FirestoreTournamentReceiptsStore(db, transaction),
     };

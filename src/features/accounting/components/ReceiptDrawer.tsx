@@ -23,6 +23,9 @@ export function ReceiptDrawer({
             <span>{receipt.movementIds.length} movimiento(s)</span>
             <strong>{formatCurrency(receipt.totalAmountMinor)}</strong>
           </div>
+          {receipt.receiptNumbers.length > 0 && (
+            <small>Recibo {receipt.receiptNumbers.join(', ')}</small>
+          )}
           <small>{receipt.movementIds.join(', ')}</small>
         </>
       )}

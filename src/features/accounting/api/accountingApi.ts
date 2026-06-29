@@ -23,7 +23,9 @@ import {
   createPaymentMethodsRepository,
   createSalaryPaymentsRepository,
 } from '../../../modules/accounting/infrastructure/firestore/repositories';
+import type { EntityWithId, MemberFeeChargeDocument } from '../../../modules/accounting/domain/models';
 import { createEmployeesRepository, createMembersRepository } from '../../../modules/users/infrastructure/firestore/repositories';
+import type { EntityWithId as UserEntityWithId, MemberDocument } from '../../../modules/users/domain/models';
 import type {
   AccountingReportHistoryDocument,
   AccountingReportSummary,
@@ -43,8 +45,40 @@ function requireFirestore(): Firestore {
   return firestore;
 }
 
-function isMemberMembershipNotCurrent(member: { membershipRenewalStatus?: string | null }) {
-  return member.membershipRenewalStatus === 'needs_renewal';
+function getChargeTargetMemberIds(
+  charge: EntityWithId<MemberFeeChargeDocument>,
+  members: Array<UserEntityWithId<MemberDocument>>,
+) {
+  const memberIds = new Set<string>();
+  if (charge.memberId) {
+    memberIds.add(charge.memberId);
+  }
+  if (charge.holderMemberId) {
+    memberIds.add(charge.holderMemberId);
+  }
+  if (charge.familyGroupId) {
+    members
+      .filter((member) => member.familyGroupId === charge.familyGroupId)
+      .forEach((member) => memberIds.add(member.id));
+  }
+  return memberIds;
+}
+
+function getMembersWithoutCurrentPeriodPayment({
+  members,
+  periodFeeCharges,
+}: {
+  members: Array<UserEntityWithId<MemberDocument>>;
+  periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+}) {
+  const settledMemberIds = new Set<string>();
+  periodFeeCharges
+    .filter((charge) => charge.status === 'paid' || charge.status === 'exempt')
+    .forEach((charge) => {
+      getChargeTargetMemberIds(charge, members).forEach((memberId) => settledMemberIds.add(memberId));
+    });
+
+  return members.filter((member) => member.status === 'active' && !settledMemberIds.has(member.id));
 }
 
 export async function getAccountingSummary(period = getCurrentAccountingPeriod()): Promise<AccountingSummary> {
@@ -112,7 +146,7 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     pendingFeeCharges,
     recentMercadoPagoSessions,
     membersPreview,
-    renewalMembers: membersPreview.filter(isMemberMembershipNotCurrent),
+    renewalMembers: getMembersWithoutCurrentPeriodPayment({ members: membersPreview, periodFeeCharges }),
     employeesPreview,
     activeMembersCount,
     activeEmployeesCount,

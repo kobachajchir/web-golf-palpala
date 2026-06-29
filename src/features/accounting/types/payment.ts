@@ -39,6 +39,7 @@ export type ManualPaymentRequest = {
 
 export type ManualPaymentReceipt = {
   movementIds: string[];
+  receiptNumbers: string[];
   totalAmountMinor: number;
   duplicate: boolean;
 };

@@ -221,6 +221,7 @@ test('Mercado Pago aprobado crea movimientos por item y el reintento no duplica'
 
   assert.equal(processed.status, 'approved');
   assert.equal(processed.movementIds.length, 2);
+  assert.equal(processed.receipts.length, 2);
   assert.equal(manager.financialMovements.size, 2);
   assert.equal(manager.memberFeeCharges.get('fee-2026-05')?.status, 'paid');
   assert.equal(manager.memberFeeCharges.get('fee-2026-06')?.status, 'paid');
@@ -238,6 +239,8 @@ test('Mercado Pago aprobado crea movimientos por item y el reintento no duplica'
   assert.equal(secondMovement?.appliedCommissionAmountMinor, 210_000);
   assert.equal(secondMovement?.netAmountMinor, 6_790_000);
   assert.equal((firstMovement?.metadata?.provider as { paymentId?: string } | undefined)?.paymentId, 'mp-payment-1');
+  assert.match(String(firstMovement?.metadata?.receiptNumber ?? ''), /^REC-20260520-/);
+  assert.equal(processed.receipts[0]?.receiptNumber, firstMovement?.metadata?.receiptNumber);
   assert.equal(manager.mercadoPagoCheckoutSessions.get(checkout.sessionId)?.financialMovementIds.length, 2);
 
   const retried = await processMercadoPagoPaymentUseCase({
@@ -247,6 +250,7 @@ test('Mercado Pago aprobado crea movimientos por item y el reintento no duplica'
   });
 
   assert.equal(retried.movementIds.length, 2);
+  assert.equal(retried.receipts.length, 0);
   assert.equal(manager.financialMovements.size, 2);
 });
 

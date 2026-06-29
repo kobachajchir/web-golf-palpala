@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
@@ -695,111 +696,48 @@ export function EmployeesAdmin() {
             </div>
           </div>
 
-          <div
-            className={`search-collapse ${isFiltersOpen ? "search-collapse--open" : ""}`}
-            ref={filtersRef}
-          >
-            <button
-              type="button"
-              className="search-collapse__trigger"
-              aria-expanded={isFiltersOpen}
-              onClick={() => setIsFiltersOpen((current) => !current)}
-            >
-              <span className="search-collapse__title">
-                <span className="search-collapse__icon">
-                  <SearchIcon />
-                </span>
-                <span>
-                  <strong>Busqueda y filtros</strong>
-                  <small>
-                    {activeSearchCount > 0
-                      ? `${activeSearchCount} criterio${activeSearchCount === 1 ? "" : "s"} activo${activeSearchCount === 1 ? "" : "s"}`
-                      : "Buscar por legajo, nombre, estado, contrato o rendiciones"}
-                  </small>
-                </span>
-              </span>
-              <span className="search-collapse__meta">
-                {activeSearchCount > 0 && (
-                  <span className="status-chip">{activeSearchCount}</span>
-                )}
-                <span className="search-collapse__chevron">
-                  <ChevronIcon />
-                </span>
-              </span>
-            </button>
-
-            {isFiltersOpen && (
-              <div className="search-collapse__body">
-                <div className="member-toolbar">
-                  <div className="member-toolbar__row">
-                    <label className="member-search member-search--wide">
-                      <span>Busqueda rapida</span>
-                      <input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                      />
-                    </label>
-
-                    <label className="form-field member-filter">
-                      <span>Estado</span>
-                      <select
-                        value={statusFilter}
-                        onChange={(event) =>
-                          setStatusFilter(
-                            event.target.value as EmployeeStatusFilter,
-                          )
-                        }
-                      >
-                        {STATUS_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="form-field member-filter">
-                      <span>Contrato</span>
-                      <select
-                        value={contractFilter}
-                        onChange={(event) =>
-                          setContractFilter(
-                            event.target.value as EmployeeContractFilter,
-                          )
-                        }
-                      >
-                        <option value="all">Todos</option>
-                        {CONTRACT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="form-field member-filter">
-                      <span>Rendiciones</span>
-                      <select
-                        value={expenseAccessFilter}
-                        onChange={(event) =>
-                          setExpenseAccessFilter(
-                            event.target.value as EmployeeExpenseFilter,
-                          )
-                        }
-                      >
-                        {EXPENSE_ACCESS_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <SearchFiltersPanel
+            open={isFiltersOpen}
+            onToggle={() => setIsFiltersOpen((current) => !current)}
+            panelRef={filtersRef}
+            title="Busqueda y filtros"
+            helper="Buscar por legajo, nombre, estado, contrato o rendiciones"
+            activeCount={activeSearchCount}
+            icon={<SearchIcon />}
+            chevron={<ChevronIcon />}
+            fields={[
+              {
+                label: 'Busqueda rapida',
+                value: searchQuery,
+                onChange: setSearchQuery,
+                type: 'search',
+              },
+              {
+                label: 'Estado',
+                value: statusFilter,
+                onChange: (value) => setStatusFilter(value as EmployeeStatusFilter),
+                type: 'select',
+                options: STATUS_OPTIONS,
+              },
+              {
+                label: 'Contrato',
+                value: contractFilter,
+                onChange: (value) => setContractFilter(value as EmployeeContractFilter),
+                type: 'select',
+                options: [
+                  { value: 'all', label: 'Todos' },
+                  ...CONTRACT_OPTIONS,
+                ],
+              },
+              {
+                label: 'Rendiciones',
+                value: expenseAccessFilter,
+                onChange: (value) => setExpenseAccessFilter(value as EmployeeExpenseFilter),
+                type: 'select',
+                options: EXPENSE_ACCESS_OPTIONS,
+              },
+            ]}
+          />
 
           {notice && <div className="success-message">{notice}</div>}
           {error && <div className="error-message">{error}</div>}

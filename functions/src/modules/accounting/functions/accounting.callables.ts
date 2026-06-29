@@ -297,6 +297,7 @@ export const accountingRegisterPayment = onCall(async (request) => {
             memberId,
             movementId: result.movementId,
             amountMinor: result.netAmountMinor,
+            receiptNumber: result.receiptNumber,
             actorUid: actor?.uid ?? 'system',
           });
         } catch (notificationError) {
@@ -685,6 +686,22 @@ export const accountingMercadoPagoWebhook = onRequest(
         transactions,
         clock,
       });
+      for (const receipt of result.receipts) {
+        if (!receipt.memberId) {
+          continue;
+        }
+        try {
+          await emitMemberPaymentNotification({
+            memberId: receipt.memberId,
+            movementId: receipt.movementId,
+            amountMinor: receipt.amountMinor,
+            receiptNumber: receipt.receiptNumber,
+            actorUid: 'system',
+          });
+        } catch (notificationError) {
+          logger.warn('accountingMercadoPagoWebhook notification emit failed', notificationError);
+        }
+      }
 
       response.status(200).json({ ok: true, ...result });
     } catch (error) {
@@ -708,6 +725,22 @@ export const accountingReconcileMercadoPagoPayments = onSchedule(
       mercadoPagoClient: createMercadoPagoClient(),
       clock,
     });
+    for (const receipt of result.receipts) {
+      if (!receipt.memberId) {
+        continue;
+      }
+      try {
+        await emitMemberPaymentNotification({
+          memberId: receipt.memberId,
+          movementId: receipt.movementId,
+          amountMinor: receipt.amountMinor,
+          receiptNumber: receipt.receiptNumber,
+          actorUid: 'system',
+        });
+      } catch (notificationError) {
+        logger.warn('accountingReconcileMercadoPagoPayments notification emit failed', notificationError);
+      }
+    }
     logger.info('accountingReconcileMercadoPagoPayments completed', result);
   },
 );

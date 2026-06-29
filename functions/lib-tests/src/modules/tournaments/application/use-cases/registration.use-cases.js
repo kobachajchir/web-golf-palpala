@@ -1,8 +1,10 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../../accounting/domain/constants.js';
 import { assertCondition } from '../../../accounting/domain/errors.js';
-import { assertIsRecord, ensureAuthenticatedActor, ensureStaff, parseOptionalAmountMinor, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalString, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../../../accounting/application/shared.js';
+import { assertIsRecord, ensureAuthenticatedActor, ensureStaff, parseOptionalAmountMinor, parseOptionalIsoDate, parseOptionalNullableString, parseRequiredIsoDate, parseRequiredString, } from '../../../accounting/application/shared.js';
 import { createPostedMovement } from '../../../accounting/application/movement-helpers.js';
+const PUBLIC_TOURNAMENT_REGISTRATION_ACTOR_UID = 'public-tournament-registration';
+const PUBLIC_TOURNAMENT_USER_ID = 'external-public';
 const TOURNAMENT_PAYMENT_METHOD_IDS = [
     PAYMENT_METHOD_IDS.debitMacro,
     PAYMENT_METHOD_IDS.debit,
@@ -20,11 +22,41 @@ function parsePaymentMethodId(value) {
     assertCondition(TOURNAMENT_PAYMENT_METHOD_IDS.includes(value), 'invalid-argument', 'El medio de pago no es valido para una inscripcion de torneo.');
     return value;
 }
+function parseOptionalNullableFiniteNumber(data, field) {
+    if (!(field in data)) {
+        return undefined;
+    }
+    const value = data[field];
+    if (value === null || value === '') {
+        return null;
+    }
+    assertCondition(typeof value === 'number' && Number.isFinite(value), 'invalid-argument', `El campo ${field} debe ser numerico o null.`);
+    return value;
+}
 function buildReceiptNumber(params) {
     const year = params.operationDate.getUTCFullYear();
     const month = String(params.operationDate.getUTCMonth() + 1).padStart(2, '0');
     const day = String(params.operationDate.getUTCDate()).padStart(2, '0');
     return `TOR-${year}${month}${day}-${params.registrationId.slice(0, 8).toUpperCase()}`;
+}
+function normalizeEmail(email) {
+    return email.trim().toLowerCase();
+}
+function buildRegistrationResult(params) {
+    return {
+        registrationId: params.registrationId,
+        duplicate: params.duplicate,
+        paymentStatus: params.registration.paymentStatus,
+        status: params.registration.status,
+        amountMinor: params.registration.amountMinor,
+        tournamentName: params.registration.tournamentNameSnapshot,
+    };
+}
+function parseTournamentDate(tournament) {
+    const dateText = tournament.date.includes('T') ? tournament.date : `${tournament.date}T12:00:00.000Z`;
+    const parsedDate = new Date(dateText);
+    assertCondition(!Number.isNaN(parsedDate.getTime()), 'failed-precondition', `El torneo ${tournament.id} tiene una fecha invalida.`);
+    return parsedDate;
 }
 export async function registerTournamentParticipantUseCase(params) {
     const actor = ensureAuthenticatedActor(params.actor);
@@ -33,7 +65,6 @@ export async function registerTournamentParticipantUseCase(params) {
     if (!isStaff) {
         assertCondition(actor.user.profileType === 'member' && actor.user.profileId, 'permission-denied', 'Solo socios vinculados pueden inscribirse.');
     }
-    assertCondition(!params.input.tournamentStatus || params.input.tournamentStatus === 'registration_open', 'failed-precondition', 'El torneo no tiene la inscripcion abierta.');
     const memberId = params.input.memberId ?? (actor.user.profileType === 'member' ? actor.user.profileId ?? null : null);
     if (!isStaff) {
         assertCondition(memberId === actor.user.profileId, 'permission-denied', 'Un socio solo puede inscribirse a si mismo.');
@@ -42,41 +73,156 @@ export async function registerTournamentParticipantUseCase(params) {
         || actor.user.displayName
         || 'Participante';
     return params.transactions.runInTransaction(async (dataAccess) => {
+        const tournament = await dataAccess.tournaments.getById(params.input.tournamentId);
+        assertCondition(tournament, 'not-found', `No existe tournaments/${params.input.tournamentId}.`);
+        assertCondition(tournament.isDeleted !== true, 'not-found', `No existe tournaments/${params.input.tournamentId}.`);
+        assertCondition(tournament.status === 'registration_open', 'failed-precondition', 'El torneo no tiene la inscripcion abierta.');
+        assertCondition(tournament.capacity <= 0 || tournament.registered < tournament.capacity, 'failed-precondition', 'El torneo no tiene cupos disponibles.');
+        assertCondition(!tournament.membersOnly || Boolean(memberId), 'failed-precondition', 'Este torneo es solo para socios.');
         const duplicate = await dataAccess.registrations.findDuplicate({
             tournamentId: params.input.tournamentId,
             userId: actor.uid,
             memberId,
         });
         if (duplicate) {
-            return {
+            return buildRegistrationResult({
                 registrationId: duplicate.id,
                 duplicate: true,
-                paymentStatus: duplicate.paymentStatus,
-            };
+                registration: duplicate,
+            });
         }
-        const registrationId = await dataAccess.registrations.create({
-            tournamentId: params.input.tournamentId,
-            tournamentNameSnapshot: params.input.tournamentName,
-            tournamentDate: Timestamp.fromDate(params.input.tournamentDate),
+        const participantEmail = params.input.participantEmail ?? actor.user.email ?? null;
+        const registrationDocument = {
+            tournamentId: tournament.id,
+            tournamentNameSnapshot: tournament.name,
+            tournamentDate: Timestamp.fromDate(parseTournamentDate(tournament)),
             userId: actor.uid,
             memberId,
             participantName,
-            participantEmail: params.input.participantEmail ?? actor.user.email ?? null,
-            amountMinor: params.input.registrationFeeMinor,
+            participantEmail,
+            participantEmailNormalized: participantEmail ? normalizeEmail(participantEmail) : null,
+            origin: 'member',
+            approvalStatus: 'not_required',
+            externalPhone: null,
+            externalHandicap: null,
+            externalAagLicense: null,
+            amountMinor: tournament.registrationFeeMinor,
             status: 'pending_payment',
             paymentStatus: 'unpaid',
             receiptId: null,
             financialMovementId: null,
             registeredAt: Timestamp.fromDate(params.clock.now()),
+            approvedAt: null,
+            approvedByUid: null,
             paidAt: null,
             paymentMethodId: null,
             paymentReference: null,
             notes: params.input.notes ?? null,
+        };
+        const registrationId = await dataAccess.registrations.create(registrationDocument, actor.uid);
+        await dataAccess.tournaments.update(tournament.id, {
+            registered: tournament.registered + 1,
         }, actor.uid);
-        return {
+        return buildRegistrationResult({
             registrationId,
             duplicate: false,
+            registration: registrationDocument,
+        });
+    });
+}
+export async function registerExternalTournamentParticipantUseCase(params) {
+    const participantName = params.input.fullName.trim();
+    const participantEmail = normalizeEmail(params.input.email);
+    assertCondition(participantName.length > 0, 'invalid-argument', 'El nombre del participante es obligatorio.');
+    assertCondition(participantEmail.length > 0, 'invalid-argument', 'El email del participante es obligatorio.');
+    return params.transactions.runInTransaction(async (dataAccess) => {
+        const tournament = await dataAccess.tournaments.getById(params.input.tournamentId);
+        assertCondition(tournament, 'not-found', `No existe tournaments/${params.input.tournamentId}.`);
+        assertCondition(tournament.isDeleted !== true, 'not-found', `No existe tournaments/${params.input.tournamentId}.`);
+        assertCondition(tournament.status === 'registration_open', 'failed-precondition', 'El torneo no tiene la inscripcion abierta.');
+        assertCondition(!tournament.membersOnly, 'failed-precondition', 'Este torneo es solo para socios.');
+        const duplicate = await dataAccess.registrations.findExternalDuplicate({
+            tournamentId: params.input.tournamentId,
+            participantEmailNormalized: participantEmail,
+        });
+        if (duplicate) {
+            return buildRegistrationResult({
+                registrationId: duplicate.id,
+                duplicate: true,
+                registration: duplicate,
+            });
+        }
+        const registrationDocument = {
+            tournamentId: tournament.id,
+            tournamentNameSnapshot: tournament.name,
+            tournamentDate: Timestamp.fromDate(parseTournamentDate(tournament)),
+            userId: PUBLIC_TOURNAMENT_USER_ID,
+            memberId: null,
+            participantName,
+            participantEmail,
+            participantEmailNormalized: participantEmail,
+            origin: 'external',
+            approvalStatus: 'pending',
+            externalPhone: params.input.phone?.trim() || null,
+            externalHandicap: params.input.handicap ?? null,
+            externalAagLicense: params.input.aagLicense?.trim() || null,
+            amountMinor: tournament.registrationFeeMinor,
+            status: 'pending_approval',
             paymentStatus: 'unpaid',
+            receiptId: null,
+            financialMovementId: null,
+            registeredAt: Timestamp.fromDate(params.clock.now()),
+            approvedAt: null,
+            approvedByUid: null,
+            paidAt: null,
+            paymentMethodId: null,
+            paymentReference: null,
+            notes: params.input.notes ?? null,
+        };
+        const registrationId = await dataAccess.registrations.create(registrationDocument, PUBLIC_TOURNAMENT_REGISTRATION_ACTOR_UID);
+        return buildRegistrationResult({
+            registrationId,
+            duplicate: false,
+            registration: registrationDocument,
+        });
+    });
+}
+export async function approveTournamentRegistrationUseCase(params) {
+    const actor = ensureStaff(params.actor);
+    return params.transactions.runInTransaction(async (dataAccess) => {
+        const registration = await dataAccess.registrations.getById(params.input.registrationId);
+        assertCondition(registration, 'not-found', `No existe tournament_registrations/${params.input.registrationId}.`);
+        if (registration.approvalStatus === 'approved' && registration.status !== 'pending_approval') {
+            return {
+                registrationId: registration.id,
+                duplicate: true,
+                status: registration.status,
+                paymentStatus: registration.paymentStatus,
+                userId: registration.userId,
+                tournamentName: registration.tournamentNameSnapshot,
+            };
+        }
+        assertCondition(registration.status === 'pending_approval', 'failed-precondition', 'Solo se pueden aprobar inscripciones pendientes de aprobacion.');
+        const tournament = await dataAccess.tournaments.getById(registration.tournamentId);
+        assertCondition(tournament, 'not-found', `No existe tournaments/${registration.tournamentId}.`);
+        assertCondition(tournament.isDeleted !== true, 'not-found', `No existe tournaments/${registration.tournamentId}.`);
+        assertCondition(tournament.capacity <= 0 || tournament.registered < tournament.capacity, 'failed-precondition', 'El torneo no tiene cupos disponibles para aprobar esta inscripcion.');
+        await dataAccess.registrations.update(registration.id, {
+            status: 'pending_payment',
+            approvalStatus: 'approved',
+            approvedAt: Timestamp.fromDate(params.clock.now()),
+            approvedByUid: actor.uid,
+        }, actor.uid);
+        await dataAccess.tournaments.update(tournament.id, {
+            registered: tournament.registered + 1,
+        }, actor.uid);
+        return {
+            registrationId: registration.id,
+            duplicate: false,
+            status: 'pending_payment',
+            paymentStatus: registration.paymentStatus,
+            userId: registration.userId,
+            tournamentName: registration.tournamentNameSnapshot,
         };
     });
 }
@@ -94,8 +240,11 @@ export async function recordTournamentRegistrationPaymentUseCase(params) {
                 movementId: registration.financialMovementId,
                 netAmountMinor: registration.amountMinor,
                 duplicate: true,
+                userId: registration.userId,
+                tournamentName: registration.tournamentNameSnapshot,
             };
         }
+        assertCondition(registration.status !== 'pending_approval', 'failed-precondition', 'La inscripcion debe estar aprobada por administracion antes de registrar el pago.');
         assertCondition(registration.paymentStatus === 'unpaid', 'failed-precondition', 'Solo se puede registrar pago sobre inscripciones impagas.');
         const paymentMethod = await accountingDataAccess.paymentMethods.getById(params.input.paymentMethodId);
         assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.input.paymentMethodId}.`);
@@ -174,6 +323,8 @@ export async function recordTournamentRegistrationPaymentUseCase(params) {
             movementId: movement.movementId,
             netAmountMinor: movement.netAmountMinor,
             duplicate: false,
+            userId: registration.userId,
+            tournamentName: registration.tournamentNameSnapshot,
         };
     });
 }
@@ -181,14 +332,28 @@ export function parseRegisterTournamentParticipantInput(payload) {
     const data = assertIsRecord(payload);
     return {
         tournamentId: parseRequiredString(data, 'tournamentId'),
-        tournamentName: parseRequiredString(data, 'tournamentName'),
-        tournamentDate: parseRequiredIsoDate(data, 'tournamentDate'),
-        tournamentStatus: parseOptionalString(data, 'tournamentStatus'),
         memberId: parseOptionalNullableString(data, 'memberId'),
         participantName: parseOptionalNullableString(data, 'participantName'),
         participantEmail: parseOptionalNullableString(data, 'participantEmail'),
-        registrationFeeMinor: parseRequiredAmountMinor(data, 'registrationFeeMinor'),
         notes: parseOptionalNullableString(data, 'notes'),
+    };
+}
+export function parseRegisterExternalTournamentParticipantInput(payload) {
+    const data = assertIsRecord(payload);
+    return {
+        tournamentId: parseRequiredString(data, 'tournamentId'),
+        fullName: parseRequiredString(data, 'fullName'),
+        email: parseRequiredString(data, 'email'),
+        phone: parseOptionalNullableString(data, 'phone'),
+        handicap: parseOptionalNullableFiniteNumber(data, 'handicap') ?? null,
+        aagLicense: parseOptionalNullableString(data, 'aagLicense'),
+        notes: parseOptionalNullableString(data, 'notes'),
+    };
+}
+export function parseApproveTournamentRegistrationInput(payload) {
+    const data = assertIsRecord(payload);
+    return {
+        registrationId: parseRequiredString(data, 'registrationId'),
     };
 }
 export function parseRecordTournamentRegistrationPaymentInput(payload) {

@@ -76,8 +76,11 @@ export {
 } from './modules/users/functions/users.triggers.js';
 export {
   tournaments,
+  tournamentsApproveRegistration,
+  tournamentsRegisterExternalParticipant,
   tournamentsRecordRegistrationPayment,
   tournamentsRegisterParticipant,
+  tournamentsSyncRegistrationWindows,
 } from './modules/tournaments/functions/tournaments.callables.js';
 export {
   contactSubmitMemberInquiry,

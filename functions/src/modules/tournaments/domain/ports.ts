@@ -2,6 +2,7 @@ import type {
   EntityWithId,
   TournamentReceiptDocument,
   TournamentRegistrationDocument,
+  TournamentDocument,
 } from './models.js';
 import type { AccountingDataAccess, Clock } from '../../accounting/domain/ports.js';
 
@@ -19,6 +20,10 @@ export interface TournamentRegistrationsStore {
     tournamentId: string;
     userId: string;
     memberId?: string | null;
+  }): Promise<EntityWithId<TournamentRegistrationDocument> | null>;
+  findExternalDuplicate(params: {
+    tournamentId: string;
+    participantEmailNormalized: string;
   }): Promise<EntityWithId<TournamentRegistrationDocument> | null>;
   create(
     data: StoreCreate<Omit<TournamentRegistrationDocument, keyof import('./models.js').AuditFields>>,
@@ -39,7 +44,18 @@ export interface TournamentReceiptsStore {
   ): Promise<string>;
 }
 
+export interface TournamentsStore {
+  getById(tournamentId: string): Promise<EntityWithId<TournamentDocument> | null>;
+  listRegistrationWindowCandidates(): Promise<Array<EntityWithId<TournamentDocument>>>;
+  update(
+    tournamentId: string,
+    patch: StorePatch<TournamentDocument>,
+    actorUid: string,
+  ): Promise<void>;
+}
+
 export interface TournamentsDataAccess {
+  tournaments: TournamentsStore;
   registrations: TournamentRegistrationsStore;
   receipts: TournamentReceiptsStore;
 }

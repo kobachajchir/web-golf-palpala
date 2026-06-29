@@ -5,7 +5,11 @@ import { generateMembershipFee, getMemberOpenItems } from '../api/memberBillingA
 import type { OpenItem } from '../types/payment';
 import { getCurrentAccountingPeriod, normalizeAccountingPeriod } from '../utils/accountingFormatters';
 
-export function useMemberCollections(initialMemberId?: string | null, initialPeriod = getCurrentAccountingPeriod()) {
+export function useMemberCollections(
+  initialMemberId?: string | null,
+  initialPeriod = getCurrentAccountingPeriod(),
+  restrictOpenItemsToPeriod = false,
+) {
   const [period, setPeriod] = useState(() => normalizeAccountingPeriod(initialPeriod));
   const [members, setMembers] = useState<Array<EntityWithId<MemberDocument>>>([]);
   const [memberId, setMemberId] = useState(initialMemberId ?? '');
@@ -48,13 +52,13 @@ export function useMemberCollections(initialMemberId?: string | null, initialPer
     setError('');
 
     try {
-      setOpenItems(await getMemberOpenItems(memberId));
+      setOpenItems(await getMemberOpenItems(memberId, restrictOpenItemsToPeriod ? period : undefined));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No pudimos cargar la deuda del socio.');
     } finally {
       setLoadingOpenItems(false);
     }
-  }, [memberId]);
+  }, [memberId, period, restrictOpenItemsToPeriod]);
 
   useEffect(() => {
     void loadMembers();

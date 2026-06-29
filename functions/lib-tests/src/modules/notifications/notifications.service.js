@@ -259,7 +259,7 @@ export async function emitMemberPaymentNotification(params) {
         sourceModule: 'accounting',
         sourceCollection: 'financial_movements',
         sourceId: params.movementId,
-        title: 'Recibo disponible',
+        title: params.receiptNumber ? `Recibo ${params.receiptNumber} disponible` : 'Recibo disponible',
         body: `Se registró un pago en tu cuenta de socio por ${formatAmountMinor(params.amountMinor)}.`,
         severity: 'success',
         userIds: [member.linkedUserId],
@@ -270,6 +270,7 @@ export async function emitMemberPaymentNotification(params) {
             memberId: params.memberId,
             movementId: params.movementId,
             amountMinor: params.amountMinor,
+            receiptNumber: params.receiptNumber ?? null,
         },
         actorUid: params.actorUid,
     });

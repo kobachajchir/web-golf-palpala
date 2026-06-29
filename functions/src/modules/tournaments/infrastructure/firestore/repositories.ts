@@ -14,6 +14,7 @@ import type { AccountingDataAccess, Clock } from '../../../accounting/domain/por
 import { TOURNAMENTS_COLLECTIONS } from '../../domain/constants.js';
 import type {
   EntityWithId,
+  TournamentDocument,
   TournamentReceiptDocument,
   TournamentRegistrationDocument,
 } from '../../domain/models.js';
@@ -21,6 +22,7 @@ import type {
   StorePatch,
   TournamentsDataAccess,
   TournamentsTransactionManager,
+  TournamentsStore,
   TournamentReceiptsStore,
   TournamentRegistrationsStore,
 } from '../../domain/ports.js';
@@ -121,6 +123,19 @@ class FirestoreTournamentRegistrationsStore implements TournamentRegistrationsSt
     return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
   }
 
+  public async findExternalDuplicate(params: {
+    tournamentId: string;
+    participantEmailNormalized: string;
+  }): Promise<EntityWithId<TournamentRegistrationDocument> | null> {
+    const query = this.collection
+      .where('tournamentId', '==', params.tournamentId)
+      .where('participantEmailNormalized', '==', params.participantEmailNormalized)
+      .limit(1);
+
+    const snapshot = this.transaction ? await this.transaction.get(query) : await query.get();
+    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
+  }
+
   public async create(
     data: Omit<TournamentRegistrationDocument, keyof import('../../domain/models.js').AuditFields>,
     actorUid: string,
@@ -143,6 +158,42 @@ class FirestoreTournamentRegistrationsStore implements TournamentRegistrationsSt
   ): Promise<void> {
     const document = createAuditedPatch(patch, actorUid);
     const docRef = this.collection.doc(registrationId);
+    if (this.transaction) {
+      this.transaction.update(docRef, document as never);
+      return;
+    }
+
+    await docRef.update(document as never);
+  }
+}
+
+class FirestoreTournamentsStore implements TournamentsStore {
+  private readonly collection: CollectionReference<TournamentDocument>;
+
+  public constructor(db: Firestore, private readonly transaction?: Transaction) {
+    this.collection = getCollection<TournamentDocument>(db, TOURNAMENTS_COLLECTIONS.tournaments);
+  }
+
+  public async getById(tournamentId: string): Promise<EntityWithId<TournamentDocument> | null> {
+    const snapshot = this.transaction
+      ? await this.transaction.get(this.collection.doc(tournamentId))
+      : await this.collection.doc(tournamentId).get();
+    return snapshot.exists ? withId(snapshot as QueryDocumentSnapshot<TournamentDocument>) : null;
+  }
+
+  public async listRegistrationWindowCandidates(): Promise<Array<EntityWithId<TournamentDocument>>> {
+    const query = this.collection.where('status', 'in', ['scheduled', 'registration_open']);
+    const snapshot = this.transaction ? await this.transaction.get(query) : await query.get();
+    return snapshot.docs.map((doc) => withId(doc));
+  }
+
+  public async update(
+    tournamentId: string,
+    patch: StorePatch<TournamentDocument>,
+    actorUid: string,
+  ): Promise<void> {
+    const document = createAuditedPatch(patch, actorUid);
+    const docRef = this.collection.doc(tournamentId);
     if (this.transaction) {
       this.transaction.update(docRef, document as never);
       return;
@@ -184,6 +235,7 @@ class FirestoreTournamentReceiptsStore implements TournamentReceiptsStore {
 
 function createDataAccess(db: Firestore, transaction?: Transaction): TournamentsDataAccess {
   return {
+    tournaments: new FirestoreTournamentsStore(db, transaction),
     registrations: new FirestoreTournamentRegistrationsStore(db, transaction),
     receipts: new FirestoreTournamentReceiptsStore(db, transaction),
   };

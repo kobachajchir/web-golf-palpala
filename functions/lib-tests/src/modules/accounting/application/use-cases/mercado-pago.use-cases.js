@@ -86,6 +86,12 @@ function normalizeMercadoPagoSessionStatus(payment) {
     }
     return 'failed';
 }
+function buildReceiptNumber(operationDate, movementId) {
+    const year = operationDate.getUTCFullYear();
+    const month = String(operationDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(operationDate.getUTCDate()).padStart(2, '0');
+    return `REC-${year}${month}${day}-${movementId.slice(0, 8).toUpperCase()}`;
+}
 async function assertMemberCanPay(dataAccess, memberId) {
     if (!memberId) {
         return;
@@ -136,6 +142,7 @@ async function resolveCheckoutItem(params) {
         assertCondition(input.sourceId, 'invalid-argument', 'sourceId es obligatorio para tournament_registration.');
         const registration = await dataAccess.tournamentRegistrations.getById(input.sourceId);
         assertCondition(registration, 'not-found', `No existe tournament_registrations/${input.sourceId}.`);
+        assertCondition(registration.status !== 'pending_approval', 'failed-precondition', 'La inscripción debe estar aprobada antes de cobrar.');
         assertCondition(registration.paymentStatus === 'unpaid', 'failed-precondition', 'La inscripción ya está pagada o no se puede cobrar.');
         await assertMemberCanPay(dataAccess, registration.memberId ?? null);
         return {
@@ -447,12 +454,13 @@ async function updateSourceAfterApprovedPayment(params) {
 }
 export async function postMercadoPagoApprovedCheckout(params) {
     if (params.session.status === 'approved' && params.session.financialMovementIds.length > 0) {
-        return params.session.financialMovementIds;
+        return { movementIds: params.session.financialMovementIds, receipts: [] };
     }
     const paymentMethod = await params.dataAccess.paymentMethods.getById(PAYMENT_METHOD_IDS.mercadoPago);
     assertCondition(paymentMethod, 'failed-precondition', 'No existe payment_methods/mercado_pago.');
     assertCondition(paymentMethod.active, 'failed-precondition', 'El medio Mercado Pago está inactivo.');
     const movementIds = [];
+    const receipts = [];
     const providerMetadata = {
         name: 'mercado_pago',
         paymentId: params.payment.paymentId,
@@ -508,6 +516,25 @@ export async function postMercadoPagoApprovedCheckout(params) {
             appliedCommissionAmountMinorOverride: allocatedFeeAmountMinor ?? undefined,
         });
         movementIds.push(movement.movementId);
+        const receiptNumber = buildReceiptNumber(params.operationDate, movement.movementId);
+        await params.dataAccess.financialMovements.update(movement.movementId, {
+            metadata: {
+                ...(item.metadata ?? {}),
+                mercadoPagoSessionId: params.session.id,
+                paymentReference: params.payment.paymentId,
+                receiptNumber,
+                receiptIssuedAt: Timestamp.fromDate(params.operationDate),
+                receiptSource: item.sourceType,
+                specialReportingType: paymentMethod.specialReportingType ?? null,
+                provider: providerMetadata,
+            },
+        }, params.actorUid);
+        receipts.push({
+            movementId: movement.movementId,
+            memberId: item.memberId ?? null,
+            amountMinor: item.amountMinor,
+            receiptNumber,
+        });
         await updateSourceAfterApprovedPayment({
             dataAccess: params.dataAccess,
             item,
@@ -525,8 +552,7 @@ export async function postMercadoPagoApprovedCheckout(params) {
         providerStatusDetail: params.payment.statusDetail ?? null,
         financialMovementIds: movementIds,
     }, params.actorUid);
-    // TODO(notifications): generar comprobante y notificacion por cada pago aprobado cuando el modulo de recibos quede unificado.
-    return movementIds;
+    return { movementIds, receipts };
 }
 export async function processMercadoPagoPaymentUseCase(params) {
     const status = normalizeMercadoPagoSessionStatus(params.payment);
@@ -543,17 +569,17 @@ export async function processMercadoPagoPaymentUseCase(params) {
                 providerStatus: params.payment.status,
                 providerStatusDetail: params.payment.statusDetail ?? null,
             }, SYSTEM_ACTOR_UID);
-            return { sessionId: session.id, status, movementIds: session.financialMovementIds };
+            return { sessionId: session.id, status, movementIds: session.financialMovementIds, receipts: [] };
         }
         const operationDate = params.payment.dateApproved ? new Date(params.payment.dateApproved) : params.clock.now();
-        const movementIds = await postMercadoPagoApprovedCheckout({
+        const posted = await postMercadoPagoApprovedCheckout({
             dataAccess,
             session,
             payment: params.payment,
             operationDate,
             actorUid: SYSTEM_ACTOR_UID,
         });
-        return { sessionId: session.id, status: 'approved', movementIds };
+        return { sessionId: session.id, status: 'approved', movementIds: posted.movementIds, receipts: posted.receipts };
     });
 }
 export async function recordMercadoPagoEventUseCase(params) {
@@ -566,6 +592,7 @@ export async function recordMercadoPagoEventUseCase(params) {
                 processed: true,
                 sessionId: params.payment.externalReference ?? null,
                 movementIds: [],
+                receipts: [],
             };
         }
         await dataAccess.mercadoPagoEvents.set(params.eventId, {
@@ -588,6 +615,7 @@ export async function recordMercadoPagoEventUseCase(params) {
             processed: false,
             sessionId: null,
             movementIds: [],
+            receipts: [],
         };
     }).then(async (eventResult) => {
         if (eventResult.duplicate) {
@@ -612,6 +640,7 @@ export async function recordMercadoPagoEventUseCase(params) {
                 processed: true,
                 sessionId: processed.sessionId,
                 movementIds: processed.movementIds,
+                receipts: processed.receipts,
             };
         }
         catch (error) {
@@ -631,6 +660,7 @@ export async function reconcileMercadoPagoPaymentsUseCase(params) {
         limit: 25,
     });
     let updated = 0;
+    const receipts = [];
     for (const session of sessions.items) {
         if (!session.paymentId) {
             continue;
@@ -644,8 +674,9 @@ export async function reconcileMercadoPagoPaymentsUseCase(params) {
         if (result.status !== session.status) {
             updated += 1;
         }
+        receipts.push(...result.receipts);
     }
-    return { checked: sessions.items.length, updated };
+    return { checked: sessions.items.length, updated, receipts };
 }
 export function parseCreateMercadoPagoCheckoutInput(payload) {
     const data = assertIsRecord(payload);

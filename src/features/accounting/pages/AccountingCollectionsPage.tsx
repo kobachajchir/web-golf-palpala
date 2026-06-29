@@ -17,10 +17,12 @@ export function AccountingCollectionsPage() {
   const [searchParams] = useSearchParams();
   const modeParam = searchParams.get('mode');
   const memberIdParam = searchParams.get('memberId');
+  const periodParam = searchParams.get('period');
   const initialMode: PaymentComposerMode = modeParam === 'mercadopago' ? 'mercadopago' : 'manual';
   const collections = useMemberCollections(
     memberIdParam,
-    searchParams.get('period') ? normalizeAccountingPeriod(searchParams.get('period')) : undefined,
+    periodParam ? normalizeAccountingPeriod(periodParam) : undefined,
+    Boolean(periodParam),
   );
   const { summary, reload } = useAccountingSummary();
   const [mode, setMode] = useState<PaymentComposerMode>(initialMode);

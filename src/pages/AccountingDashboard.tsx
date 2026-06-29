@@ -49,6 +49,7 @@ import {
   createEmployeesRepository,
   createMembersRepository,
 } from '../modules/users/infrastructure/firestore/repositories';
+import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 
 type NoticeState =
   | {
@@ -605,20 +606,37 @@ function timestampToDate(value: { toDate: () => Date } | Date | null | undefined
   return value instanceof Date ? value : value.toDate();
 }
 
-function isMemberMembershipNotCurrent(member: EntityWithId<MemberDocument>, now = new Date()): boolean {
-  if (
-    isMemberPaymentBlocked(member)
-    || member.status === 'license'
-    || member.typeCodeSnapshot === 'vitalicio'
-    || member.typeId === 'vitalicio'
-  ) {
-    return false;
+function getChargeTargetMemberIds(
+  charge: EntityWithId<MemberFeeChargeDocument>,
+  members: Array<EntityWithId<MemberDocument>>,
+): Set<string> {
+  const memberIds = new Set<string>();
+  if (charge.memberId) {
+    memberIds.add(charge.memberId);
   }
+  if (charge.holderMemberId) {
+    memberIds.add(charge.holderMemberId);
+  }
+  if (charge.familyGroupId) {
+    members
+      .filter((member) => member.familyGroupId === charge.familyGroupId)
+      .forEach((member) => memberIds.add(member.id));
+  }
+  return memberIds;
+}
 
-  const renewalDueAt = timestampToDate(member.membershipRenewalDueAt);
-  return member.membershipRenewalStatus === 'needs_renewal'
-    || !member.lastFeePaymentAt
-    || Boolean(renewalDueAt && renewalDueAt.getTime() < now.getTime());
+function getMembersWithoutCurrentPeriodPayment(
+  members: Array<EntityWithId<MemberDocument>>,
+  periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>,
+): Array<EntityWithId<MemberDocument>> {
+  const settledMemberIds = new Set<string>();
+  periodFeeCharges
+    .filter((charge) => charge.status === 'paid' || charge.status === 'exempt')
+    .forEach((charge) => {
+      getChargeTargetMemberIds(charge, members).forEach((memberId) => settledMemberIds.add(memberId));
+    });
+
+  return members.filter((member) => member.status === 'active' && !settledMemberIds.has(member.id));
 }
 
 function SummaryCard({
@@ -1000,7 +1018,7 @@ export function AccountingDashboard() {
         pendingFeeCharges,
         recentMercadoPagoSessions,
         membersPreview,
-        renewalMembers: membersPreview.filter((member) => isMemberMembershipNotCurrent(member)),
+        renewalMembers: getMembersWithoutCurrentPeriodPayment(membersPreview, periodFeeCharges),
         employeesPreview,
         memberMap,
         employeeMap,
@@ -2286,35 +2304,26 @@ export function AccountingDashboard() {
                 open={openAccountingSubsection === 'renewals'}
                 onToggle={() => toggleAccountingSubsection('renewals')}
               >
-                <div className={`search-collapse accounting-search-collapse ${isRenewalSearchOpen ? 'search-collapse--open' : ''}`}>
-                  <button
-                    type="button"
-                    className="search-collapse__trigger"
-                    aria-expanded={isRenewalSearchOpen}
-                    onClick={() => setIsRenewalSearchOpen((current) => !current)}
-                  >
-                    <span className="search-collapse__title">
-                      <span className="search-collapse__icon" aria-hidden="true">B</span>
-                      <span>
-                        <strong>Buscar renovaciones</strong>
-                        <small>Socio, numero o apellido</small>
-                      </span>
-                    </span>
-                    <span className="search-collapse__chevron" aria-hidden="true">v</span>
-                  </button>
-                  {isRenewalSearchOpen && (
-                    <div className="search-collapse__body">
-                      <label className="form-field">
-                        <span>Buscar socio</span>
-                        <input
-                          value={renewalSearch}
-                          onChange={(event) => setRenewalSearch(event.target.value)}
-                          placeholder="Nombre, apellido o numero"
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
+                <SearchFiltersPanel
+                  open={isRenewalSearchOpen}
+                  onToggle={() => setIsRenewalSearchOpen((current) => !current)}
+                  className="accounting-search-collapse"
+                  title="Buscar renovaciones"
+                  helper="Socio, numero o apellido"
+                  activeCount={renewalSearch.trim() ? 1 : 0}
+                  icon="B"
+                  chevron="v"
+                  fields={[
+                    {
+                      label: 'Buscar socio',
+                      value: renewalSearch,
+                      onChange: setRenewalSearch,
+                      type: 'search',
+                      placeholder: 'Nombre, apellido o numero',
+                      className: 'form-field',
+                    },
+                  ]}
+                />
 
                 <div className="accounting-list">
                   {filteredRenewalMembers.map((member) => {
@@ -3113,50 +3122,39 @@ export function AccountingDashboard() {
                 open={openAccountingSubsection === 'expense-queue'}
                 onToggle={() => toggleAccountingSubsection('expense-queue')}
               >
-                <div className={`search-collapse accounting-search-collapse ${isExpenseQueueSearchOpen ? 'search-collapse--open' : ''}`}>
-                  <button
-                    type="button"
-                    className="search-collapse__trigger"
-                    aria-expanded={isExpenseQueueSearchOpen}
-                    onClick={() => setIsExpenseQueueSearchOpen((current) => !current)}
-                  >
-                    <span className="search-collapse__title">
-                      <span className="search-collapse__icon" aria-hidden="true">B</span>
-                      <span>
-                        <strong>Buscar rendiciones</strong>
-                        <small>Empleado, categoria, proveedor o estado</small>
-                      </span>
-                    </span>
-                    <span className="search-collapse__chevron" aria-hidden="true">v</span>
-                  </button>
-                  {isExpenseQueueSearchOpen && (
-                    <div className="search-collapse__body">
-                      <div className="accounting-filter-row">
-                        <label className="form-field">
-                          <span>Buscar</span>
-                          <input
-                            value={expenseQueueSearch}
-                            onChange={(event) => setExpenseQueueSearch(event.target.value)}
-                            placeholder="Empleado, proveedor o categoria"
-                          />
-                        </label>
-                        <label className="form-field">
-                          <span>Estado</span>
-                          <select
-                            value={expenseQueueStatus}
-                            onChange={(event) =>
-                              setExpenseQueueStatus(event.target.value as 'all' | 'submitted' | 'approved')
-                            }
-                          >
-                            <option value="all">Todos</option>
-                            <option value="submitted">Presentadas</option>
-                            <option value="approved">Aprobadas</option>
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <SearchFiltersPanel
+                  open={isExpenseQueueSearchOpen}
+                  onToggle={() => setIsExpenseQueueSearchOpen((current) => !current)}
+                  className="accounting-search-collapse"
+                  rowClassName="accounting-filter-row"
+                  title="Buscar rendiciones"
+                  helper="Empleado, categoria, proveedor o estado"
+                  activeCount={(expenseQueueSearch.trim() ? 1 : 0) + (expenseQueueStatus !== 'all' ? 1 : 0)}
+                  icon="B"
+                  chevron="v"
+                  fields={[
+                    {
+                      label: 'Buscar',
+                      value: expenseQueueSearch,
+                      onChange: setExpenseQueueSearch,
+                      type: 'search',
+                      placeholder: 'Empleado, proveedor o categoria',
+                      className: 'form-field',
+                    },
+                    {
+                      label: 'Estado',
+                      value: expenseQueueStatus,
+                      onChange: (value) => setExpenseQueueStatus(value as 'all' | 'submitted' | 'approved'),
+                      type: 'select',
+                      options: [
+                        { value: 'all', label: 'Todos' },
+                        { value: 'submitted', label: 'Presentadas' },
+                        { value: 'approved', label: 'Aprobadas' },
+                      ],
+                      className: 'form-field',
+                    },
+                  ]}
+                />
 
                 <div className="accounting-list">
                   {filteredRecentExpenseQueue.map((expense) => {

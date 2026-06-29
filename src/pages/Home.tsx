@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import { firestore } from '../lib/firebase';
+import { subscribeTournamentRegistrations } from '../modules/tournaments/repositories';
+import type { EntityWithId, TournamentRegistrationDocument } from '../modules/tournaments/domain/models';
 import { getRoleLabel, getUserDisplayName } from '../utils/user';
 
 type ActionIconType =
@@ -29,6 +31,8 @@ type RoleAction = {
   route?: string;
   notice?: string;
 };
+
+type TournamentRegistrationRecord = EntityWithId<TournamentRegistrationDocument>;
 
 const MAX_QUICK_ACTIONS = 6;
 const MEMBER_ROLES = [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA];
@@ -80,6 +84,42 @@ const DEFAULT_QUICK_ACTION_IDS: Record<RoleType, string[]> = {
 };
 
 const QUICK_ACTION_CATEGORY_ORDER: QuickActionCategory[] = ['Socios', 'Caja', 'Empleados', 'Torneos', 'Reportes', 'Perfil', 'Club'];
+
+function formatAmountMinor(amountMinor: number) {
+  return `$${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(amountMinor / 100)}`;
+}
+
+function getRegistrationStatusLabel(registration: TournamentRegistrationRecord) {
+  if (registration.paymentStatus === 'paid') {
+    return 'Confirmada';
+  }
+
+  if (registration.status === 'pending_approval') {
+    return 'Pendiente de aprobacion';
+  }
+
+  if (registration.status === 'cancelled') {
+    return 'Cancelada';
+  }
+
+  if (registration.status === 'waitlisted') {
+    return 'Lista de espera';
+  }
+
+  return 'Pago pendiente';
+}
+
+function getRegistrationStatusClass(registration: TournamentRegistrationRecord) {
+  if (registration.paymentStatus === 'paid') {
+    return 'status-chip--paid';
+  }
+
+  if (registration.status === 'cancelled') {
+    return 'status-chip--cancelled';
+  }
+
+  return 'status-chip--pending';
+}
 
 function getValidQuickActionIds(
   actionIds: readonly string[] | null | undefined,
@@ -138,6 +178,7 @@ export function Home() {
   const [isQuickActionsEditorOpen, setIsQuickActionsEditorOpen] = useState(false);
   const [isSavingQuickActions, setIsSavingQuickActions] = useState(false);
   const [selectedQuickActionIds, setSelectedQuickActionIds] = useState<string[]>([]);
+  const [tournamentRegistrations, setTournamentRegistrations] = useState<TournamentRegistrationRecord[]>([]);
   const displayName = getUserDisplayName(user);
   const reservationSummary = 'Sin reservas';
   const availableActions = useMemo(
@@ -153,6 +194,25 @@ export function Home() {
       getValidQuickActionIds(user?.quickActionIdsByRole?.[interfaceMode], roleActionIds, validDefaultIds),
     );
   }, [availableActions, defaultActionIds, interfaceMode, user?.quickActionIdsByRole]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setTournamentRegistrations([]);
+      return undefined;
+    }
+
+    return subscribeTournamentRegistrations({
+      includeAll: false,
+      userId: user.id,
+      onNext: setTournamentRegistrations,
+      onError: (error) => setNotice(`No pudimos cargar tus inscripciones a torneos: ${error.message}`),
+    });
+  }, [user?.id]);
+
+  const visibleTournamentRegistrations = useMemo(
+    () => tournamentRegistrations.slice(0, 3),
+    [tournamentRegistrations],
+  );
 
   const quickActions = useMemo(() => {
     const selectedSet = new Set(selectedQuickActionIds);
@@ -241,6 +301,37 @@ export function Home() {
             <span>Reservas</span>
             <strong>{reservationSummary}</strong>
           </div>
+
+          {visibleTournamentRegistrations.length > 0 && (
+            <div className="home-tournament-summary">
+              <div className="home-tournament-summary__header">
+                <span>Torneos</span>
+                <button
+                  type="button"
+                  className="ui-action-button ui-action-button--compact ui-action-button--secondary home-tournament-summary__action"
+                  onClick={() => navigate('/torneos?open=registrations')}
+                >
+                  Ver
+                </button>
+              </div>
+              {visibleTournamentRegistrations.map((registration) => (
+                <button
+                  key={registration.id}
+                  type="button"
+                  className="home-tournament-summary__item"
+                  onClick={() => navigate('/torneos?open=registrations')}
+                >
+                  <span>
+                    <strong>{registration.tournamentNameSnapshot}</strong>
+                    <small>{formatAmountMinor(registration.amountMinor)}</small>
+                  </span>
+                  <span className={`status-chip home-tournament-summary__status ${getRegistrationStatusClass(registration)}`}>
+                    {getRegistrationStatusLabel(registration)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
           {notice && <div className="accounting-success">{notice}</div>}
         </section>

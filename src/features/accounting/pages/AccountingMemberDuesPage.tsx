@@ -1,10 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { SearchFiltersPanel } from '../../../components/SearchFiltersPanel';
 import { UiActionButton } from '../../../components/UiActionButton';
 import { ROLES } from '../../../constants/roles';
 import { useAuth } from '../../../hooks/useAuth';
-import type { EntityWithId, FinancialConfigDocument, UpsertFinancialConfigPayload } from '../../../modules/accounting/domain/models';
+import type { EntityWithId, FinancialConfigDocument, MemberFeeChargeDocument, UpsertFinancialConfigPayload } from '../../../modules/accounting/domain/models';
+import type { MemberDocument } from '../../../modules/users/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
 import { AccountingCollapsibleSections } from '../components/AccountingCollapsibleSections';
 import { AccountingEmptyState } from '../components/AccountingEmptyState';
@@ -35,6 +37,15 @@ type FeeConfigFormState = {
   notes: string;
 };
 
+type RenewalPaymentFilter = 'all' | 'missing_charge' | 'pending' | 'overdue';
+
+const RENEWAL_PAYMENT_FILTER_OPTIONS: Array<{ value: RenewalPaymentFilter; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'missing_charge', label: 'Sin cuota emitida' },
+  { value: 'pending', label: 'Cuota pendiente' },
+  { value: 'overdue', label: 'Cuota vencida' },
+];
+
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -55,6 +66,80 @@ function formatBps(value: number | null | undefined) {
 function parsePercentToBps(value: string) {
   const parsed = Number(value.trim().replace(',', '.'));
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NaN;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+function getChargeTargetMemberIds(
+  charge: EntityWithId<MemberFeeChargeDocument>,
+  members: Array<EntityWithId<MemberDocument>>,
+) {
+  const memberIds = new Set<string>();
+  if (charge.memberId) {
+    memberIds.add(charge.memberId);
+  }
+  if (charge.holderMemberId) {
+    memberIds.add(charge.holderMemberId);
+  }
+  if (charge.familyGroupId) {
+    members
+      .filter((member) => member.familyGroupId === charge.familyGroupId)
+      .forEach((member) => memberIds.add(member.id));
+  }
+  return memberIds;
+}
+
+function buildCurrentPeriodChargeMap(
+  members: Array<EntityWithId<MemberDocument>>,
+  charges: Array<EntityWithId<MemberFeeChargeDocument>>,
+) {
+  const map = new Map<string, Array<EntityWithId<MemberFeeChargeDocument>>>();
+
+  charges.forEach((charge) => {
+    getChargeTargetMemberIds(charge, members).forEach((memberId) => {
+      map.set(memberId, [...(map.get(memberId) ?? []), charge]);
+    });
+  });
+
+  return map;
+}
+
+function getRenewalState(charges: Array<EntityWithId<MemberFeeChargeDocument>> | undefined) {
+  if (!charges || charges.length === 0) {
+    return {
+      filter: 'missing_charge' as RenewalPaymentFilter,
+      label: 'Sin cuota emitida',
+      helper: 'Generar cuota y continuar al cobro',
+    };
+  }
+
+  if (charges.some((charge) => charge.status === 'overdue')) {
+    return {
+      filter: 'overdue' as RenewalPaymentFilter,
+      label: 'Cuota vencida',
+      helper: 'Pendiente de pago del mes actual',
+    };
+  }
+
+  if (charges.some((charge) => charge.status === 'pending')) {
+    return {
+      filter: 'pending' as RenewalPaymentFilter,
+      label: 'Cuota pendiente',
+      helper: 'Pendiente de pago del mes actual',
+    };
+  }
+
+  return {
+    filter: 'pending' as RenewalPaymentFilter,
+    label: 'Revisar cuota',
+    helper: 'La cuota no figura pagada para este mes',
+  };
 }
 
 function configToForm(config: EntityWithId<FinancialConfigDocument> | null): FeeConfigFormState {
@@ -132,6 +217,9 @@ export function AccountingMemberDuesPage() {
   const [pendingPayload, setPendingPayload] = useState<UpsertFinancialConfigPayload | null>(null);
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [saving, setSaving] = useState(false);
+  const [renewalSearch, setRenewalSearch] = useState('');
+  const [renewalPaymentFilter, setRenewalPaymentFilter] = useState<RenewalPaymentFilter>('all');
+  const [isRenewalFiltersOpen, setIsRenewalFiltersOpen] = useState(true);
   const canConfigure = interfaceMode === ROLES.DIRECTIVO;
   const tabParam = searchParams.get('tab');
   const initialOpenId = tabParam === 'renewals'
@@ -145,6 +233,42 @@ export function AccountingMemberDuesPage() {
       setForm(configToForm(activeConfig));
     }
   }, [activeConfig]);
+
+  const currentPeriodChargeByMemberId = useMemo(
+    () => buildCurrentPeriodChargeMap(summary?.membersPreview ?? [], summary?.periodFeeCharges ?? []),
+    [summary?.membersPreview, summary?.periodFeeCharges],
+  );
+
+  const filteredRenewalMembers = useMemo(() => {
+    const query = normalizeSearchText(renewalSearch);
+    return (summary?.renewalMembers ?? []).filter((member) => {
+      const charges = currentPeriodChargeByMemberId.get(member.id);
+      const state = getRenewalState(charges);
+      if (renewalPaymentFilter !== 'all' && state.filter !== renewalPaymentFilter) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      const searchable = normalizeSearchText(
+        [
+          getPersonDisplayName(member),
+          member.memberNumber,
+          member.dni,
+          member.typeCodeSnapshot,
+          member.status,
+          state.label,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      );
+      return searchable.includes(query);
+    });
+  }, [currentPeriodChargeByMemberId, renewalPaymentFilter, renewalSearch, summary?.renewalMembers]);
+
+  const renewalFilterCount = Number(renewalSearch.trim().length > 0) + Number(renewalPaymentFilter !== 'all');
 
   const updateForm = (field: keyof FeeConfigFormState, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -210,22 +334,70 @@ export function AccountingMemberDuesPage() {
             eyebrow: 'Renovaciones',
             helper: 'Socios activos pendientes de pago mensual',
             content: (
-              <div className="accounting-list">
-                {summary?.renewalMembers.map((member) => (
-                  <article key={member.id} className="accounting-row accounting-row--actions">
-                    <div className="accounting-row__main">
-                      <strong>{getPersonDisplayName(member)}</strong>
-                      <small>Vence {formatTimestamp(member.membershipRenewalDueAt)} - estado {member.status}</small>
-                    </div>
-                    <div className="accounting-inline-actions">
-                      <UiActionButton to={`/accounting/collections?memberId=${member.id}`}>Cobrar / renovar</UiActionButton>
-                    </div>
-                  </article>
-                ))}
-                {!loading && summary?.renewalMembers.length === 0 && (
-                  <AccountingEmptyState title="Sin renovaciones pendientes">No hay socios marcados para renovar en esta vista.</AccountingEmptyState>
-                )}
-              </div>
+              <>
+                <SearchFiltersPanel
+                  open={isRenewalFiltersOpen}
+                  onToggle={() => setIsRenewalFiltersOpen((current) => !current)}
+                  title="Busqueda y filtros"
+                  helper="Buscar socio y acotar por estado de cuota del mes"
+                  activeCount={renewalFilterCount}
+                  icon="B"
+                  chevron="v"
+                  className="accounting-search-collapse"
+                  fields={[
+                    {
+                      label: 'Buscar socio',
+                      value: renewalSearch,
+                      onChange: setRenewalSearch,
+                      type: 'search',
+                      placeholder: 'Nombre, numero, DNI o tipo',
+                    },
+                    {
+                      label: 'Estado de cuota',
+                      value: renewalPaymentFilter,
+                      onChange: (value) => setRenewalPaymentFilter(value as RenewalPaymentFilter),
+                      type: 'select',
+                      options: RENEWAL_PAYMENT_FILTER_OPTIONS,
+                    },
+                  ]}
+                />
+                <div className="directory-results">
+                  <strong>{filteredRenewalMembers.length} renovacion{filteredRenewalMembers.length === 1 ? '' : 'es'} pendiente{filteredRenewalMembers.length === 1 ? '' : 's'}</strong>
+                  <small>{summary ? `Periodo ${formatPeriod(summary.period)} - socios activos sin pago confirmado` : 'Periodo actual'}</small>
+                </div>
+                <div className="accounting-list">
+                  {filteredRenewalMembers.map((member) => {
+                    const charges = currentPeriodChargeByMemberId.get(member.id);
+                    const state = getRenewalState(charges);
+                    const amountMinor = (charges ?? [])
+                      .filter((charge) => charge.status === 'pending' || charge.status === 'overdue')
+                      .reduce((total, charge) => total + charge.finalAmountMinor, 0);
+                    const linkPeriod = summary?.period ? `&period=${encodeURIComponent(summary.period)}` : '';
+
+                    return (
+                      <article key={member.id} className="accounting-row accounting-row--actions">
+                        <div className="accounting-row__main">
+                          <strong>{getPersonDisplayName(member)}</strong>
+                          <small>Socio {member.memberNumber} - {member.typeCodeSnapshot} - {member.status}</small>
+                          <small>{state.helper}</small>
+                        </div>
+                        <div className="accounting-row__meta">
+                          <span className={`status-chip status-chip--${state.filter.replace('_', '-')}`}>{state.label}</span>
+                          {amountMinor > 0 && <strong>{formatCurrency(amountMinor)}</strong>}
+                        </div>
+                        <div className="accounting-inline-actions">
+                          <UiActionButton to={`/accounting/collections?memberId=${member.id}${linkPeriod}`}>
+                            {state.filter === 'missing_charge' ? 'Generar y cobrar' : 'Cobrar / renovar'}
+                          </UiActionButton>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {!loading && filteredRenewalMembers.length === 0 && (
+                    <AccountingEmptyState title="Sin renovaciones pendientes">No hay socios activos sin pago confirmado para este periodo y filtros.</AccountingEmptyState>
+                  )}
+                </div>
+              </>
             ),
           },
           {

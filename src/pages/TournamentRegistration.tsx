@@ -1,16 +1,43 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import { createTournamentCallables } from '../modules/tournaments/functions/tournaments.callables';
-import type { TournamentPaymentMethodId } from '../modules/tournaments/domain/models';
+import {
+  createTournamentRecord,
+  subscribeTournamentReceipts,
+  subscribeTournamentRegistrations,
+  subscribeTournaments,
+  updateTournamentRecord,
+} from '../modules/tournaments/repositories';
+import type {
+  EntityWithId,
+  TournamentCategory,
+  TournamentCostItem,
+  TournamentDocument,
+  TournamentFormat,
+  TournamentLeaderboardRow,
+  TournamentPaymentMethodId,
+  TournamentReceiptDocument,
+  TournamentRegistrationDocument,
+  TournamentStatus,
+  TournamentTeeWindow,
+  TournamentTeeWindows,
+  TournamentStartType,
+} from '../modules/tournaments/domain/models';
 
-type TournamentFormat = 'medal' | 'stableford' | 'scramble' | 'laguneada';
-type TournamentStatus = 'draft' | 'scheduled' | 'registration_open' | 'registration_closed' | 'in_progress' | 'finished';
-type StartType = 'regular' | 'simultaneous';
+type Tournament = EntityWithId<TournamentDocument>;
+type TournamentRegistrationRecord = EntityWithId<TournamentRegistrationDocument>;
+type TournamentReceiptRecord = EntityWithId<TournamentReceiptDocument>;
+type Flight = TournamentCategory['flights'][number];
+type TeeWindow = TournamentTeeWindow;
+type StartType = TournamentStartType;
 type TournamentTab = 'calendar' | 'leaderboard' | 'settings' | 'details';
+type RegistrationStatusFilter = 'all' | TournamentRegistrationDocument['status'];
+type RegistrationOriginFilter = 'all' | TournamentRegistrationDocument['origin'];
 
 const TOURNAMENT_TABS: readonly TournamentTab[] = ['calendar', 'leaderboard', 'settings', 'details'];
 const TOURNAMENT_STATUS_FILTERS: ReadonlyArray<'all' | TournamentStatus> = [
@@ -30,73 +57,6 @@ function isTournamentTab(value: string | null): value is TournamentTab {
 function isTournamentStatusFilter(value: string | null): value is 'all' | TournamentStatus {
   return Boolean(value && TOURNAMENT_STATUS_FILTERS.includes(value as 'all' | TournamentStatus));
 }
-
-type Flight = {
-  name: string;
-  minHandicap?: number;
-  maxHandicap: number;
-};
-
-type TournamentCategory = {
-  name: string;
-  gender: 'male' | 'female' | 'mixed';
-  flights: Flight[];
-};
-
-type TournamentLeaderboardRow = {
-  player: string;
-  category: string;
-  gross: number;
-  handicap: number;
-  net: number;
-  status: 'provisional' | 'final';
-};
-
-type TeeWindow = {
-  first: string;
-  last: string;
-  interval: number;
-};
-
-type TournamentTeeWindows = {
-  morning: TeeWindow;
-  afternoon: TeeWindow;
-};
-
-type TournamentCostItem = {
-  id: string;
-  concept: string;
-  amountMinor: number;
-};
-
-type Tournament = {
-  id: string;
-  name: string;
-  date: string;
-  status: TournamentStatus;
-  format: TournamentFormat;
-  startType: StartType;
-  capacity: number;
-  registered: number;
-  openDaysBefore: number;
-  membersOnly: boolean;
-  allowNoHandicap: boolean;
-  recurring: boolean;
-  registrationOpenAt?: string | null;
-  registrationCloseAt?: string | null;
-  registrationFeeMinor: number;
-  reducedRegistrationFeeMinor?: number;
-  operatingCostMinor: number;
-  operatingCostItems?: TournamentCostItem[];
-  prizeCostMinor: number;
-  costNotes?: string | null;
-  teeWindow: TeeWindow;
-  teeWindows?: TournamentTeeWindows;
-  categories: TournamentCategory[];
-  pendingCards: number;
-  approvedCards: number;
-  leaderboard: TournamentLeaderboardRow[];
-};
 
 type TournamentDraft = {
   name: string;
@@ -156,41 +116,6 @@ type PendingTournamentCostAction = {
   costNotes: string | null;
 };
 
-type TournamentRegistrationStatus = 'pending_payment' | 'confirmed' | 'cancelled' | 'waitlisted';
-type TournamentRegistrationPaymentStatus = 'unpaid' | 'paid' | 'refunded';
-
-type TournamentRegistrationRecord = {
-  id: string;
-  tournamentId: string;
-  tournamentNameSnapshot: string;
-  tournamentDate: string;
-  userId: string;
-  memberId?: string | null;
-  participantName: string;
-  participantEmail?: string | null;
-  amountMinor: number;
-  status: TournamentRegistrationStatus;
-  paymentStatus: TournamentRegistrationPaymentStatus;
-  receiptId?: string | null;
-  financialMovementId?: string | null;
-  registeredAt: string;
-  paidAt?: string | null;
-  paymentMethodId?: TournamentPaymentMethodId | null;
-  paymentReference?: string | null;
-  notes?: string | null;
-};
-
-type TournamentReceiptRecord = {
-  id: string;
-  registrationId: string;
-  tournamentId: string;
-  receiptNumber: string;
-  amountMinor: number;
-  paymentMethodId: TournamentPaymentMethodId;
-  movementId: string;
-  issuedAt: string;
-};
-
 type TournamentPaymentDraft = {
   paymentMethodId: TournamentPaymentMethodId;
   operationDate: string;
@@ -243,6 +168,21 @@ const STATUS_OPTIONS: Array<{ value: 'all' | TournamentStatus; label: string }> 
   { value: 'draft', label: 'Borradores' },
 ];
 
+const REGISTRATION_STATUS_OPTIONS: Array<{ value: RegistrationStatusFilter; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'pending_approval', label: 'Pendientes de aprobacion' },
+  { value: 'pending_payment', label: 'Pago pendiente' },
+  { value: 'confirmed', label: 'Confirmadas' },
+  { value: 'waitlisted', label: 'Lista de espera' },
+  { value: 'cancelled', label: 'Canceladas' },
+];
+
+const REGISTRATION_ORIGIN_OPTIONS: Array<{ value: RegistrationOriginFilter; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'member', label: 'Socios' },
+  { value: 'external', label: 'Externos' },
+];
+
 const TOURNAMENT_PAYMENT_METHODS: Array<{ value: TournamentPaymentMethodId; label: string; requiresReference: boolean }> = [
   { value: 'cash', label: 'Efectivo', requiresReference: false },
   { value: 'transfer', label: 'Transferencia', requiresReference: true },
@@ -270,234 +210,6 @@ const DEFAULT_TOURNAMENT_CATEGORIES: TournamentDraftCategory[] = [
   { id: 'men-2', gender: 'male', name: 'Categoria 2', minHandicap: '13', maxHandicap: '24' },
   { id: 'women-1', gender: 'female', name: 'Categoria 1', minHandicap: '0', maxHandicap: '18' },
   { id: 'women-2', gender: 'female', name: 'Categoria 2', minHandicap: '19', maxHandicap: '36' },
-];
-
-const INITIAL_TOURNAMENTS: Tournament[] = [
-  {
-    id: 'apertura-palpala-2026',
-    name: 'Apertura Palpala 2026',
-    date: '2026-05-24',
-    status: 'registration_open',
-    format: 'medal',
-    startType: 'regular',
-    capacity: 72,
-    registered: 48,
-    openDaysBefore: 14,
-    membersOnly: false,
-    allowNoHandicap: true,
-    recurring: false,
-    registrationOpenAt: '2026-05-10',
-    registrationCloseAt: '2026-05-22',
-    registrationFeeMinor: 1500000,
-    reducedRegistrationFeeMinor: 1000000,
-    operatingCostMinor: 4500000,
-    operatingCostItems: [
-      { id: 'apertura-cancha', concept: 'Preparacion de cancha', amountMinor: 2600000 },
-      { id: 'apertura-staff', concept: 'Staff de salida', amountMinor: 1900000 },
-    ],
-    prizeCostMinor: 1200000,
-    costNotes: 'Incluye extras de refrigerio.',
-    teeWindow: { first: '07:20', last: '12:24', interval: 8 },
-    categories: [
-      {
-        name: 'Caballeros',
-        gender: 'male',
-        flights: [
-          { name: '0 a 12', maxHandicap: 12 },
-          { name: '13 a 24', maxHandicap: 24 },
-        ],
-      },
-      {
-        name: 'Damas',
-        gender: 'female',
-        flights: [
-          { name: '0 a 18', maxHandicap: 18 },
-          { name: '19 a 36', maxHandicap: 36 },
-        ],
-      },
-    ],
-    pendingCards: 0,
-    approvedCards: 0,
-    leaderboard: [],
-  },
-  {
-    id: 'stableford-invierno-2026',
-    name: 'Stableford de Invierno',
-    date: '2026-06-07',
-    status: 'scheduled',
-    format: 'stableford',
-    startType: 'regular',
-    capacity: 56,
-    registered: 18,
-    openDaysBefore: 10,
-    membersOnly: true,
-    allowNoHandicap: false,
-    recurring: false,
-    registrationOpenAt: '2026-05-28',
-    registrationCloseAt: '2026-06-05',
-    registrationFeeMinor: 1200000,
-    reducedRegistrationFeeMinor: 800000,
-    operatingCostMinor: 2800000,
-    operatingCostItems: [
-      { id: 'stableford-cancha', concept: 'Marcacion y control', amountMinor: 1800000 },
-      { id: 'stableford-administracion', concept: 'Administracion del torneo', amountMinor: 1000000 },
-    ],
-    prizeCostMinor: 900000,
-    costNotes: null,
-    teeWindow: { first: '08:00', last: '11:44', interval: 8 },
-    categories: [
-      {
-        name: 'Mixta',
-        gender: 'mixed',
-        flights: [
-          { name: 'Hasta 18', maxHandicap: 18 },
-          { name: '19 a 36', maxHandicap: 36 },
-        ],
-      },
-    ],
-    pendingCards: 0,
-    approvedCards: 0,
-    leaderboard: [],
-  },
-  {
-    id: 'laguneada-aniversario-2026',
-    name: 'Laguneada Aniversario',
-    date: '2026-05-10',
-    status: 'in_progress',
-    format: 'laguneada',
-    startType: 'simultaneous',
-    capacity: 80,
-    registered: 76,
-    openDaysBefore: 21,
-    membersOnly: false,
-    allowNoHandicap: true,
-    recurring: false,
-    registrationOpenAt: '2026-04-19',
-    registrationCloseAt: '2026-05-08',
-    registrationFeeMinor: 1800000,
-    reducedRegistrationFeeMinor: 1200000,
-    operatingCostMinor: 6100000,
-    operatingCostItems: [
-      { id: 'laguneada-catering', concept: 'Catering operativo', amountMinor: 3200000 },
-      { id: 'laguneada-cancha', concept: 'Preparacion especial', amountMinor: 2900000 },
-    ],
-    prizeCostMinor: 2200000,
-    costNotes: 'Salida simultanea con catering.',
-    teeWindow: { first: '09:00', last: '09:00', interval: 8 },
-    categories: [
-      {
-        name: 'Equipos',
-        gender: 'mixed',
-        flights: [
-          { name: 'General', maxHandicap: 54 },
-        ],
-      },
-    ],
-    pendingCards: 6,
-    approvedCards: 12,
-    leaderboard: [
-      { player: 'Equipo Norte', category: 'Equipos', gross: 69, handicap: 11, net: 58, status: 'provisional' },
-      { player: 'Equipo Quebrada', category: 'Equipos', gross: 71, handicap: 12, net: 59, status: 'provisional' },
-      { player: 'Equipo Palpala', category: 'Equipos', gross: 73, handicap: 10, net: 63, status: 'provisional' },
-    ],
-  },
-  {
-    id: 'copa-palpala-2025',
-    name: 'Copa Palpala 2025',
-    date: '2025-08-22',
-    status: 'finished',
-    format: 'scramble',
-    startType: 'regular',
-    capacity: 64,
-    registered: 64,
-    openDaysBefore: 14,
-    membersOnly: false,
-    allowNoHandicap: true,
-    recurring: false,
-    registrationOpenAt: '2025-08-08',
-    registrationCloseAt: '2025-08-20',
-    registrationFeeMinor: 1000000,
-    reducedRegistrationFeeMinor: 700000,
-    operatingCostMinor: 3500000,
-    operatingCostItems: [
-      { id: 'copa-operacion', concept: 'Operacion general', amountMinor: 3500000 },
-    ],
-    prizeCostMinor: 1500000,
-    costNotes: null,
-    teeWindow: { first: '07:30', last: '12:42', interval: 8 },
-    categories: [
-      {
-        name: 'Equipos',
-        gender: 'mixed',
-        flights: [
-          { name: 'General', maxHandicap: 54 },
-        ],
-      },
-    ],
-    pendingCards: 0,
-    approvedCards: 18,
-    leaderboard: [
-      { player: 'Equipo Las Lomas', category: 'Equipos', gross: 66, handicap: 8, net: 58, status: 'final' },
-      { player: 'Equipo Los Cedros', category: 'Equipos', gross: 70, handicap: 10, net: 60, status: 'final' },
-      { player: 'Equipo Centro', category: 'Equipos', gross: 72, handicap: 9, net: 63, status: 'final' },
-    ],
-  },
-];
-
-const INITIAL_TOURNAMENT_REGISTRATIONS: TournamentRegistrationRecord[] = [
-  {
-    id: 'reg-apertura-palpala-001',
-    tournamentId: 'apertura-palpala-2026',
-    tournamentNameSnapshot: 'Apertura Palpala 2026',
-    tournamentDate: '2026-05-24',
-    userId: 'demo-socio-001',
-    memberId: 'demo-socio-001',
-    participantName: 'Socio Demo',
-    participantEmail: null,
-    amountMinor: 1500000,
-    status: 'pending_payment',
-    paymentStatus: 'unpaid',
-    receiptId: null,
-    financialMovementId: null,
-    registeredAt: '2026-05-13',
-    paidAt: null,
-    paymentMethodId: null,
-    paymentReference: null,
-    notes: null,
-  },
-  {
-    id: 'reg-apertura-palpala-002',
-    tournamentId: 'apertura-palpala-2026',
-    tournamentNameSnapshot: 'Apertura Palpala 2026',
-    tournamentDate: '2026-05-24',
-    userId: 'demo-socio-002',
-    memberId: 'demo-socio-002',
-    participantName: 'Invitado Pagado',
-    participantEmail: null,
-    amountMinor: 1500000,
-    status: 'confirmed',
-    paymentStatus: 'paid',
-    receiptId: 'receipt-apertura-palpala-002',
-    financialMovementId: 'movement-demo-tournament-002',
-    registeredAt: '2026-05-12',
-    paidAt: '2026-05-12',
-    paymentMethodId: 'transfer',
-    paymentReference: 'TR-20260512-002',
-    notes: null,
-  },
-];
-
-const INITIAL_TOURNAMENT_RECEIPTS: TournamentReceiptRecord[] = [
-  {
-    id: 'receipt-apertura-palpala-002',
-    registrationId: 'reg-apertura-palpala-002',
-    tournamentId: 'apertura-palpala-2026',
-    receiptNumber: 'TOR-20260512-REGAPERT',
-    amountMinor: 1500000,
-    paymentMethodId: 'transfer',
-    movementId: 'movement-demo-tournament-002',
-    issuedAt: '2026-05-12',
-  },
 ];
 
 function createDefaultDraft(): TournamentDraft {
@@ -656,7 +368,15 @@ function getRegistrationReference(registration: TournamentRegistrationRecord, re
 }
 
 function getParticipantNumber(registration: TournamentRegistrationRecord) {
-  return registration.memberId ? registration.memberId.replace(/^demo-socio-/i, 'Socio #') : 'Invitado';
+  if (registration.memberId) {
+    return registration.memberId.replace(/^demo-socio-/i, 'Socio #');
+  }
+
+  return registration.origin === 'external' ? 'Externo' : 'Invitado';
+}
+
+function getRegistrationOriginLabel(registration: TournamentRegistrationRecord) {
+  return registration.origin === 'external' ? 'Externo' : 'Socio';
 }
 
 function getOccupancyPercentage(tournament: Tournament) {
@@ -691,34 +411,11 @@ function getReducedFeeMinor(tournament: Tournament) {
   return tournament.reducedRegistrationFeeMinor ?? tournament.registrationFeeMinor;
 }
 
-function userQualifiesForReducedTournamentFee(user: unknown) {
-  const profile = user as {
-    profileType?: string | null;
-    memberTypeCode?: string | null;
-    memberTypeCodeSnapshot?: string | null;
-    typeCodeSnapshot?: string | null;
-    memberTypeLabel?: string | null;
-  } | null;
-  const memberText = [
-    profile?.memberTypeCode,
-    profile?.memberTypeCodeSnapshot,
-    profile?.typeCodeSnapshot,
-    profile?.memberTypeLabel,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  return profile?.profileType === 'member' && memberText.includes('menor');
-}
-
-function getTournamentRegistrationFee(tournament: Tournament, user: unknown) {
-  const isReduced = userQualifiesForReducedTournamentFee(user);
-  const reducedAmountMinor = getReducedFeeMinor(tournament);
+function getTournamentRegistrationFee(tournament: Tournament) {
   return {
-    kind: isReduced ? 'reduced' : 'regular',
-    label: isReduced ? 'Inscripcion reducida' : 'Inscripcion regular',
-    amountMinor: isReduced ? reducedAmountMinor : tournament.registrationFeeMinor,
+    kind: 'regular' as const,
+    label: 'Inscripcion regular',
+    amountMinor: tournament.registrationFeeMinor,
   };
 }
 
@@ -765,6 +462,10 @@ function getRegistrationStatusLabel(registration: TournamentRegistrationRecord) 
     return 'Pagada';
   }
 
+  if (registration.status === 'pending_approval') {
+    return 'Pendiente de aprobacion';
+  }
+
   if (registration.status === 'cancelled') {
     return 'Cancelada';
   }
@@ -774,15 +475,6 @@ function getRegistrationStatusLabel(registration: TournamentRegistrationRecord) 
   }
 
   return 'Pago pendiente';
-}
-
-function buildLocalRegistrationId(tournamentId: string, userId: string) {
-  return `reg-${tournamentId}-${userId}`.replace(/[^a-zA-Z0-9_-]+/g, '-');
-}
-
-function buildLocalReceiptNumber(registrationId: string, operationDate: string) {
-  const safeId = registrationId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
-  return `TOR-${operationDate.replace(/-/g, '')}-${safeId}`;
 }
 
 function getFormatLabel(format: TournamentFormat) {
@@ -994,9 +686,11 @@ export function TournamentRegistration() {
   const requestedTab = searchParams.get('tab');
   const requestedOpen = searchParams.get('open');
   const requestedStatus = searchParams.get('status');
-  const [tournaments, setTournaments] = useState<Tournament[]>(INITIAL_TOURNAMENTS);
-  const [registrations, setRegistrations] = useState<TournamentRegistrationRecord[]>(INITIAL_TOURNAMENT_REGISTRATIONS);
-  const [receipts, setReceipts] = useState<TournamentReceiptRecord[]>(INITIAL_TOURNAMENT_RECEIPTS);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [registrations, setRegistrations] = useState<TournamentRegistrationRecord[]>([]);
+  const [receipts, setReceipts] = useState<TournamentReceiptRecord[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [dataError, setDataError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFromFilter, setDateFromFilter] = useState('');
   const [dateToFilter, setDateToFilter] = useState('');
@@ -1007,6 +701,9 @@ export function TournamentRegistration() {
   const [selectedLeaderboardCategory, setSelectedLeaderboardCategory] = useState<{ tournamentId: string; category: string } | null>(null);
   const [isCardsListOpen, setIsCardsListOpen] = useState(false);
   const [isRegistrationsListOpen, setIsRegistrationsListOpen] = useState(false);
+  const [registrationSearchQuery, setRegistrationSearchQuery] = useState('');
+  const [registrationStatusFilter, setRegistrationStatusFilter] = useState<RegistrationStatusFilter>('all');
+  const [registrationOriginFilter, setRegistrationOriginFilter] = useState<RegistrationOriginFilter>('all');
   const [activeTab, setActiveTab] = useState<TournamentTab>('calendar');
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
@@ -1043,6 +740,50 @@ export function TournamentRegistration() {
     handicap: '',
     net: '',
   });
+
+  useEffect(() => {
+    setIsDataLoading(true);
+    setDataError('');
+
+    return subscribeTournaments({
+      includeAll: canManageTournaments,
+      onNext: (items) => {
+        setTournaments(items);
+        setIsDataLoading(false);
+      },
+      onError: (error) => {
+        setDataError(`No pudimos cargar torneos desde Firestore: ${error.message}`);
+        setTournaments([]);
+        setIsDataLoading(false);
+      },
+    });
+  }, [canManageTournaments]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setRegistrations([]);
+      setReceipts([]);
+      return undefined;
+    }
+
+    const unsubscribeRegistrations = subscribeTournamentRegistrations({
+      includeAll: canManageTournaments,
+      userId: user.id,
+      onNext: setRegistrations,
+      onError: (error) => setDataError(`No pudimos cargar inscripciones desde Firestore: ${error.message}`),
+    });
+    const unsubscribeReceipts = subscribeTournamentReceipts({
+      includeAll: canManageTournaments,
+      userId: user.id,
+      onNext: setReceipts,
+      onError: (error) => setDataError(`No pudimos cargar recibos de torneos desde Firestore: ${error.message}`),
+    });
+
+    return () => {
+      unsubscribeRegistrations();
+      unsubscribeReceipts();
+    };
+  }, [canManageTournaments, user?.id]);
 
   const visibleTournaments = useMemo(
     () => (canManageTournaments ? tournaments : tournaments.filter((tournament) => tournament.status === 'registration_open')),
@@ -1098,8 +839,8 @@ export function TournamentRegistration() {
     [registrationTournamentId, tournaments],
   );
   const registrationFeeSelection = useMemo(
-    () => (registrationTournament ? getTournamentRegistrationFee(registrationTournament, user) : null),
-    [registrationTournament, user],
+    () => (registrationTournament ? getTournamentRegistrationFee(registrationTournament) : null),
+    [registrationTournament],
   );
   const costTournament = useMemo(
     () => tournaments.find((tournament) => tournament.id === costTournamentId) ?? null,
@@ -1123,15 +864,47 @@ export function TournamentRegistration() {
         : [],
     [registrations, selectedTournament],
   );
+  const filteredSelectedTournamentRegistrations = useMemo(() => {
+    const normalizedQuery = registrationSearchQuery.trim().toLowerCase();
+
+    return selectedTournamentRegistrations.filter((registration) => {
+      const matchesStatus = registrationStatusFilter === 'all' || registration.status === registrationStatusFilter;
+      const matchesOrigin = registrationOriginFilter === 'all' || registration.origin === registrationOriginFilter;
+      if (!matchesStatus || !matchesOrigin) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return [
+        registration.participantName,
+        registration.participantEmail,
+        registration.memberId,
+        registration.userId,
+        registration.externalPhone,
+        registration.externalAagLicense,
+        registration.paymentReference,
+        registration.financialMovementId,
+      ].some((value) => (value ?? '').toLowerCase().includes(normalizedQuery));
+    });
+  }, [
+    registrationOriginFilter,
+    registrationSearchQuery,
+    registrationStatusFilter,
+    selectedTournamentRegistrations,
+  ]);
   const selectedTournamentPaymentSummary = useMemo(() => {
     return selectedTournamentRegistrations.reduce(
       (summary, registration) => ({
         paid: summary.paid + (registration.paymentStatus === 'paid' ? 1 : 0),
         unpaid: summary.unpaid + (registration.paymentStatus === 'unpaid' ? 1 : 0),
+        pendingApproval: summary.pendingApproval + (registration.status === 'pending_approval' ? 1 : 0),
         paidAmountMinor: summary.paidAmountMinor + (registration.paymentStatus === 'paid' ? registration.amountMinor : 0),
         pendingAmountMinor: summary.pendingAmountMinor + (registration.paymentStatus === 'unpaid' ? registration.amountMinor : 0),
       }),
-      { paid: 0, unpaid: 0, paidAmountMinor: 0, pendingAmountMinor: 0 },
+      { paid: 0, unpaid: 0, pendingApproval: 0, paidAmountMinor: 0, pendingAmountMinor: 0 },
     );
   }, [selectedTournamentRegistrations]);
 
@@ -1271,7 +1044,7 @@ export function TournamentRegistration() {
     setIsEditorOpen(false);
   };
 
-  const handleCreateTournament = (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateTournament = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const registrationFeeMinor = parseMoneyToMinor(draft.registrationFee || '0');
     const reducedRegistrationFeeMinor = parseMoneyToMinor(draft.reducedRegistrationFee || draft.registrationFee || '0');
@@ -1290,11 +1063,15 @@ export function TournamentRegistration() {
 
     const newTournament = createTournamentFromDraft(draft);
 
-    setTournaments((current) => [newTournament, ...current]);
-    setSelectedTournamentId(newTournament.id);
-    setIsEditorOpen(false);
-    setActiveTab('details');
-    setNotice(`Torneo "${newTournament.name}" preparado. Queda programado para abrir inscripcion.`);
+    try {
+      await createTournamentRecord(newTournament, user?.id ?? 'system');
+      setSelectedTournamentId(newTournament.id);
+      setIsEditorOpen(false);
+      setActiveTab('details');
+      setNotice(`Torneo "${newTournament.name}" guardado en Firestore. Queda programado para abrir inscripcion.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? `No pudimos guardar el torneo: ${error.message}` : 'No pudimos guardar el torneo.');
+    }
   };
 
   const handleSelectTournament = (tournament: Tournament) => {
@@ -1303,13 +1080,13 @@ export function TournamentRegistration() {
     setActiveTab('details');
   };
 
-  const updateTournamentStatus = (tournamentId: string, status: TournamentStatus, message: string) => {
-    setTournaments((current) =>
-      current.map((tournament) =>
-        tournament.id === tournamentId ? { ...tournament, status } : tournament,
-      ),
-    );
-    setNotice(message);
+  const updateTournamentStatus = async (tournamentId: string, status: TournamentStatus, message: string) => {
+    try {
+      await updateTournamentRecord(tournamentId, { status }, user?.id ?? 'system');
+      setNotice(message);
+    } catch (error) {
+      setNotice(error instanceof Error ? `No pudimos actualizar el estado del torneo: ${error.message}` : 'No pudimos actualizar el estado del torneo.');
+    }
   };
 
   const requestTournamentStatusChange = (
@@ -1323,12 +1100,12 @@ export function TournamentRegistration() {
     });
   };
 
-  const confirmTournamentStatusChange = () => {
+  const confirmTournamentStatusChange = async () => {
     if (!pendingStatusAction) {
       return;
     }
 
-    updateTournamentStatus(
+    await updateTournamentStatus(
       pendingStatusAction.tournamentId,
       pendingStatusAction.nextStatus,
       pendingStatusAction.nextStatus === 'registration_open'
@@ -1437,40 +1214,45 @@ export function TournamentRegistration() {
     });
   };
 
-  const confirmTournamentCostChange = () => {
+  const confirmTournamentCostChange = async () => {
     if (!pendingCostAction) {
       return;
     }
 
-    setTournaments((current) =>
-      current.map((tournament) =>
-        tournament.id === pendingCostAction.tournamentId
-          ? {
-              ...tournament,
-              registrationFeeMinor: pendingCostAction.registrationFeeMinor,
-              reducedRegistrationFeeMinor: pendingCostAction.reducedRegistrationFeeMinor,
-              operatingCostMinor: pendingCostAction.operatingCostMinor,
-              operatingCostItems: pendingCostAction.operatingCostItems,
-              prizeCostMinor: pendingCostAction.prizeCostMinor,
-              costNotes: pendingCostAction.costNotes,
-            }
-          : tournament,
-      ),
-    );
-    setNotice(`Costos actualizados para "${pendingCostAction.tournamentName}".`);
-    setPendingCostAction(null);
-    closeCostEditor();
+    try {
+      await updateTournamentRecord(
+        pendingCostAction.tournamentId,
+        {
+          registrationFeeMinor: pendingCostAction.registrationFeeMinor,
+          reducedRegistrationFeeMinor: pendingCostAction.reducedRegistrationFeeMinor,
+          operatingCostMinor: pendingCostAction.operatingCostMinor,
+          operatingCostItems: pendingCostAction.operatingCostItems,
+          prizeCostMinor: pendingCostAction.prizeCostMinor,
+          costNotes: pendingCostAction.costNotes,
+        },
+        user?.id ?? 'system',
+      );
+      setNotice(`Costos actualizados para "${pendingCostAction.tournamentName}".`);
+      setPendingCostAction(null);
+      closeCostEditor();
+    } catch (error) {
+      setNotice(error instanceof Error ? `No pudimos actualizar costos: ${error.message}` : 'No pudimos actualizar costos.');
+    }
   };
 
-  const updateTournamentSchedule = (tournamentId: string, field: 'registrationOpenAt' | 'registrationCloseAt', value: string) => {
-    setTournaments((current) =>
-      current.map((tournament) =>
-        tournament.id === tournamentId ? { ...tournament, [field]: value ? value.slice(0, 16) : null } : tournament,
-      ),
-    );
+  const updateTournamentSchedule = async (tournamentId: string, field: 'registrationOpenAt' | 'registrationCloseAt', value: string) => {
+    try {
+      await updateTournamentRecord(
+        tournamentId,
+        { [field]: value ? value.slice(0, 16) : null },
+        user?.id ?? 'system',
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? `No pudimos actualizar la agenda: ${error.message}` : 'No pudimos actualizar la agenda.');
+    }
   };
 
-  const handleTournamentAction = (tournament: Tournament) => {
+  const handleTournamentAction = async (tournament: Tournament) => {
     if (tournament.status === 'registration_open') {
       const existingRegistration = currentParticipantRegistrationByTournament.get(tournament.id);
       if (existingRegistration) {
@@ -1479,7 +1261,7 @@ export function TournamentRegistration() {
         setNotice(
           existingRegistration.paymentStatus === 'paid'
             ? `Ya estas inscripto y con pago registrado en "${tournament.name}".`
-            : `Tu inscripcion a "${tournament.name}" esta pendiente de pago.`,
+            : `Tu inscripcion a "${tournament.name}" esta en estado: ${getRegistrationStatusLabel(existingRegistration)}.`,
         );
         return;
       }
@@ -1499,32 +1281,36 @@ export function TournamentRegistration() {
     }
 
     if (tournament.status === 'in_progress' && tournament.pendingCards > 0) {
-      setTournaments((current) =>
-        current.map((entry) =>
-          entry.id === tournament.id
-            ? {
-                ...entry,
-                pendingCards: entry.pendingCards - 1,
-                approvedCards: entry.approvedCards + 1,
-                leaderboard: entry.leaderboard.length > 0
-                  ? entry.leaderboard
-                  : [
-                      {
-                        player: `Tarjeta aprobada ${entry.approvedCards + 1}`,
-                        category: 'General',
-                        gross: 72,
-                        handicap: 0,
-                        net: 72,
-                        status: 'provisional',
-                      },
-                    ],
-              }
-            : entry,
-        ),
-      );
-      setSelectedTournamentId(tournament.id);
-      setActiveTab('leaderboard');
-      setNotice(`Se aprobo una tarjeta pendiente de "${tournament.name}".`);
+      const nextApprovedCards = tournament.approvedCards + 1;
+      const nextLeaderboard = tournament.leaderboard.length > 0
+        ? tournament.leaderboard
+        : [
+            {
+              player: `Tarjeta aprobada ${nextApprovedCards}`,
+              category: 'General',
+              gross: 72,
+              handicap: 0,
+              net: 72,
+              status: 'provisional' as const,
+            },
+          ];
+
+      try {
+        await updateTournamentRecord(
+          tournament.id,
+          {
+            pendingCards: tournament.pendingCards - 1,
+            approvedCards: nextApprovedCards,
+            leaderboard: nextLeaderboard,
+          },
+          user?.id ?? 'system',
+        );
+        setSelectedTournamentId(tournament.id);
+        setActiveTab('leaderboard');
+        setNotice(`Se aprobo una tarjeta pendiente de "${tournament.name}".`);
+      } catch (error) {
+        setNotice(error instanceof Error ? `No pudimos aprobar la tarjeta: ${error.message}` : 'No pudimos aprobar la tarjeta.');
+      }
       return;
     }
 
@@ -1539,7 +1325,6 @@ export function TournamentRegistration() {
 
     const userId = user?.id ?? 'current-user';
     const memberId = user?.profileType === 'member' ? user.profileId ?? null : null;
-    const localRegistrationId = buildLocalRegistrationId(registrationTournament.id, memberId ?? userId);
     const existingRegistration = registrations.find(
       (registration) =>
         registration.tournamentId === registrationTournament.id
@@ -1552,60 +1337,16 @@ export function TournamentRegistration() {
       return;
     }
 
-    const localRegistration: TournamentRegistrationRecord = {
-      id: localRegistrationId,
-      tournamentId: registrationTournament.id,
-      tournamentNameSnapshot: registrationTournament.name,
-      tournamentDate: registrationTournament.date,
-      userId,
-      memberId,
-      participantName: user?.displayName ?? 'Participante',
-      participantEmail: user?.email ?? null,
-      amountMinor: registrationFeeSelection.amountMinor,
-      status: 'pending_payment',
-      paymentStatus: 'unpaid',
-      receiptId: null,
-      financialMovementId: null,
-      registeredAt: getTodayInputDate(),
-      paidAt: null,
-      paymentMethodId: null,
-      paymentReference: null,
-      notes: null,
-    };
-
-    setRegistrations((current) => [localRegistration, ...current]);
-    setTournaments((current) =>
-      current.map((tournament) =>
-        tournament.id === registrationTournament.id
-          ? { ...tournament, registered: Math.min(tournament.capacity, tournament.registered + 1) }
-          : tournament,
-      ),
-    );
-    setRegistrationTournamentId(null);
-
     try {
       const result = await tournamentCallables.registerParticipant({
         tournamentId: registrationTournament.id,
-        tournamentName: registrationTournament.name,
-        tournamentDate: registrationTournament.date,
-        tournamentStatus: registrationTournament.status,
         memberId,
         participantName: user?.displayName ?? null,
         participantEmail: user?.email ?? null,
-        registrationFeeMinor: registrationFeeSelection.amountMinor,
         notes: registrationFeeSelection.label,
       });
 
-      if (result.registrationId !== localRegistrationId) {
-        setRegistrations((current) =>
-          current.map((registration) =>
-            registration.id === localRegistrationId
-              ? { ...registration, id: result.registrationId }
-              : registration,
-          ),
-        );
-      }
-
+      setRegistrationTournamentId(null);
       setNotice(
         result.duplicate
           ? `La inscripcion de "${registrationTournament.name}" ya estaba registrada.`
@@ -1613,11 +1354,16 @@ export function TournamentRegistration() {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No pudimos persistir la inscripcion.';
-      setNotice(`Inscripcion cargada en pantalla. Falta sincronizar con Functions: ${message}`);
+      setNotice(`No pudimos registrar la inscripcion en Functions: ${message}`);
     }
   };
 
   const openPaymentModal = (registration: TournamentRegistrationRecord) => {
+    if (registration.status === 'pending_approval') {
+      setNotice('Aproba la inscripcion antes de registrar el pago.');
+      return;
+    }
+
     setPaymentRegistrationId(registration.id);
     setPaymentDraft({
       paymentMethodId: registration.paymentMethodId ?? 'cash',
@@ -1626,6 +1372,22 @@ export function TournamentRegistration() {
       paymentReference: registration.paymentReference ?? '',
       notes: '',
     });
+  };
+
+  const handleApproveRegistration = async (registration: TournamentRegistrationRecord) => {
+    try {
+      const result = await tournamentCallables.approveRegistration({
+        registrationId: registration.id,
+      });
+      setNotice(
+        result.duplicate
+          ? `La inscripcion de ${registration.participantName} ya estaba aprobada.`
+          : `Inscripcion de ${registration.participantName} aprobada. Queda pendiente de pago.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No pudimos aprobar la inscripcion.';
+      setNotice(`No pudimos aprobar la inscripcion: ${message}`);
+    }
   };
 
   const closePaymentModal = () => {
@@ -1644,7 +1406,7 @@ export function TournamentRegistration() {
     setScorecardDraft((current) => ({ ...current, [name]: value }));
   };
 
-  const handleAddScorecard = () => {
+  const handleAddScorecard = async () => {
     if (!selectedTournament) {
       return;
     }
@@ -1667,19 +1429,20 @@ export function TournamentRegistration() {
       status: 'final',
     };
 
-    setTournaments((current) =>
-      current.map((tournament) =>
-        tournament.id === selectedTournament.id
-          ? {
-              ...tournament,
-              approvedCards: tournament.approvedCards + 1,
-              leaderboard: [...tournament.leaderboard, row],
-            }
-          : tournament,
-      ),
-    );
-    setScorecardDraft({ player: '', category: '', gross: '', handicap: '', net: '' });
-    setNotice(`Tarjeta cargada para ${row.player}. El ranking se actualizo por categoria.`);
+    try {
+      await updateTournamentRecord(
+        selectedTournament.id,
+        {
+          approvedCards: selectedTournament.approvedCards + 1,
+          leaderboard: [...selectedTournament.leaderboard, row],
+        },
+        user?.id ?? 'system',
+      );
+      setScorecardDraft({ player: '', category: '', gross: '', handicap: '', net: '' });
+      setNotice(`Tarjeta cargada para ${row.player}. El ranking se actualizo por categoria.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? `No pudimos guardar la tarjeta: ${error.message}` : 'No pudimos guardar la tarjeta.');
+    }
   };
 
   const handlePaymentDraftChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -1705,44 +1468,6 @@ export function TournamentRegistration() {
       return;
     }
 
-    const receiptNumber = buildLocalReceiptNumber(paymentRegistration.id, paymentDraft.operationDate);
-    const localReceiptId = `receipt-${paymentRegistration.id}`;
-    const localMovementId = `movement-${paymentRegistration.id}`;
-
-    // TODO(notifications): cuando quede cerrado el modulo de notificaciones, enviar el recibo emitido al socio o invitado.
-    setReceipts((current) => [
-      {
-        id: localReceiptId,
-        registrationId: paymentRegistration.id,
-        tournamentId: paymentRegistration.tournamentId,
-        receiptNumber,
-        amountMinor,
-        paymentMethodId: paymentDraft.paymentMethodId,
-        movementId: localMovementId,
-        issuedAt: paymentDraft.operationDate,
-      },
-      ...current.filter((receipt) => receipt.registrationId !== paymentRegistration.id),
-    ]);
-    setRegistrations((current) =>
-      current.map((registration) =>
-        registration.id === paymentRegistration.id
-          ? {
-              ...registration,
-              amountMinor,
-              status: 'confirmed',
-              paymentStatus: 'paid',
-              receiptId: localReceiptId,
-              financialMovementId: localMovementId,
-              paidAt: paymentDraft.operationDate,
-              paymentMethodId: paymentDraft.paymentMethodId,
-              paymentReference: paymentDraft.paymentReference.trim() || null,
-              notes: paymentDraft.notes.trim() || null,
-            }
-          : registration,
-      ),
-    );
-    closePaymentModal();
-
     try {
       const result = await tournamentCallables.recordRegistrationPayment({
         registrationId: paymentRegistration.id,
@@ -1753,33 +1478,11 @@ export function TournamentRegistration() {
         notes: paymentDraft.notes.trim() || null,
       });
 
-      setReceipts((current) =>
-        current.map((receipt) =>
-          receipt.registrationId === paymentRegistration.id
-            ? {
-                ...receipt,
-                id: result.receiptId,
-                receiptNumber: result.receiptNumber,
-                movementId: result.movementId,
-              }
-            : receipt,
-        ),
-      );
-      setRegistrations((current) =>
-        current.map((registration) =>
-          registration.id === paymentRegistration.id
-            ? {
-                ...registration,
-                receiptId: result.receiptId,
-                financialMovementId: result.movementId,
-              }
-            : registration,
-        ),
-      );
+      closePaymentModal();
       setNotice(`Pago registrado. Recibo ${result.receiptNumber} y movimiento contable vinculados.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No pudimos persistir el pago.';
-      setNotice(`Pago reflejado en pantalla. Falta sincronizar con Functions: ${message}`);
+      setNotice(`No pudimos registrar el pago en Functions: ${message}`);
     }
   };
 
@@ -1825,6 +1528,8 @@ export function TournamentRegistration() {
         </section>
 
         {notice && <div className="accounting-success tournament-notice">{notice}</div>}
+        {dataError && <div className="error-message tournament-notice">{dataError}</div>}
+        {isDataLoading && <div className="accounting-success tournament-notice">Cargando torneos desde Firestore...</div>}
 
         <section className="tournament-summary-grid" aria-label="Resumen de torneos">
           <article className="summary-card">
@@ -1890,106 +1595,61 @@ export function TournamentRegistration() {
 
             {activeTab === 'calendar' && (
               <>
-                <div className={`search-collapse ${isSearchPanelOpen ? 'search-collapse--open' : ''}`}>
-                  <button
-                    type="button"
-                    className="search-collapse__trigger"
-                    aria-expanded={isSearchPanelOpen}
-                    onClick={() => setIsSearchPanelOpen((current) => !current)}
-                  >
-                    <span className="search-collapse__title">
-                      <span className="search-collapse__icon">
-                        <Icon type="search" />
-                      </span>
-                      <span>
-                        <strong>Busqueda y filtros</strong>
-                        <small>
-                          {activeSearchCount > 0
-                            ? `${activeSearchCount} criterio${activeSearchCount === 1 ? '' : 's'} activo${activeSearchCount === 1 ? '' : 's'}`
-                            : 'Buscar por torneo, fecha, formato o estado'}
-                        </small>
-                      </span>
-                    </span>
-                    <span className="search-collapse__meta">
-                      {activeSearchCount > 0 && <span className="status-chip">{activeSearchCount}</span>}
-                      <span className="search-collapse__chevron">
-                        <Icon type="chevron" />
-                      </span>
-                    </span>
-                  </button>
-
-                  {isSearchPanelOpen && (
-                    <div className="search-collapse__body">
-                      <div className="member-toolbar tournament-toolbar">
-                        <div className="member-toolbar__row tournament-toolbar__row">
-                          <label className="member-search member-search--wide" htmlFor="tournamentSearch">
-                            <span>Buscar torneo</span>
-                            <input
-                              id="tournamentSearch"
-                              type="search"
-                              value={searchQuery}
-                              onChange={(event) => setSearchQuery(event.target.value)}
-                              placeholder="Nombre, formato o categoria"
-                            />
-                          </label>
-
-                          {canManageTournaments && (
-                            <label className="form-field member-filter" htmlFor="tournamentStatusFilter">
-                              <span>Estado</span>
-                              <select
-                                id="tournamentStatusFilter"
-                                value={statusFilter}
-                                onChange={(event) => setStatusFilter(event.target.value as 'all' | TournamentStatus)}
-                              >
-                                {STATUS_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-
-                          <label className="form-field member-filter" htmlFor="tournamentFormatFilter">
-                            <span>Formato</span>
-                            <select
-                              id="tournamentFormatFilter"
-                              value={formatFilter}
-                              onChange={(event) => setFormatFilter(event.target.value as 'all' | TournamentFormat)}
-                            >
-                              <option value="all">Todos</option>
-                              {TOURNAMENT_FORMATS.map((format) => (
-                                <option key={format.value} value={format.value}>
-                                  {format.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-
-                          <label className="form-field member-filter" htmlFor="tournamentDateFrom">
-                            <span>Desde</span>
-                            <input
-                              id="tournamentDateFrom"
-                              type="date"
-                              value={dateFromFilter}
-                              onChange={(event) => setDateFromFilter(event.target.value)}
-                            />
-                          </label>
-
-                          <label className="form-field member-filter" htmlFor="tournamentDateTo">
-                            <span>Hasta</span>
-                            <input
-                              id="tournamentDateTo"
-                              type="date"
-                              value={dateToFilter}
-                              onChange={(event) => setDateToFilter(event.target.value)}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <SearchFiltersPanel
+                  open={isSearchPanelOpen}
+                  onToggle={() => setIsSearchPanelOpen((current) => !current)}
+                  title="Busqueda y filtros"
+                  helper="Buscar por torneo, fecha, formato o estado"
+                  activeCount={activeSearchCount}
+                  icon={<Icon type="search" />}
+                  chevron={<Icon type="chevron" />}
+                  toolbarClassName="tournament-toolbar"
+                  rowClassName="tournament-toolbar__row"
+                  fields={[
+                    {
+                      id: 'tournamentSearch',
+                      label: 'Buscar torneo',
+                      value: searchQuery,
+                      onChange: setSearchQuery,
+                      type: 'search',
+                      placeholder: 'Nombre, formato o categoria',
+                    },
+                    {
+                      id: 'tournamentStatusFilter',
+                      label: 'Estado',
+                      value: statusFilter,
+                      onChange: (value) => setStatusFilter(value as 'all' | TournamentStatus),
+                      type: 'select',
+                      options: STATUS_OPTIONS,
+                      hidden: !canManageTournaments,
+                    },
+                    {
+                      id: 'tournamentFormatFilter',
+                      label: 'Formato',
+                      value: formatFilter,
+                      onChange: (value) => setFormatFilter(value as 'all' | TournamentFormat),
+                      type: 'select',
+                      options: [
+                        { value: 'all', label: 'Todos' },
+                        ...TOURNAMENT_FORMATS,
+                      ],
+                    },
+                    {
+                      id: 'tournamentDateFrom',
+                      label: 'Desde',
+                      value: dateFromFilter,
+                      onChange: setDateFromFilter,
+                      type: 'date',
+                    },
+                    {
+                      id: 'tournamentDateTo',
+                      label: 'Hasta',
+                      value: dateToFilter,
+                      onChange: setDateToFilter,
+                      type: 'date',
+                    },
+                  ]}
+                />
 
                 <div className="directory-results">
                   <strong>{filteredTournaments.length} torneos encontrados</strong>
@@ -2587,6 +2247,11 @@ export function TournamentRegistration() {
                         <span className="member-type-badge">
                           {selectedTournamentPaymentSummary.paid} pagas / {selectedTournamentPaymentSummary.unpaid} pendientes
                         </span>
+                        {selectedTournamentPaymentSummary.pendingApproval > 0 && (
+                          <span className="status-chip status-chip--pending">
+                            {selectedTournamentPaymentSummary.pendingApproval} por aprobar
+                          </span>
+                        )}
                         <UiActionButton type="button" variant="secondary" compact onClick={() => setIsRegistrationsListOpen((current) => !current)}>
                           Ver listado
                         </UiActionButton>
@@ -2604,10 +2269,47 @@ export function TournamentRegistration() {
                     </div>
                     {isRegistrationsListOpen && (
                       <div className="tournament-registration-list">
+                        <div className="member-toolbar tournament-toolbar tournament-registration-filters">
+                          <div className="member-toolbar__row tournament-toolbar__row">
+                            <label className="member-search member-search--wide">
+                              <span>Buscar empadronado</span>
+                              <input
+                                type="search"
+                                value={registrationSearchQuery}
+                                onChange={(event) => setRegistrationSearchQuery(event.target.value)}
+                                placeholder="Nombre, email, socio, matricula o referencia"
+                              />
+                            </label>
+                            <label className="form-field member-filter">
+                              <span>Estado</span>
+                              <select
+                                value={registrationStatusFilter}
+                                onChange={(event) => setRegistrationStatusFilter(event.target.value as RegistrationStatusFilter)}
+                              >
+                                {REGISTRATION_STATUS_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="form-field member-filter">
+                              <span>Origen</span>
+                              <select
+                                value={registrationOriginFilter}
+                                onChange={(event) => setRegistrationOriginFilter(event.target.value as RegistrationOriginFilter)}
+                              >
+                                {REGISTRATION_ORIGIN_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        </div>
                         {selectedTournamentRegistrations.length === 0 ? (
                           <div className="empty-state empty-state--inline">Todavia no hay inscripciones cargadas.</div>
+                        ) : filteredSelectedTournamentRegistrations.length === 0 ? (
+                          <div className="empty-state empty-state--inline">No encontramos empadronados con esos filtros.</div>
                         ) : (
-                          selectedTournamentRegistrations.map((registration) => {
+                          filteredSelectedTournamentRegistrations.map((registration) => {
                             const receipt = receipts.find((entry) => entry.id === registration.receiptId);
                             return (
                               <article key={registration.id} className="tournament-registration-item tournament-registration-item--detailed">
@@ -2618,6 +2320,14 @@ export function TournamentRegistration() {
                                 <div>
                                   <span>Nombre</span>
                                   <strong>{registration.participantName}</strong>
+                                  <small>{getRegistrationOriginLabel(registration)}</small>
+                                </div>
+                                <div>
+                                  <span>Contacto</span>
+                                  <strong>{registration.participantEmail ?? registration.externalPhone ?? 'Sin contacto'}</strong>
+                                  {registration.externalAagLicense && (
+                                    <small>AAG {registration.externalAagLicense}</small>
+                                  )}
                                 </div>
                                 <div>
                                   <span>Estado</span>
@@ -2628,7 +2338,11 @@ export function TournamentRegistration() {
                                   <strong>{getRegistrationReference(registration, receipt)}</strong>
                                 </div>
                                 <div className="tournament-registration-payment">
-                                  {registration.paymentStatus === 'unpaid' ? (
+                                  {registration.status === 'pending_approval' ? (
+                                    <button type="button" className="status-chip status-chip--pending tournament-pay-chip" onClick={() => void handleApproveRegistration(registration)}>
+                                      Aprobar
+                                    </button>
+                                  ) : registration.paymentStatus === 'unpaid' ? (
                                     <button type="button" className="status-chip status-chip--pending tournament-pay-chip" onClick={() => openPaymentModal(registration)}>
                                       Pagar
                                     </button>
@@ -2686,7 +2400,7 @@ export function TournamentRegistration() {
                       </label>
                     </div>
                     <p className="profile-note">
-                      Abre {formatDateTimeForDisplay(selectedTournament.registrationOpenAt)} y cierra {formatDateTimeForDisplay(selectedTournament.registrationCloseAt)}. La apertura y cierre automaticos requieren una funcion programada que compare fecha/hora y cambie el estado del torneo.
+                      Abre {formatDateTimeForDisplay(selectedTournament.registrationOpenAt)} y cierra {formatDateTimeForDisplay(selectedTournament.registrationCloseAt)}. La sincronizacion automatica revisa estos horarios y actualiza el estado del torneo.
                     </p>
                     <div className="tournament-mode-actions tournament-mode-actions--bottom">
                       {['draft', 'scheduled', 'registration_closed'].includes(selectedTournament.status) && (

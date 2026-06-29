@@ -5,6 +5,8 @@ export const TOURNAMENTS_COLLECTIONS = {
 };
 export const TOURNAMENTS_CALLABLE_NAMES = {
     registerParticipant: 'tournamentsRegisterParticipant',
+    registerExternalParticipant: 'tournamentsRegisterExternalParticipant',
+    approveRegistration: 'tournamentsApproveRegistration',
     recordRegistrationPayment: 'tournamentsRecordRegistrationPayment',
 };
 //# sourceMappingURL=constants.js.map

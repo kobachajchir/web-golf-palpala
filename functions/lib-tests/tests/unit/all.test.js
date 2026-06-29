@@ -13,4 +13,5 @@ import './accounting.mercado-pago.use-case.test.js';
 import './accounting.payment.use-case.test.js';
 import './accounting.payroll-cycle.use-case.test.js';
 import './accounting.salary.use-case.test.js';
+import './tournament.registration.use-case.test.js';
 //# sourceMappingURL=all.test.js.map

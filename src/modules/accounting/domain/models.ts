@@ -408,6 +408,7 @@ export interface RegisterPaymentResult {
   movementId: DocId;
   netAmountMinor: AmountMinor;
   duplicate: boolean;
+  receiptNumber?: string | null;
 }
 
 export interface CreateMercadoPagoCheckoutItemPayload {

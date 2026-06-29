@@ -13,6 +13,7 @@ import {
 import { collection, getCountFromServer, query, where } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
 import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
@@ -887,97 +888,42 @@ export function MembersAdmin() {
             </div>
           </div>
 
-          <div
-            className={`search-collapse ${isFiltersOpen ? "search-collapse--open" : ""}`}
-            ref={filtersRef}
-          >
-            <button
-              type="button"
-              className="search-collapse__trigger"
-              aria-expanded={isFiltersOpen}
-              onClick={() => setIsFiltersOpen((current) => !current)}
-            >
-              <span className="search-collapse__title">
-                <span className="search-collapse__icon">
-                  <SearchIcon />
-                </span>
-                <span>
-                  <strong>Busqueda y filtros</strong>
-                  <small>
-                    {activeSearchCount > 0
-                      ? `${activeSearchCount} criterio${activeSearchCount === 1 ? "" : "s"} activo${activeSearchCount === 1 ? "" : "s"}`
-                      : "Buscar por socio, nombre, DNI, matricula, tipo o estado"}
-                  </small>
-                </span>
-              </span>
-              <span className="search-collapse__meta">
-                {activeSearchCount > 0 && (
-                  <span className="status-chip">{activeSearchCount}</span>
-                )}
-                <span className="search-collapse__chevron">
-                  <ChevronIcon />
-                </span>
-              </span>
-            </button>
-
-            {isFiltersOpen && (
-              <div className="search-collapse__body">
-                <div className="member-toolbar">
-                  <div className="member-toolbar__row">
-                    <label className="member-search member-search--wide">
-                      <span>Busqueda rapida</span>
-                      <input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                      />
-                    </label>
-
-                    <label
-                      className="form-field member-filter"
-                      htmlFor="memberTypeFilter"
-                    >
-                      <span>Tipo</span>
-                      <select
-                        id="memberTypeFilter"
-                        value={memberTypeFilter}
-                        onChange={(event) =>
-                          setMemberTypeFilter(
-                            event.target.value as MemberTypeFilter,
-                          )
-                        }
-                      >
-                        <option value="all">Todos los tipos</option>
-                        {MEMBER_TYPE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="form-field member-filter">
-                      <span>Estado</span>
-                      <select
-                        value={activityFilter}
-                        onChange={(event) =>
-                          setActivityFilter(
-                            event.target.value as ActivityFilter,
-                          )
-                        }
-                      >
-                        {ACTIVITY_FILTER_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <SearchFiltersPanel
+            open={isFiltersOpen}
+            onToggle={() => setIsFiltersOpen((current) => !current)}
+            panelRef={filtersRef}
+            title="Busqueda y filtros"
+            helper="Buscar por socio, nombre, DNI, matricula, tipo o estado"
+            activeCount={activeSearchCount}
+            icon={<SearchIcon />}
+            chevron={<ChevronIcon />}
+            fields={[
+              {
+                label: 'Busqueda rapida',
+                value: searchQuery,
+                onChange: setSearchQuery,
+                type: 'search',
+              },
+              {
+                id: 'memberTypeFilter',
+                label: 'Tipo',
+                value: memberTypeFilter,
+                onChange: (value) => setMemberTypeFilter(value as MemberTypeFilter),
+                type: 'select',
+                options: [
+                  { value: 'all', label: 'Todos los tipos' },
+                  ...MEMBER_TYPE_OPTIONS,
+                ],
+              },
+              {
+                label: 'Estado',
+                value: activityFilter,
+                onChange: (value) => setActivityFilter(value as ActivityFilter),
+                type: 'select',
+                options: ACTIVITY_FILTER_OPTIONS,
+              },
+            ]}
+          />
 
           {error && <div className="error-message">{error}</div>}
 

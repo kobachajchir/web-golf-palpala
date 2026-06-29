@@ -265,6 +265,8 @@ test('referencia de pago queda en metadata del movimiento', async () => {
 
   const movement = manager.financialMovements.get(result.movementId);
   assert.equal((movement?.metadata as { paymentReference?: string } | undefined)?.paymentReference, 'TRX-123');
+  assert.match(String(result.receiptNumber ?? ''), /^REC-20260401-/);
+  assert.equal((movement?.metadata as { receiptNumber?: string } | undefined)?.receiptNumber, result.receiptNumber);
 });
 
 test('empleado no puede registrar pagos', async () => {

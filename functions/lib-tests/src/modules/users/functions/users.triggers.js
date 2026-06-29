@@ -1,26 +1,67 @@
 import { logger } from 'firebase-functions';
+import { auth as authV1 } from 'firebase-functions/v1';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
-import { beforeUserSignedIn } from 'firebase-functions/v2/identity';
-import { syncUserFromAuthUseCase } from '../application/use-cases/auth.use-cases.js';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { syncClaimsForUserDocument, syncUserFromAuthUseCase } from '../application/use-cases/auth.use-cases.js';
 import { refreshMemberHandicapSnapshotUseCase } from '../application/use-cases/handicap.use-cases.js';
-import { syncClaimsForUserDocument } from '../application/use-cases/auth.use-cases.js';
+import { toHttpsError } from '../application/shared.js';
 import { FirebaseAuthGateway } from '../infrastructure/firestore/auth-gateway.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../infrastructure/firestore/repositories.js';
 const transactions = new FirestoreUsersTransactionManager(new SystemClock());
 const authGateway = new FirebaseAuthGateway();
-export const usersBeforeUserSignedIn = beforeUserSignedIn(async (event) => {
-    if (!event.data?.uid) {
-        return;
+async function syncAuthUserAndClaims(input) {
+    const user = await syncUserFromAuthUseCase(transactions, input);
+    await syncClaimsForUserDocument({
+        uid: input.uid,
+        user,
+        authGateway,
+    });
+    return user;
+}
+function createAuthSyncInput(input) {
+    return {
+        uid: input.uid,
+        ...(input.email ? { email: input.email } : {}),
+        ...(input.displayName ? { displayName: input.displayName } : {}),
+    };
+}
+export const usersOnAuthUserCreated = authV1.user().onCreate(async (user) => {
+    await syncAuthUserAndClaims(createAuthSyncInput({
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+    }));
+    logger.info('usersOnAuthUserCreated synced user document', {
+        uid: user.uid,
+    });
+});
+export const usersEnsureCurrentUserProfile = onCall(async (request) => {
+    try {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesion para sincronizar el perfil.');
+        }
+        const user = await syncAuthUserAndClaims(createAuthSyncInput({
+            uid: request.auth.uid,
+            email: typeof request.auth.token.email === 'string' ? request.auth.token.email : undefined,
+            displayName: typeof request.auth.token.name === 'string' ? request.auth.token.name : undefined,
+        }));
+        logger.info('usersEnsureCurrentUserProfile synced user document', {
+            uid: request.auth.uid,
+        });
+        return {
+            uid: user.id,
+            active: user.active,
+            roleIds: user.roleIds,
+            primaryRoleId: user.primaryRoleId,
+            profileType: user.profileType,
+            profileId: user.profileId ?? null,
+            claimsVersion: user.claimsVersion,
+        };
     }
-    await syncUserFromAuthUseCase(transactions, {
-        uid: event.data.uid,
-        email: event.data.email,
-        displayName: event.data.displayName,
-    });
-    logger.info('usersBeforeUserSignedIn synced user document', {
-        uid: event.data.uid,
-    });
-    return;
+    catch (error) {
+        logger.error('usersEnsureCurrentUserProfile failed', error);
+        throw toHttpsError(error);
+    }
 });
 export const usersSyncClaimsOnUserWrite = onDocumentWritten('users/{uid}', async (event) => {
     const afterSnapshot = event.data?.after;

@@ -3,6 +3,16 @@ import { FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/
 import { assertCondition } from '../../domain/errors.js';
 import { assertIsRecord, calculateEarlyPaymentDiscount, calculateMembershipRenewalDueDate, ensureStaff, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalRecord, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, toClubAccountingPeriod, } from '../shared.js';
 import { createPostedMovement } from '../movement-helpers.js';
+function buildReceiptNumber(operationDate, movementId) {
+    const year = operationDate.getUTCFullYear();
+    const month = String(operationDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(operationDate.getUTCDate()).padStart(2, '0');
+    return `REC-${year}${month}${day}-${movementId.slice(0, 8).toUpperCase()}`;
+}
+function getReceiptNumberFromMovementMetadata(metadata) {
+    const receiptNumber = metadata?.receiptNumber;
+    return typeof receiptNumber === 'string' && receiptNumber.trim().length > 0 ? receiptNumber : null;
+}
 export async function registerPaymentUseCase(params) {
     const actor = ensureStaff(params.actor);
     return params.transactions.runInTransaction(async (dataAccess) => {
@@ -36,6 +46,7 @@ export async function registerPaymentUseCase(params) {
                     movementId: existingMovement.id,
                     netAmountMinor: existingMovement.netAmountMinor,
                     duplicate: true,
+                    receiptNumber: getReceiptNumberFromMovementMetadata(existingMovement.metadata),
                 };
             }
             assertCondition(memberFeeCharge.status === 'pending' || memberFeeCharge.status === 'overdue', 'failed-precondition', 'Solo se pueden cobrar cuotas pendientes o vencidas.');
@@ -66,6 +77,7 @@ export async function registerPaymentUseCase(params) {
                         movementId: existingMovement.id,
                         netAmountMinor: existingMovement.netAmountMinor,
                         duplicate: true,
+                        receiptNumber: getReceiptNumberFromMovementMetadata(existingMovement.metadata),
                     };
                 }
             }
@@ -87,6 +99,7 @@ export async function registerPaymentUseCase(params) {
                         movementId: existingMovement.id,
                         netAmountMinor: existingMovement.netAmountMinor,
                         duplicate: true,
+                        receiptNumber: getReceiptNumberFromMovementMetadata(existingMovement.metadata),
                     };
                 }
             }
@@ -152,6 +165,28 @@ export async function registerPaymentUseCase(params) {
             notes: params.input.notes ?? null,
             applyPaymentCommission: paymentMethod.id === 'credit',
         });
+        const receiptNumber = buildReceiptNumber(params.input.operationDate, movement.movementId);
+        await dataAccess.financialMovements.update(movement.movementId, {
+            metadata: {
+                ...(params.input.metadata ?? {}),
+                ...(paymentReference ? { paymentReference } : {}),
+                receiptNumber,
+                receiptIssuedAt: Timestamp.fromDate(params.input.operationDate),
+                receiptSource: params.input.sourceType,
+                specialReportingType: paymentMethod.specialReportingType ?? null,
+                ...(feePaymentSnapshot
+                    ? {
+                        originalFeeAmountMinor: memberFeeChargeToPay?.finalAmountMinor ?? params.input.grossAmountMinor,
+                        earlyPaymentDiscountPctBps: feePaymentSnapshot.discountPctBps,
+                        earlyPaymentDiscountAmountMinor: feePaymentSnapshot.discountAmountMinor,
+                        paidWithinEarlyPaymentWindow: feePaymentSnapshot.qualifies,
+                        feeChargePeriod: memberFeeChargeToPay?.period ?? null,
+                        feePaymentAccountingPeriod,
+                        isFeePaymentOutsidePeriod,
+                    }
+                    : {}),
+            },
+        }, actor.uid);
         if (params.input.sourceType === 'member_fee_charge' && params.input.sourceId) {
             await dataAccess.memberFeeCharges.update(params.input.sourceId, {
                 status: 'paid',
@@ -184,6 +219,22 @@ export async function registerPaymentUseCase(params) {
             await dataAccess.financialMovements.update(movement.movementId, {
                 metadata: {
                     ...(params.input.metadata ?? {}),
+                    ...(paymentReference ? { paymentReference } : {}),
+                    receiptNumber,
+                    receiptIssuedAt: Timestamp.fromDate(params.input.operationDate),
+                    receiptSource: params.input.sourceType,
+                    specialReportingType: paymentMethod.specialReportingType ?? null,
+                    ...(feePaymentSnapshot
+                        ? {
+                            originalFeeAmountMinor: memberFeeChargeToPay?.finalAmountMinor ?? params.input.grossAmountMinor,
+                            earlyPaymentDiscountPctBps: feePaymentSnapshot.discountPctBps,
+                            earlyPaymentDiscountAmountMinor: feePaymentSnapshot.discountAmountMinor,
+                            paidWithinEarlyPaymentWindow: feePaymentSnapshot.qualifies,
+                            feeChargePeriod: memberFeeChargeToPay?.period ?? null,
+                            feePaymentAccountingPeriod,
+                            isFeePaymentOutsidePeriod,
+                        }
+                        : {}),
                     warning: 'El cobro de cuota se registró con una categoría distinta de cuota_societaria.',
                 },
             }, actor.uid);
@@ -192,6 +243,7 @@ export async function registerPaymentUseCase(params) {
             movementId: movement.movementId,
             netAmountMinor: movement.netAmountMinor,
             duplicate: false,
+            receiptNumber,
         };
     });
 }

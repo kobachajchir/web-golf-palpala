@@ -7,7 +7,7 @@ type ConfirmDialogProps = {
   title: string;
   description?: ReactNode;
   confirmLabel?: string;
-  cancelLabel?: string;
+  cancelLabel?: string | null;
   tone?: ConfirmDialogTone;
   loading?: boolean;
   onCancel: () => void;
@@ -45,9 +45,11 @@ export function ConfirmDialog({
         </div>
 
         <div className="form-actions confirm-dialog-card__actions">
-          <button type="button" className="btn-danger" disabled={loading} onClick={onCancel}>
-            {cancelLabel}
-          </button>
+          {cancelLabel !== null && (
+            <button type="button" className="btn-danger" disabled={loading} onClick={onCancel}>
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             className={tone === 'danger' ? 'btn-danger' : 'btn-primary'}

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
 import { UiActionButton } from '../components/UiActionButton';
 import { ROLE_LABELS, ROLES, type RoleType } from '../constants/roles';
@@ -503,132 +504,86 @@ export function NotificationsPortal() {
             </div>
           )}
 
-          <div
-            className={`search-collapse notifications-search-collapse ${isFiltersOpen ? 'search-collapse--open' : ''}`}
-            ref={filtersRef}
-          >
-            <button
-              type="button"
-              className="search-collapse__trigger"
-              aria-expanded={isFiltersOpen}
-              onClick={() => setIsFiltersOpen((current) => !current)}
-            >
-              <span className="search-collapse__title">
-                <span className="search-collapse__icon">
-                  <NotificationIcon type="search" />
-                </span>
-                <span>
-                  <strong>Busqueda y filtros</strong>
-                  <small>
-                    {activeFilterCount > 0
-                      ? `${activeFilterCount} criterio${activeFilterCount === 1 ? '' : 's'} activo${activeFilterCount === 1 ? '' : 's'}`
-                      : isAdminView
-                        ? 'Buscar por usuario, tipo, rol, estado o accion'
-                        : 'Filtrar por tipo, estado o accion'}
-                  </small>
-                </span>
-              </span>
-              <span className="search-collapse__meta">
-                {activeFilterCount > 0 && <span className="status-chip">{activeFilterCount}</span>}
-                <span className="search-collapse__chevron">
-                  <NotificationIcon type="chevron" />
-                </span>
-              </span>
-            </button>
-
-            {isFiltersOpen && (
-              <form className="search-collapse__body notifications-search-collapse__body" onSubmit={handleFilterSubmit}>
-                <div className="member-toolbar notifications-toolbar">
-                  <div className="member-toolbar__row notifications-toolbar__row">
-                    {isAdminView && (
-                      <label className="member-search member-search--wide" htmlFor="notificationUserSearch">
-                        <span>Buscar usuario o socio</span>
-                        <input
-                          id="notificationUserSearch"
-                          type="search"
-                          value={filters.userQuery ?? ''}
-                          onChange={(event) => setFilters((current) => ({ ...current, userQuery: event.target.value }))}
-                          placeholder="Nombre, socio, UID o texto"
-                        />
-                      </label>
-                    )}
-
-                    <label className="form-field member-filter" htmlFor="notificationStatus">
-                      <span>Estado</span>
-                      <select
-                        id="notificationStatus"
-                        value={filters.status ?? 'all'}
-                        onChange={(event) =>
-                          setFilters((current) => ({
-                            ...current,
-                            status: event.target.value as NotificationDeliveryStatus | 'all',
-                          }))
-                        }
-                      >
-                        {STATUS_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <div className="member-toolbar__actions notifications-toolbar__actions">
-                      <UiActionButton type="submit" variant="secondary" disabled={isLoading}>
-                        {isLoading ? 'Cargando...' : 'Aplicar'}
-                      </UiActionButton>
-                    </div>
-                  </div>
-
-                  <div className="notifications-filter-row">
-                    <label className="form-field" htmlFor="notificationType">
-                      <span>Tipo</span>
-                      <input
-                        id="notificationType"
-                        type="search"
-                        value={filters.type ?? ''}
-                        onChange={(event) => setFilters((current) => ({ ...current, type: event.target.value }))}
-                        placeholder="Ej. contacto, licencia"
-                      />
-                    </label>
-
-                    {isAdminView && (
-                      <label className="form-field" htmlFor="notificationRole">
-                        <span>Destinatario por rol</span>
-                        <select
-                          id="notificationRole"
-                          value={filters.roleId ?? 'all'}
-                          onChange={(event) =>
-                            setFilters((current) => ({
-                              ...current,
-                              roleId: event.target.value as RoleType | 'all',
-                            }))
-                          }
-                        >
-                          {ROLE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-
-                    <label className="form-field" htmlFor="notificationActionKey">
-                      <span>Accion</span>
-                      <input
-                        id="notificationActionKey"
-                        type="search"
-                        value={filters.actionKey ?? ''}
-                        onChange={(event) => setFilters((current) => ({ ...current, actionKey: event.target.value }))}
-                        placeholder="Clave de accion"
-                      />
-                    </label>
-                  </div>
-                </div>
-              </form>
+          <SearchFiltersPanel
+            open={isFiltersOpen}
+            onToggle={() => setIsFiltersOpen((current) => !current)}
+            panelRef={filtersRef}
+            title="Busqueda y filtros"
+            helper={isAdminView ? 'Buscar por usuario, tipo, rol, estado o accion' : 'Filtrar por tipo, estado o accion'}
+            activeCount={activeFilterCount}
+            icon={<NotificationIcon type="search" />}
+            chevron={<NotificationIcon type="chevron" />}
+            className="notifications-search-collapse"
+            bodyClassName="notifications-search-collapse__body"
+            toolbarClassName="notifications-toolbar"
+            rowClassName="notifications-toolbar__row"
+            as="form"
+            onSubmit={handleFilterSubmit}
+            actions={(
+              <div className="member-toolbar__actions notifications-toolbar__actions">
+                <UiActionButton type="submit" variant="secondary" disabled={isLoading}>
+                  {isLoading ? 'Cargando...' : 'Aplicar'}
+                </UiActionButton>
+              </div>
             )}
-          </div>
+            fields={[
+              {
+                id: 'notificationUserSearch',
+                label: 'Buscar usuario o socio',
+                value: filters.userQuery ?? '',
+                onChange: (value) => setFilters((current) => ({ ...current, userQuery: value })),
+                type: 'search',
+                placeholder: 'Nombre, socio, UID o texto',
+                hidden: !isAdminView,
+              },
+              {
+                id: 'notificationStatus',
+                label: 'Estado',
+                value: filters.status ?? 'all',
+                onChange: (value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    status: value as NotificationDeliveryStatus | 'all',
+                  })),
+                type: 'select',
+                options: STATUS_OPTIONS,
+              },
+            ]}
+            secondaryFields={[
+              {
+                id: 'notificationType',
+                label: 'Tipo',
+                value: filters.type ?? '',
+                onChange: (value) => setFilters((current) => ({ ...current, type: value })),
+                type: 'search',
+                placeholder: 'Ej. contacto, licencia',
+                className: 'form-field',
+              },
+              {
+                id: 'notificationRole',
+                label: 'Destinatario por rol',
+                value: filters.roleId ?? 'all',
+                onChange: (value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    roleId: value as RoleType | 'all',
+                  })),
+                type: 'select',
+                options: ROLE_OPTIONS,
+                hidden: !isAdminView,
+                className: 'form-field',
+              },
+              {
+                id: 'notificationActionKey',
+                label: 'Accion',
+                value: filters.actionKey ?? '',
+                onChange: (value) => setFilters((current) => ({ ...current, actionKey: value })),
+                type: 'search',
+                placeholder: 'Clave de accion',
+                className: 'form-field',
+              },
+            ]}
+          />
 
         {error && <div className="error-message">{error}</div>}
 
