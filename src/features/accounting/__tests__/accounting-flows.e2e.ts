@@ -6,8 +6,7 @@ test('accounting critical flow contract keeps canonical routes discoverable on m
   const expectedRoutes = [
     '/accounting/overview',
     '/accounting/member-dues',
-    '/accounting/collections',
-    '/accounting/expenses',
+    '/accounting/caja',
     '/accounting/employees',
     '/accounting/external-docs',
     '/accounting/payment-methods',
@@ -16,15 +15,15 @@ test('accounting critical flow contract keeps canonical routes discoverable on m
     '/accounting/reports',
   ];
 
-  assert.ok(expectedRoutes.includes('/accounting/collections'));
+  assert.ok(expectedRoutes.includes('/accounting/caja'));
   assert.ok(expectedRoutes.includes('/accounting/payment-methods'));
   assert.equal(
     legacyAccountingQueryToRoute('section=cuotas&subsection=register-payment'),
-    '/accounting/collections',
+    '/accounting/caja?tab=cobros',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=expense-queue'),
-    '/accounting/expenses?tab=queue',
+    '/accounting/caja?tab=rendiciones',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=cuotas&subsection=membership-pricing'),

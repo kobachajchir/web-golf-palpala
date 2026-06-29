@@ -7,7 +7,8 @@ export function legacyAccountingQueryToRoute(search: string | URLSearchParams): 
   let pathname = '/accounting/overview';
 
   if (section === 'cuotas' && subsection === 'register-payment') {
-    pathname = '/accounting/collections';
+    pathname = '/accounting/caja';
+    params.set('tab', 'cobros');
   } else if (section === 'cuotas' && subsection === 'generate-fee') {
     pathname = '/accounting/member-dues';
   } else if (section === 'cuotas' && subsection === 'renewals') {
@@ -17,20 +18,24 @@ export function legacyAccountingQueryToRoute(search: string | URLSearchParams): 
     pathname = '/accounting/member-dues';
     params.set('tab', params.get('tab') ?? 'config');
   } else if (section === 'movimientos' && subsection === 'expense-form') {
-    pathname = '/accounting/expenses';
+    pathname = '/accounting/caja';
+    params.set('tab', 'egresos');
   } else if (section === 'cuotas' && subsection === 'expense-form') {
-    pathname = '/accounting/expenses';
+    pathname = '/accounting/caja';
+    params.set('tab', 'egresos');
   } else if (section === 'movimientos' && subsection === 'expense-queue') {
-    pathname = '/accounting/expenses';
-    params.set('tab', 'queue');
+    pathname = '/accounting/caja';
+    params.set('tab', 'rendiciones');
   } else if (section === 'empleados' && (subsection === 'employee-expenses' || subsection === 'expense-queue')) {
-    pathname = '/accounting/expenses';
-    params.set('tab', 'queue');
+    pathname = '/accounting/caja';
+    params.set('tab', 'rendiciones');
   } else if (section === 'movimientos' && subsection === 'mercado-pago') {
-    pathname = '/accounting/collections';
+    pathname = '/accounting/caja';
+    params.set('tab', 'cobros');
     params.set('mode', 'mercadopago');
   } else if (section === 'cuotas' && subsection === 'mercado-pago') {
-    pathname = '/accounting/collections';
+    pathname = '/accounting/caja';
+    params.set('tab', 'cobros');
     params.set('mode', 'mercadopago');
   } else if (section === 'empleados' && subsection === 'employee-list') {
     pathname = '/accounting/employees';

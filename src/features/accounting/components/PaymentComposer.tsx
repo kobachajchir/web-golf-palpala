@@ -15,6 +15,7 @@ export function PaymentComposer({
   mode,
   onSubmitManual,
   onCreateCheckout,
+  autoSelectOpenItems = false,
 }: {
   memberId: string;
   openItems: OpenItem[];
@@ -22,6 +23,7 @@ export function PaymentComposer({
   mode: PaymentComposerMode;
   onSubmitManual: (receipt: ManualPaymentReceipt) => void;
   onCreateCheckout: (checkout: CheckoutSession) => void;
+  autoSelectOpenItems?: boolean;
 }) {
   const composer = usePaymentComposer({ memberId, openItems, paymentMethods, initialMode: mode });
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -43,6 +45,20 @@ export function PaymentComposer({
       };
     });
   }, [composer, mode, paymentMethods]);
+
+  useEffect(() => {
+    if (!autoSelectOpenItems || openItems.length === 0) {
+      return;
+    }
+
+    const openItemIds = openItems.map((item) => item.id);
+    composer.setState((current) => {
+      const alreadySelected = openItemIds.length === current.selectedOpenItemIds.length
+        && openItemIds.every((itemId) => current.selectedOpenItemIds.includes(itemId));
+
+      return alreadySelected ? current : { ...current, selectedOpenItemIds: openItemIds };
+    });
+  }, [autoSelectOpenItems, composer, openItems]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

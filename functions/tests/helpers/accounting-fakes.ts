@@ -1459,6 +1459,7 @@ export function seedActiveFinancialConfig(
     advertisingDefaultPeriodicity: 'monthly',
     requireApprovalForExpensePosting: true,
     requireApprovalForOvertimePosting: true,
+    serverMonthlyExpenseMinor: 0,
     ...createAudit(),
     ...overrides,
   };

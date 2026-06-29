@@ -27,6 +27,8 @@ import type {
   ExpenseSubmissionDocument,
   ExternalAccountingReferenceDocument,
   FinancialConfigDocument,
+  FinancialExpenseCategoryDocument,
+  FinancialIncomeCategoryDocument,
   FinancialMovementDocument,
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
@@ -34,6 +36,7 @@ import type {
   MercadoPagoCheckoutSessionDocument,
   OvertimeEntryDocument,
   PaymentMethodDocument,
+  SalaryConfigurationDocument,
   SalaryPaymentDocument,
 } from '../../domain/models';
 import { createWebConverter } from '../../../users/infrastructure/firestore/converters';
@@ -109,6 +112,34 @@ export function createPaymentMethodsRepository(db: Firestore = requireFirestore(
     async listAllSorted() {
       const items = await repository.listByQuery(
         query(repository.collectionRef),
+      );
+      return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
+    },
+  };
+}
+
+export function createFinancialIncomeCategoriesRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<FinancialIncomeCategoryDocument>(db, ACCOUNTING_COLLECTIONS.financialIncomeCategories);
+
+  return {
+    ...repository,
+    async listActiveSorted() {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('active', '==', true)),
+      );
+      return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
+    },
+  };
+}
+
+export function createFinancialExpenseCategoriesRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<FinancialExpenseCategoryDocument>(db, ACCOUNTING_COLLECTIONS.financialExpenseCategories);
+
+  return {
+    ...repository,
+    async listActiveSorted() {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('active', '==', true)),
       );
       return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
     },
@@ -193,10 +224,34 @@ export function createExpenseSubmissionsRepository(db: Firestore = requireFirest
         query(repository.collectionRef, orderBy('expenseDate', 'desc'), limit(pageSize)),
       );
     },
+    listByStatus(status: ExpenseSubmissionDocument['status'], pageSize = 100) {
+      return repository.listByQuery(
+        query(repository.collectionRef, where('status', '==', status), orderBy('expenseDate', 'desc'), limit(pageSize)),
+      );
+    },
     countByStatus(status: ExpenseSubmissionDocument['status']) {
       return repository.countByQuery(
         query(repository.collectionRef, where('status', '==', status)),
       );
+    },
+  };
+}
+
+export function createSalaryConfigurationsRepository(db: Firestore = requireFirestore()) {
+  const repository = createRepository<SalaryConfigurationDocument>(db, ACCOUNTING_COLLECTIONS.salaryConfigurations);
+
+  return {
+    ...repository,
+    async getActiveByEmployeeId(employeeId: string) {
+      const items = await repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('employeeId', '==', employeeId),
+          where('isActive', '==', true),
+          limit(1),
+        ),
+      );
+      return items[0] ?? null;
     },
   };
 }
@@ -374,6 +429,12 @@ export function createEmployeeAccountingLinksRepository(db: Firestore = requireF
     async listByEmployeeAndPeriod(employeeId: string, period: string) {
       const items = await repository.listByQuery(
         query(repository.collectionRef, where('employeeId', '==', employeeId), where('period', '==', period)),
+      );
+      return sortByPeriodDesc(items);
+    },
+    async listByReferenceAndPeriod(referenceId: string, period: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('referenceId', '==', referenceId), where('period', '==', period)),
       );
       return sortByPeriodDesc(items);
     },

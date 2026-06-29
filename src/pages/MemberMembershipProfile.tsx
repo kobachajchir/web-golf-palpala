@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { CompactDetailsToggle } from '../components/CompactDetailsToggle';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { DescriptionList } from '../components/DescriptionList';
+import { IconActionMenu } from '../components/IconActionMenu';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { PersonProfileHeader } from '../components/PersonProfileHeader';
+import { RoleChipList } from '../components/RoleChipList';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
 import { UiActionButton } from '../components/UiActionButton';
 import { normalizeRoleIds, ROLE_LABELS, ROLES, type RoleType } from '../constants/roles';
@@ -152,21 +157,6 @@ function buildMembershipSummary(member: ClubMemberRecord, memberDocument: Entity
   };
 }
 
-function ProfileDataField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="public-profile-field">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function EyeIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
@@ -187,6 +177,22 @@ function MoreIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
       <path d="M5 10.75A1.25 1.25 0 1 1 5 13.25a1.25 1.25 0 0 1 0-2.5Zm7 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm7 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M11 5a1 1 0 1 1 2 0v6h6a1 1 0 1 1 0 2h-6v6a1 1 0 1 1-2 0v-6H5a1 1 0 1 1 0-2h6z" />
+    </svg>
+  );
+}
+
+function MinusIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M5 11h14a1 1 0 1 1 0 2H5a1 1 0 1 1 0-2Z" />
     </svg>
   );
 }
@@ -605,6 +611,10 @@ export function MemberMembershipProfile() {
     memberPendingFamilyRemoval?.id === actorMemberId && !canManageMembership
       ? 'Salir del grupo familiar'
       : 'Eliminar del grupo familiar';
+  const accessStatusLabel = authStatus?.hasAuthUser
+    ? (authStatus.authDisabled || authStatus.userActive === false ? 'Acceso deshabilitado' : 'Acceso activo')
+    : 'Sin acceso creado';
+  const statusBadgeClass = member.active ? 'status-pill status-pill-green' : 'status-pill status-pill--bloqueado';
 
   const handlePayMembershipChargesWithMercadoPago = async () => {
     if (payableFeeCharges.length === 0) {
@@ -639,45 +649,58 @@ export function MemberMembershipProfile() {
   return (
     <div className="page-container profile-page">
       <section className="floating-card membership-profile-card">
-        <div className="public-profile-card__header membership-profile-card__header">
-          <div className="public-profile-avatar">{member.displayName.charAt(0).toUpperCase()}</div>
-
-          <div className="public-profile-card__copy">
-            <p className="eyebrow">Perfil de membresia</p>
-            <h1>{member.displayName}</h1>
-            <p className="profile-note">
-              Socio #{member.memberNumber} | {member.memberTypeLabel} | {member.active ? 'Activo' : 'Inactivo'}
-            </p>
-          </div>
-
-          <div className="membership-profile-card__actions">
-            {canManageMembership && (
+        <PersonProfileHeader
+          eyebrow="Perfil de membresia"
+          title={member.displayName}
+          avatarLabel={member.displayName}
+          subtitle={
+            <span>
+              Socio #{member.memberNumber} | {member.memberTypeLabel}
+            </span>
+          }
+          badges={
+            <>
+              <span className={statusBadgeClass}>{member.active ? 'Activo' : 'No activo'}</span>
+              <span className="status-pill">{membershipPaymentStatus}</span>
+              {hasFamilyGroup && <span className="status-pill">Grupo familiar</span>}
+            </>
+          }
+          actions={
+            canManageMembership ? (
               <UiActionButton to="/admin/members" variant="secondary" icon={<ArrowLeftIcon />}>
                 Volver al padron
               </UiActionButton>
-            )}
-          </div>
-        </div>
+            ) : null
+          }
+        />
 
-        <div className="public-profile-grid membership-profile-grid" id="membership-payments">
-          <ProfileDataField label="Estado" value={membershipPaymentStatus} />
-          <ProfileDataField label="Pago" value={membershipPaymentAvailability} />
-          <ProfileDataField label="Tipo" value={member.memberTypeLabel} />
-          <ProfileDataField label="Ultimo pago" value={membershipSummary.lastPaymentLabel} />
-          <ProfileDataField label="Vigente hasta" value={membershipSummary.validUntilLabel} />
-          <ProfileDataField label="Matricula AAG" value={member.aagMembershipNumber ?? 'Sin matricula'} />
-          {member.memberTypeId !== 'pleno' && (
-            <ProfileDataField label="Cuota deducida" value={member.feeDeductionLabel ?? 'Sin deduccion informada'} />
-          )}
-          <ProfileDataField
-            label="Grupo familiar"
-            value={hasFamilyGroup ? `${member.familyGroupCode ?? 'Grupo familiar'} (${Math.max(household.length, member.householdSize)} integrantes)` : 'Sin grupo'}
-          />
-          {hasFamilyGroup && (
-            <ProfileDataField
-              label="Titular familiar"
-              value={holderMember ? `#${holderMember.memberNumber} ${holderMember.displayName}` : 'No informado'}
-            />
+        <div className="membership-profile-summary-grid" id="membership-payments">
+          <article className="membership-summary-card">
+            <span>Estado</span>
+            <strong>{membershipPaymentStatus}</strong>
+            <small>{membershipPaymentAvailability}</small>
+          </article>
+          <article className="membership-summary-card">
+            <span>Vigencia</span>
+            <strong>{membershipSummary.validUntilLabel}</strong>
+            <small>Ultimo pago: {membershipSummary.lastPaymentLabel}</small>
+          </article>
+          <article className="membership-summary-card">
+            <span>Deuda</span>
+            <strong>{formatCurrency(payableFeeTotalMinor)}</strong>
+            <small>{payableFeeCharges.length} cuota{payableFeeCharges.length === 1 ? '' : 's'} pendiente{payableFeeCharges.length === 1 ? '' : 's'}</small>
+          </article>
+          <article className="membership-summary-card">
+            <span>Grupo familiar</span>
+            <strong>{hasFamilyGroup ? `${Math.max(household.length, member.householdSize)} integrante${Math.max(household.length, member.householdSize) === 1 ? '' : 's'}` : 'Sin grupo'}</strong>
+            <small>{holderMember ? `Titular: ${holderMember.displayName}` : member.familyGroupCode ?? 'Sin titular informado'}</small>
+          </article>
+          {canManageMembership && (
+            <article className="membership-summary-card">
+              <span>Acceso</span>
+              <strong>{accessStatusLabel}</strong>
+              <small>{authStatus?.lastLoginAt ? `Ultimo ingreso: ${formatDate(authStatus.lastLoginAt as TimestampLike)}` : 'Sin ingreso registrado'}</small>
+            </article>
           )}
         </div>
 
@@ -751,31 +774,24 @@ export function MemberMembershipProfile() {
           )}
 
           {canManageMembership && (
-            <article className="membership-panel">
+            <article className="membership-panel membership-details-panel">
               <p className="eyebrow">Datos internos</p>
               <h2>Resumen administrativo</h2>
-              <div className="membership-panel__list">
-                <div>
-                  <span>Nombre legado</span>
-                  <strong>{member.fullName}</strong>
-                </div>
-                <div>
-                  <span>ID interno</span>
-                  <strong>{member.id}</strong>
-                </div>
-                <div>
-                  <span>Origen</span>
-                  <strong>{member.source === 'legacy-padron' ? 'Padron legado cargado' : 'Registro manual'}</strong>
-                </div>
-                <div>
-                  <span>Ultima actualizacion</span>
-                  <strong>
-                    {new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(
-                      new Date(member.updatedAt),
-                    )}
-                  </strong>
-                </div>
-              </div>
+              <CompactDetailsToggle>
+                <DescriptionList
+                  items={[
+                    { label: 'Nombre legado', value: member.fullName },
+                    { label: 'ID interno', value: member.id },
+                    { label: 'Origen', value: member.source === 'legacy-padron' ? 'Padron legado cargado' : 'Registro manual' },
+                    {
+                      label: 'Ultima actualizacion',
+                      value: new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(member.updatedAt)),
+                    },
+                    { label: 'Matricula AAG', value: member.aagMembershipNumber ?? 'Sin matricula' },
+                    { label: 'Cuota deducida', value: member.feeDeductionLabel ?? 'Sin deduccion informada', hidden: member.memberTypeId === 'pleno' },
+                  ]}
+                />
+              </CompactDetailsToggle>
 
               {member.notes && (
                 <div className="membership-note">
@@ -791,113 +807,63 @@ export function MemberMembershipProfile() {
               <p className="eyebrow">Acciones</p>
               <h2>Opciones de membresia</h2>
 
-              <div className="membership-panel__list">
-                <div>
-                  <span>Estado de acceso</span>
-                  <strong>
-                    {authStatus?.hasAuthUser ? (authStatus.authDisabled ? 'Deshabilitado' : 'Activo') : 'Sin acceso creado'}
-                  </strong>
-                </div>
-                <div>
-                  <span>Ultimo ingreso</span>
-                  <strong>{formatDate(authStatus?.lastLoginAt as TimestampLike | string | Date | number | null | undefined)}</strong>
-                </div>
-                {authStatus?.linkedUserId && (
-                  <div className="access-role-row">
-                    <div className="public-profile-field public-profile-field--roles membership-access-roles">
-                      <span>Roles</span>
-                      <strong className="profile-role-list membership-role-list">
-                        {assignedRoleOptions.length > 0 ? (
-                          assignedRoleOptions.map((roleId) => (
-                            <span key={roleId}>{ROLE_LABELS[roleId]}</span>
-                          ))
-                        ) : (
-                          <span>Sin roles asignados</span>
-                        )}
-                      </strong>
-                    </div>
-                    {isDirectivo && (
-                      <div className="access-role-actions">
-                        <div className="role-actions">
-                          <UiActionButton
-                            type="button"
-                            variant="positive"
-                            compact
-                            disabled={isAddRoleDisabled}
-                            aria-haspopup="menu"
-                            aria-expanded={!isAddRoleDisabled && isRoleDropdownOpen}
-                            onClick={() => {
-                              if (isAddRoleDisabled) {
-                                return;
-                              }
+              <DescriptionList
+                items={[
+                  { label: 'Estado de acceso', value: accessStatusLabel },
+                  { label: 'Ultimo ingreso', value: formatDate(authStatus?.lastLoginAt as TimestampLike | string | Date | number | null | undefined) },
+                ]}
+              />
 
-                              setIsRemoveRoleDropdownOpen(false);
-                              setIsRoleDropdownOpen((current) => !current);
-                            }}
-                          >
-                            Agregar rol
-                          </UiActionButton>
-
-                          {!isAddRoleDisabled && isRoleDropdownOpen && (
-                            <div className="member-actions-menu role-actions-menu" role="menu">
-                              {missingRoleOptions.map((roleId) => (
-                                <button
-                                  key={roleId}
-                                  type="button"
-                                  className="member-actions-menu__item"
-                                  role="menuitem"
-                                  disabled={accessLoading}
-                                  onClick={() => void handleAddRole(roleId)}
-                                >
-                                  {ROLE_LABELS[roleId]}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="role-actions">
-                          <UiActionButton
-                            type="button"
-                            variant="danger"
-                            compact
-                            disabled={isRemoveRoleDisabled}
-                            aria-haspopup="menu"
-                            aria-expanded={!isRemoveRoleDisabled && isRemoveRoleDropdownOpen}
-                            onClick={() => {
-                              if (isRemoveRoleDisabled) {
-                                return;
-                              }
-
-                              setIsRoleDropdownOpen(false);
-                              setIsRemoveRoleDropdownOpen((current) => !current);
-                            }}
-                          >
-                            Eliminar rol
-                          </UiActionButton>
-
-                          {!isRemoveRoleDisabled && isRemoveRoleDropdownOpen && (
-                            <div className="member-actions-menu role-actions-menu" role="menu">
-                              {assignedRoleOptions.map((roleId) => (
-                                <button
-                                  key={roleId}
-                                  type="button"
-                                  className="member-actions-menu__item member-actions-menu__item--danger"
-                                  role="menuitem"
-                                  disabled={accessLoading}
-                                  onClick={() => void handleRemoveRole(roleId)}
-                                >
-                                  {ROLE_LABELS[roleId]}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+              {authStatus?.linkedUserId && (
+                <div className="membership-role-panel">
+                  <div>
+                    <span>Roles</span>
+                    <RoleChipList roleIds={assignedRoleOptions} />
+                    {!isDirectivo && <small>Solo Comite Ejecutivo puede modificar roles.</small>}
                   </div>
-                )}
-              </div>
+                  {isDirectivo && (
+                    <div className="access-role-actions">
+                      <IconActionMenu
+                        label="Agregar rol"
+                        icon={<PlusIcon />}
+                        open={!isAddRoleDisabled && isRoleDropdownOpen}
+                        items={missingRoleOptions.map((roleId) => ({
+                          id: roleId,
+                          label: ROLE_LABELS[roleId],
+                          disabled: accessLoading,
+                          onSelect: () => void handleAddRole(roleId),
+                        }))}
+                        onToggle={() => {
+                          if (isAddRoleDisabled) {
+                            return;
+                          }
+                          setIsRemoveRoleDropdownOpen(false);
+                          setIsRoleDropdownOpen((current) => !current);
+                        }}
+                      />
+                      <IconActionMenu
+                        label="Quitar rol"
+                        icon={<MinusIcon />}
+                        open={!isRemoveRoleDisabled && isRemoveRoleDropdownOpen}
+                        items={assignedRoleOptions.map((roleId) => ({
+                          id: roleId,
+                          label: ROLE_LABELS[roleId],
+                          danger: true,
+                          disabled: accessLoading,
+                          onSelect: () => void handleRemoveRole(roleId),
+                        }))}
+                        onToggle={() => {
+                          if (isRemoveRoleDisabled) {
+                            return;
+                          }
+                          setIsRoleDropdownOpen(false);
+                          setIsRemoveRoleDropdownOpen((current) => !current);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {accessMessage && (
                 <div className="membership-note">
@@ -1050,6 +1016,16 @@ export function MemberMembershipProfile() {
                   </div>
                 ))}
               </div>
+              <CompactDetailsToggle label="Mas detalles del grupo">
+                <DescriptionList
+                  items={[
+                    { label: 'Codigo de grupo', value: member.familyGroupCode ?? 'Sin codigo' },
+                    { label: 'Titular', value: holderMember ? `#${holderMember.memberNumber} ${holderMember.displayName}` : 'No informado' },
+                    { label: 'Integrantes', value: String(Math.max(household.length, member.householdSize)) },
+                    { label: 'Cuota deducida', value: member.feeDeductionLabel ?? 'Sin deduccion informada' },
+                  ]}
+                />
+              </CompactDetailsToggle>
             </article>
           )}
         </div>

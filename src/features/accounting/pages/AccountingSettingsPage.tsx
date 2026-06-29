@@ -101,6 +101,7 @@ function buildPayloadFromForm(
     advertisingDefaultPeriodicity: config.advertisingDefaultPeriodicity,
     requireApprovalForExpensePosting: config.requireApprovalForExpensePosting,
     requireApprovalForOvertimePosting: config.requireApprovalForOvertimePosting,
+    serverMonthlyExpenseMinor: config.serverMonthlyExpenseMinor ?? 0,
     notes: form.notes.trim() || null,
   };
 

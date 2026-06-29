@@ -92,6 +92,7 @@ export interface FinancialConfigDocument extends AuditFields {
   advertisingDefaultPeriodicity: AdvertisingDefaultPeriodicity;
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
+  serverMonthlyExpenseMinor?: AmountMinor | null;
   notes?: string | null;
 }
 

@@ -5,7 +5,7 @@ import { legacyAccountingQueryToRoute } from '../routes/legacyAccountingQueryToR
 test('quick action legacy routes redirect to canonical accounting tasks', () => {
   assert.equal(
     legacyAccountingQueryToRoute('section=cuotas&subsection=register-payment&memberId=mem_1'),
-    '/accounting/collections?memberId=mem_1',
+    '/accounting/caja?memberId=mem_1&tab=cobros',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=cuotas&subsection=generate-fee&period=2026-06'),
@@ -13,15 +13,15 @@ test('quick action legacy routes redirect to canonical accounting tasks', () => 
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=expense-form'),
-    '/accounting/expenses',
+    '/accounting/caja?tab=egresos',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=expense-queue'),
-    '/accounting/expenses?tab=queue',
+    '/accounting/caja?tab=rendiciones',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=mercado-pago'),
-    '/accounting/collections?mode=mercadopago',
+    '/accounting/caja?tab=cobros&mode=mercadopago',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=payment-methods'),

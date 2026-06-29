@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { createEmployeePayrollCyclesRepository, createEmployeeAccountingLinksRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
-import type { EmployeeAccountingLinkDocument, EmployeePayrollCycleDocument, EntityWithId } from '../../../modules/accounting/domain/models';
+import { UiActionButton } from '../../../components/UiActionButton';
+import { createEmployeePayrollCyclesRepository, createEmployeeAccountingLinksRepository, createSalaryConfigurationsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
+import type { EmployeeAccountingLinkDocument, EmployeePayrollCycleDocument, EntityWithId, SalaryConfigurationDocument } from '../../../modules/accounting/domain/models';
 import type { EmployeeDocument } from '../../../modules/users/domain/models';
 import { createEmployeesRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import { AccountingBarChart } from '../components/AccountingCharts';
@@ -14,6 +15,7 @@ import { formatCurrency, formatPeriod, getCurrentAccountingPeriod, normalizeAcco
 
 type EmployeeRow = EntityWithId<EmployeeDocument> & {
   cycle: EntityWithId<EmployeePayrollCycleDocument> | null;
+  salaryConfiguration: EntityWithId<SalaryConfigurationDocument> | null;
   links: Array<EntityWithId<EmployeeAccountingLinkDocument>>;
 };
 
@@ -24,10 +26,11 @@ export function AccountingEmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [openEmployeeActionsId, setOpenEmployeeActionsId] = useState<string | null>(null);
-  const grossTotalMinor = rows.reduce((total, row) => total + (row.cycle?.salaryGrossMinor ?? 0), 0);
+  const getEmployeeSalaryMinor = (row: EmployeeRow) => row.cycle?.salaryGrossMinor ?? row.salaryConfiguration?.baseAmountMinor ?? 0;
+  const grossTotalMinor = rows.reduce((total, row) => total + getEmployeeSalaryMinor(row), 0);
   const pendingSettlementMinor = rows
     .filter((row) => row.cycle?.status !== 'paid')
-    .reduce((total, row) => total + (row.cycle?.salaryGrossMinor ?? 0), 0);
+    .reduce((total, row) => total + getEmployeeSalaryMinor(row), 0);
   const linkedDocsCount = rows.reduce((total, row) => total + row.links.length, 0);
 
   const load = async () => {
@@ -38,6 +41,7 @@ export function AccountingEmployeesPage() {
       const employeesRepository = createEmployeesRepository();
       const cyclesRepository = createEmployeePayrollCyclesRepository();
       const linksRepository = createEmployeeAccountingLinksRepository();
+      const salaryConfigurationsRepository = createSalaryConfigurationsRepository();
       const [employees, cycles] = await Promise.all([
         employeesRepository.listAlphabetical(100),
         cyclesRepository.listByPeriod(period),
@@ -46,6 +50,7 @@ export function AccountingEmployeesPage() {
         employees.map(async (employee) => ({
           ...employee,
           cycle: cycles.find((cycle) => cycle.employeeId === employee.id) ?? null,
+          salaryConfiguration: await salaryConfigurationsRepository.getActiveByEmployeeId(employee.id),
           links: await linksRepository.listByEmployeeAndPeriod(employee.id, period),
         })),
       );
@@ -66,8 +71,8 @@ export function AccountingEmployeesPage() {
       <section className="floating-card accounting-hero">
         <div className="accounting-hero__copy">
           <p className="eyebrow">Empleados</p>
-          <h1>Ciclos mensuales</h1>
-          <p>Acceso claro a ciclo mensual, docs pendientes, liquidacion y pago.</p>
+          <h1>Detalles contables de empleados</h1>
+          <p>Resumen salarial, liquidaciones y acceso al ciclo mensual de cada empleado.</p>
         </div>
         <div className="accounting-hero__controls">
           <AccountingMonthPicker period={normalizeAccountingPeriod(period)} onChange={setPeriod} />
@@ -84,12 +89,14 @@ export function AccountingEmployeesPage() {
             id: 'stats',
             title: 'Estadisticas de sueldos',
             eyebrow: 'Liquidaciones',
-            helper: 'Total, pendientes y comprobantes vinculados',
+            helper: 'Total bruto, pendiente y documentacion vinculada',
             content: (
-              <>
-                <section className="summary-grid accounting-summary-grid">
+              <div className="accounting-full-width-section">
+                <section className="summary-grid accounting-summary-grid accounting-employees-stats-grid">
                   <article className="summary-card"><span>Empleados</span><strong>{rows.length}</strong><small>En vista del periodo</small></article>
                   <article className="summary-card"><span>Docs vinculados</span><strong>{linkedDocsCount}</strong><small>{formatPeriod(period)}</small></article>
+                  <article className="summary-card"><span>Total bruto</span><strong>{formatCurrency(grossTotalMinor)}</strong><small>Liquidaciones del periodo</small></article>
+                  <article className="summary-card"><span>Pendiente</span><strong>{formatCurrency(pendingSettlementMinor)}</strong><small>No pagado</small></article>
                 </section>
                 <div className="accounting-chart-grid">
                   <AccountingBarChart
@@ -100,16 +107,16 @@ export function AccountingEmployeesPage() {
                     ]}
                   />
                 </div>
-              </>
+              </div>
             ),
           },
           {
             id: 'list',
-            title: 'Empleados y ciclos mensuales',
-            eyebrow: 'Ciclos',
-            helper: formatPeriod(period),
+            title: 'Detalles contables por empleado',
+            eyebrow: 'Empleados',
+            helper: `Ciclo mensual vigente: ${formatPeriod(period)}`,
             content: (
-              <div className="accounting-list">
+              <div className="accounting-list accounting-employees-list">
                 {rows.map((employee) => (
                   <article key={employee.id} className="accounting-row accounting-row--actions accounting-employee-row">
                     <div className="accounting-row__main">
@@ -118,10 +125,14 @@ export function AccountingEmployeesPage() {
                     </div>
                     <div className="accounting-row__meta">
                       <span className={`status-chip status-chip--${employee.cycle?.status ?? 'draft'}`}>{employee.cycle?.status ?? 'draft'}</span>
-                      <strong>{formatCurrency(employee.cycle?.salaryGrossMinor ?? 0)}</strong>
+                      <strong>{formatCurrency(getEmployeeSalaryMinor(employee))}</strong>
+                      <small>{employee.cycle ? 'Ciclo posteado' : employee.salaryConfiguration ? 'Sueldo configurado' : 'Sin sueldo configurado'}</small>
                       <small>{employee.links.length} docs vinculados en {formatPeriod(period)}</small>
                     </div>
-                    <div className="member-actions accounting-row-menu-actions">
+                    <div className="member-actions accounting-row-menu-actions accounting-inline-actions accounting-employee-row__actions">
+                      <UiActionButton to={`/accounting/employees/${employee.id}?period=${period}`} compact>
+                        Ver ciclo mensual
+                      </UiActionButton>
                       <button
                         type="button"
                         className={`icon-button member-icon-button ${openEmployeeActionsId === employee.id ? 'icon-button--active' : ''}`}
@@ -133,9 +144,8 @@ export function AccountingEmployeesPage() {
                       </button>
                       {openEmployeeActionsId === employee.id && (
                         <div className="member-actions-menu">
-                          <Link className="member-actions-menu__item" to={`/accounting/employees/${employee.id}?period=${period}`}>Abrir ciclo mensual</Link>
-                          <Link className="member-actions-menu__item" to={`/accounting/employees/${employee.id}?period=${period}&section=external-docs`}>Docs pendientes</Link>
-                          <Link className="member-actions-menu__item" to={`/accounting/employees/${employee.id}?period=${period}&section=settlement`}>Liquidacion</Link>
+                          <Link className="member-actions-menu__item" to="/accounting/caja?tab=rendiciones">Rendiciones</Link>
+                          <Link className="member-actions-menu__item" to={`/accounting/employees/${employee.id}?period=${period}`}>Modificar sueldo</Link>
                         </div>
                       )}
                     </div>

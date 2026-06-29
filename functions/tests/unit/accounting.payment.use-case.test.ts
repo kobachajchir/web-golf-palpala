@@ -246,6 +246,26 @@ test('ingreso manual permite medios no efectivo sin referencia', async () => {
   assert.ok(manager.financialMovements.get(result.movementId));
 });
 
+test('ingreso manual exige categoria de ingreso valida', async () => {
+  const manager = setupPaymentFixture();
+
+  await assert.rejects(
+    () =>
+      registerPaymentUseCase({
+        actor: createAdminActor(),
+        input: {
+          sourceType: 'manual_income',
+          categoryId: 'proveedores',
+          paymentMethodId: PAYMENT_METHOD_IDS.cash,
+          grossAmountMinor: 100_000,
+          operationDate: new Date('2026-04-01T00:00:00.000Z'),
+        },
+        transactions: manager,
+      }),
+    /financial_income_categories\/proveedores/i,
+  );
+});
+
 test('referencia de pago queda en metadata del movimiento', async () => {
   const manager = setupPaymentFixture();
 

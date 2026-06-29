@@ -1626,6 +1626,33 @@
         { "fieldPath": "notificationId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountingPeriod", "order": "ASCENDING" },
+        { "fieldPath": "categoryId", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountingPeriod", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountingPeriod", "order": "ASCENDING" },
+        { "fieldPath": "paymentMethodId", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

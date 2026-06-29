@@ -84,6 +84,7 @@ export const FINANCIAL_EXPENSE_CATEGORY_IDS = {
   mantenimiento: 'mantenimiento',
   limpieza: 'limpieza',
   insumos: 'insumos',
+  servidor: 'servidor',
 } as const;
 
 export const DEFAULT_PAYMENT_METHODS: Array<{ id: string; data: Omit<PaymentMethodDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> }> = [
@@ -187,6 +188,7 @@ export const DEFAULT_FINANCIAL_EXPENSE_CATEGORIES: Array<{
   { id: FINANCIAL_EXPENSE_CATEGORY_IDS.mantenimiento, data: { name: 'Mantenimiento', description: 'Mantenimiento general.', defaultBancarizado: true, defaultImputableImpositivo: true, active: true, sortOrder: 130 } },
   { id: FINANCIAL_EXPENSE_CATEGORY_IDS.limpieza, data: { name: 'Limpieza', description: 'Insumos y servicios de limpieza.', defaultBancarizado: true, defaultImputableImpositivo: true, active: true, sortOrder: 140 } },
   { id: FINANCIAL_EXPENSE_CATEGORY_IDS.insumos, data: { name: 'Insumos', description: 'Insumos varios.', defaultBancarizado: true, defaultImputableImpositivo: true, active: true, sortOrder: 150 } },
+  { id: FINANCIAL_EXPENSE_CATEGORY_IDS.servidor, data: { name: 'SERVIDOR', description: 'Gasto fijo mensual de servidor.', defaultBancarizado: true, defaultImputableImpositivo: true, active: true, sortOrder: 160 } },
 ] as const;
 
 export const DEFAULT_FINANCIAL_CONFIG: Omit<FinancialConfigDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'effectiveFrom' | 'effectiveTo'> = {
@@ -210,5 +212,6 @@ export const DEFAULT_FINANCIAL_CONFIG: Omit<FinancialConfigDocument, 'createdAt'
   advertisingDefaultPeriodicity: 'monthly' satisfies AdvertisingDefaultPeriodicity,
   requireApprovalForExpensePosting: true,
   requireApprovalForOvertimePosting: true,
+  serverMonthlyExpenseMinor: 0,
   notes: 'Configuración inicial ACCOUNTING.',
 };

@@ -2,6 +2,21 @@ import type { EntityWithId, MemberDocument } from '../../../modules/users/domain
 import type { OpenItem } from '../types/payment';
 import { formatCurrency, formatTimestamp, getPersonDisplayName } from '../utils/accountingFormatters';
 
+function formatPendingItemsLabel(openItems: OpenItem[]) {
+  const feeCount = openItems.filter((item) => item.kind === 'member_fee_charge').length;
+  const otherCount = openItems.length - feeCount;
+  const labels: string[] = [];
+
+  if (feeCount > 0) {
+    labels.push(`${feeCount} cuota${feeCount === 1 ? '' : 's'} pendiente${feeCount === 1 ? '' : 's'}`);
+  }
+  if (otherCount > 0) {
+    labels.push(`${otherCount} concepto${otherCount === 1 ? '' : 's'}`);
+  }
+
+  return labels.length > 0 ? labels.join(' + ') : 'Sin deuda abierta';
+}
+
 export function MemberAccountSnapshot({
   member,
   openItems,
@@ -25,7 +40,7 @@ export function MemberAccountSnapshot({
         <article className="summary-card">
           <span>Deuda abierta</span>
           <strong>{formatCurrency(debtMinor)}</strong>
-          <small>{openItems.length} conceptos</small>
+          <small>{formatPendingItemsLabel(openItems)}</small>
         </article>
         <article className="summary-card">
           <span>Ultimo pago</span>

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { useSearchParams } from 'react-router-dom';
 import { UiActionButton } from '../../../components/UiActionButton';
 import { ACCOUNTING_EXPENSE_CATEGORY_IDS } from '../../../modules/accounting/domain/constants';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
-import { createExpenseSubmissionsRepository, createFinancialMovementsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
+import { createExpenseSubmissionsRepository, createFinancialExpenseCategoriesRepository, createFinancialMovementsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
 import { createEmployeesRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import type { EntityWithId, ExpenseSubmissionDocument, FinancialMovementDocument } from '../../../modules/accounting/domain/models';
 import type { EmployeeDocument } from '../../../modules/users/domain/models';
@@ -16,14 +17,27 @@ import { AccountingPeriodTabs } from '../components/AccountingPeriodTabs';
 import { DangerActionDialog } from '../components/DangerActionDialog';
 import { useAccountingSummary } from '../hooks/useAccountingSummary';
 import type { AccountingNotice } from '../types/accounting';
+import type { ExpenseCategoryOption } from '../utils/accountingCategories';
+import { formatExpenseCategoryName, getCategoryLabel, getFallbackExpenseCategories } from '../utils/accountingCategories';
 import { buildArgentinaDateIso, formatCurrency, formatTimestamp, getCurrentAccountingPeriod, getMovementLabel, normalizeAccountingPeriod, parseAmountInputToMinor, shiftAccountingPeriod } from '../utils/accountingFormatters';
 
 const accountingCallables = createAccountingCallables();
+const EXPENSE_OPERATION_TIMEOUT_MS = 25000;
 
 type ExpensesTab = 'register' | 'queue' | 'movements' | 'insights';
 
 function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeoutId));
+  });
 }
 
 function buildPeriodOptions(period: string) {
@@ -36,11 +50,27 @@ function groupMovementsByCategory(movements: Array<EntityWithId<FinancialMovemen
   movements
     .filter((movement) => movement.status !== 'voided' && movement.movementType === movementType)
     .forEach((movement) => {
-      const label = movement.categoryCodeSnapshot?.replaceAll('_', ' ') || movement.originType || 'Sin categoria';
+      const label = getCategoryLabel(movement.categoryId || movement.categoryCodeSnapshot || movement.originType);
       grouped.set(label, (grouped.get(label) ?? 0) + movement.netAmountMinor);
     });
 
   return [...grouped.entries()].map(([label, valueMinor]) => ({ label, valueMinor }));
+}
+
+function getEmployeeDisplayName(employee: EntityWithId<EmployeeDocument>) {
+  return `${employee.lastName}, ${employee.firstName}`;
+}
+
+function resolveEmployeeId(
+  employees: Array<EntityWithId<EmployeeDocument>>,
+  employeeId: string,
+  employeeSearch: string,
+) {
+  if (employees.some((employee) => employee.id === employeeId)) {
+    return employeeId;
+  }
+  const normalized = employeeSearch.trim().toLowerCase();
+  return employees.find((employee) => getEmployeeDisplayName(employee).toLowerCase() === normalized)?.id ?? '';
 }
 
 export function AccountingExpensesPage() {
@@ -49,14 +79,18 @@ export function AccountingExpensesPage() {
   const [period, setPeriod] = useState(getCurrentAccountingPeriod());
   const summaryState = useAccountingSummary(period);
   const [employees, setEmployees] = useState<Array<EntityWithId<EmployeeDocument>>>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryOption[]>(() => getFallbackExpenseCategories());
   const [expenses, setExpenses] = useState<Array<EntityWithId<ExpenseSubmissionDocument>>>([]);
   const [movements, setMovements] = useState<Array<EntityWithId<FinancialMovementDocument>>>([]);
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [loading, setLoading] = useState(true);
   const [movementToReverse, setMovementToReverse] = useState<EntityWithId<FinancialMovementDocument> | null>(null);
+  const [expenseReview, setExpenseReview] = useState<{ expense: EntityWithId<ExpenseSubmissionDocument>; decision: 'approved' | 'rejected' } | null>(null);
+  const [reviewReason, setReviewReason] = useState('');
   const [reversalReason, setReversalReason] = useState('');
   const [form, setForm] = useState<{
     employeeId: string;
+    employeeSearch: string;
     categoryId: string;
     description: string;
     expenseDate: string;
@@ -64,6 +98,7 @@ export function AccountingExpensesPage() {
     vendorName: string;
   }>({
     employeeId: '',
+    employeeSearch: '',
     categoryId: ACCOUNTING_EXPENSE_CATEGORY_IDS.proveedores,
     description: '',
     expenseDate: todayInputValue(),
@@ -87,19 +122,22 @@ export function AccountingExpensesPage() {
     setNotice(null);
     try {
       const employeesRepository = createEmployeesRepository();
+      const expenseCategoriesRepository = createFinancialExpenseCategoriesRepository();
       const expensesRepository = createExpenseSubmissionsRepository();
       const movementsRepository = createFinancialMovementsRepository();
-      const [nextEmployees, nextExpenses, nextMovements] = await Promise.all([
+      const [nextEmployees, nextCategories, nextExpenses, nextMovements] = await Promise.all([
         employeesRepository.listAlphabetical(100),
+        expenseCategoriesRepository.listActiveSorted().catch(() => getFallbackExpenseCategories()),
         expensesRepository.listRecent(30),
         movementsRepository.listRecent(20),
       ]);
       setEmployees(nextEmployees);
+      setExpenseCategories(nextCategories.length > 0 ? nextCategories : getFallbackExpenseCategories());
       setExpenses(nextExpenses);
       setMovements(nextMovements.filter((movement) => movement.movementType === 'expense'));
       const firstEmployee = nextEmployees[0];
       if (!form.employeeId && firstEmployee) {
-        setForm((current) => ({ ...current, employeeId: firstEmployee.id }));
+        setForm((current) => ({ ...current, employeeId: firstEmployee.id, employeeSearch: getEmployeeDisplayName(firstEmployee) }));
       }
     } catch (error) {
       setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos cargar egresos.' });
@@ -115,21 +153,43 @@ export function AccountingExpensesPage() {
   const handleSubmitExpense = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const amountMinor = parseAmountInputToMinor(form.amount);
-    if (!form.employeeId || !form.description.trim() || !Number.isFinite(amountMinor) || amountMinor <= 0) {
+    const employeeId = resolveEmployeeId(employees, form.employeeId, form.employeeSearch);
+    if (!employeeId || !form.description.trim() || !Number.isFinite(amountMinor) || amountMinor <= 0) {
       setNotice({ kind: 'error', message: 'Completa responsable, descripcion y monto valido.' });
       return;
     }
 
     try {
-      await accountingCallables.submitExpense({
-        employeeId: form.employeeId,
-        categoryId: form.categoryId,
-        description: form.description.trim(),
-        expenseDate: buildArgentinaDateIso(form.expenseDate),
-        amountMinor,
-        vendorName: form.vendorName.trim() || null,
-      });
-      setNotice({ kind: 'success', message: 'Egreso cargado como rendicion para revision.' });
+      const result = await withTimeout(
+        accountingCallables.submitExpense({
+          employeeId,
+          categoryId: form.categoryId,
+          description: form.description.trim(),
+          expenseDate: buildArgentinaDateIso(form.expenseDate),
+          amountMinor,
+          vendorName: form.vendorName.trim() || null,
+        }),
+        EXPENSE_OPERATION_TIMEOUT_MS,
+        'El egreso no respondio a tiempo. Revisalo en movimientos antes de volver a cargarlo.',
+      );
+      await withTimeout(
+        accountingCallables.reviewExpense({
+          expenseSubmissionId: result.expenseSubmissionId,
+          decision: 'approved',
+          rejectionReason: null,
+        }),
+        EXPENSE_OPERATION_TIMEOUT_MS,
+        'El egreso se creo, pero la aprobacion no respondio a tiempo.',
+      );
+      await withTimeout(
+        accountingCallables.postExpenseMovement({
+          expenseSubmissionId: result.expenseSubmissionId,
+          notes: 'Posteado automaticamente desde egresos administrativos.',
+        }),
+        EXPENSE_OPERATION_TIMEOUT_MS,
+        'El egreso se aprobo, pero el movimiento no respondio a tiempo.',
+      );
+      setNotice({ kind: 'success', message: 'Egreso registrado y posteado como movimiento.' });
       setForm((current) => ({ ...current, description: '', amount: '', vendorName: '' }));
       await load();
     } catch (error) {
@@ -137,13 +197,15 @@ export function AccountingExpensesPage() {
     }
   };
 
-  const handleReviewExpense = async (expenseId: string, decision: 'approved' | 'rejected') => {
+  const handleReviewExpense = async (expenseId: string, decision: 'approved' | 'rejected', rejectionReason?: string | null) => {
     try {
-      await accountingCallables.reviewExpense({ expenseSubmissionId: expenseId, decision, rejectionReason: decision === 'rejected' ? 'Rechazo administrativo desde UI contable.' : null });
+      await accountingCallables.reviewExpense({ expenseSubmissionId: expenseId, decision, rejectionReason: decision === 'rejected' ? rejectionReason ?? null : null });
       if (decision === 'approved') {
         await accountingCallables.postExpenseMovement({ expenseSubmissionId: expenseId, notes: 'Posteado desde egresos.' });
       }
       setNotice({ kind: 'success', message: decision === 'approved' ? 'Rendicion aprobada y posteada.' : 'Rendicion rechazada.' });
+      setExpenseReview(null);
+      setReviewReason('');
       await load();
     } catch (error) {
       setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos revisar la rendicion.' });
@@ -188,26 +250,35 @@ export function AccountingExpensesPage() {
             id: 'register',
             title: 'Registrar egreso',
             eyebrow: 'Operacion',
-            helper: 'Carga un gasto o rendicion para revision',
+            helper: 'Carga administrativa y movimiento directo',
             content: (
-              <form className="accounting-entry-form" onSubmit={handleSubmitExpense}>
-                <label className="form-field">
+              <form className="accounting-entry-form accounting-dialog-form accounting-dialog-form--expense" onSubmit={handleSubmitExpense}>
+                <label className="form-field form-field--wide">
                   <span>Responsable</span>
-                  <select value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}>
-                    <option value="">Seleccionar</option>
-                    {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.lastName}, {employee.firstName}</option>)}
-                  </select>
+                  <input
+                    list="accounting-expense-employees"
+                    value={form.employeeSearch}
+                    onChange={(event) => {
+                      const employeeSearch = event.target.value;
+                      const matched = employees.find((employee) => getEmployeeDisplayName(employee) === employeeSearch);
+                      setForm((current) => ({ ...current, employeeSearch, employeeId: matched?.id ?? '' }));
+                    }}
+                    placeholder="Buscar empleado"
+                  />
+                  <datalist id="accounting-expense-employees">
+                    {employees.map((employee) => <option key={employee.id} value={getEmployeeDisplayName(employee)} />)}
+                  </datalist>
                 </label>
-                <label className="form-field">
+                <label className="form-field form-field--wide">
                   <span>Categoria</span>
                   <select value={form.categoryId} onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}>
-                    {Object.entries(ACCOUNTING_EXPENSE_CATEGORY_IDS).map(([label, value]) => <option key={value} value={value}>{label}</option>)}
+                    {expenseCategories.map((category) => <option key={category.id} value={category.id}>{formatExpenseCategoryName(category.name)}</option>)}
                   </select>
                 </label>
                 <label className="form-field"><span>Fecha</span><input type="date" value={form.expenseDate} onChange={(event) => setForm((current) => ({ ...current, expenseDate: event.target.value }))} /></label>
-                <label className="form-field"><span>Descripcion</span><input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
-                <label className="form-field"><span>Monto</span><input inputMode="decimal" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></label>
                 <label className="form-field"><span>Proveedor</span><input value={form.vendorName} onChange={(event) => setForm((current) => ({ ...current, vendorName: event.target.value }))} /></label>
+                <label className="form-field form-field--wide"><span>Descripcion</span><input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} /></label>
+                <label className="form-field accounting-money-field"><span>Monto ARS</span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></label>
                 <div className="form-actions">
                   <UiActionButton type="submit">Guardar egreso</UiActionButton>
                 </div>
@@ -230,8 +301,8 @@ export function AccountingExpensesPage() {
                     <div className="accounting-row__meta">
                       <strong>{formatCurrency(expense.amountMinor)}</strong>
                       <div className="accounting-inline-actions">
-                        <UiActionButton type="button" onClick={() => void handleReviewExpense(expense.id, 'approved')}>Aprobar y postear</UiActionButton>
-                        <UiActionButton type="button" variant="secondary" onClick={() => void handleReviewExpense(expense.id, 'rejected')}>Rechazar</UiActionButton>
+                        <UiActionButton type="button" onClick={() => setExpenseReview({ expense, decision: 'approved' })}>Aprobar y postear</UiActionButton>
+                        <UiActionButton type="button" variant="secondary" onClick={() => setExpenseReview({ expense, decision: 'rejected' })}>Rechazar</UiActionButton>
                       </div>
                     </div>
                   </article>
@@ -297,6 +368,37 @@ export function AccountingExpensesPage() {
         onReasonChange={setReversalReason}
         onCancel={() => setMovementToReverse(null)}
         onConfirm={() => void handleReverseMovement()}
+      />
+      <ConfirmDialog
+        open={expenseReview?.decision === 'approved'}
+        title="Aprobar y postear rendicion"
+        description={expenseReview ? `Se creara un movimiento de egreso vinculado por ${formatCurrency(expenseReview.expense.amountMinor)}.` : null}
+        confirmLabel="Aprobar y postear"
+        loading={loading}
+        onCancel={() => setExpenseReview(null)}
+        onConfirm={() => {
+          if (expenseReview) {
+            void handleReviewExpense(expenseReview.expense.id, 'approved');
+          }
+        }}
+      />
+      <DangerActionDialog
+        open={expenseReview?.decision === 'rejected'}
+        title="Rechazar rendicion"
+        description="El motivo queda registrado en auditoria y la rendicion no genera egreso."
+        reason={reviewReason}
+        confirmLabel="Rechazar"
+        loading={loading}
+        onReasonChange={setReviewReason}
+        onCancel={() => {
+          setExpenseReview(null);
+          setReviewReason('');
+        }}
+        onConfirm={() => {
+          if (expenseReview) {
+            void handleReviewExpense(expenseReview.expense.id, 'rejected', reviewReason.trim());
+          }
+        }}
       />
     </div>
   );

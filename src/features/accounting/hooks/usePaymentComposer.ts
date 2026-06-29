@@ -4,7 +4,12 @@ import type { CheckoutSession, PaymentComposerMode, PaymentComposerState, Paymen
 import { validatePaymentDraft } from '../utils/accountingValidators';
 
 function todayInputValue() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 export function usePaymentComposer({

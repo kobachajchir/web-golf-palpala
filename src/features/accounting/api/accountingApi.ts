@@ -34,6 +34,7 @@ import type {
   ReportScope,
 } from '../types/accounting';
 import { getCurrentAccountingPeriod, getSignedMovementAmount, normalizeAccountingPeriod, timestampToDate } from '../utils/accountingFormatters';
+import { buildChargesByMemberId, estimateMemberFeeAmountMinor, getChargeTargetMemberIds, getOpenFeeCharges } from '../utils/memberFeeEstimates';
 
 const ACCOUNTING_REPORTS_COLLECTION = 'accounting_reports';
 
@@ -43,25 +44,6 @@ function requireFirestore(): Firestore {
   }
 
   return firestore;
-}
-
-function getChargeTargetMemberIds(
-  charge: EntityWithId<MemberFeeChargeDocument>,
-  members: Array<UserEntityWithId<MemberDocument>>,
-) {
-  const memberIds = new Set<string>();
-  if (charge.memberId) {
-    memberIds.add(charge.memberId);
-  }
-  if (charge.holderMemberId) {
-    memberIds.add(charge.holderMemberId);
-  }
-  if (charge.familyGroupId) {
-    members
-      .filter((member) => member.familyGroupId === charge.familyGroupId)
-      .forEach((member) => memberIds.add(member.id));
-  }
-  return memberIds;
 }
 
 function getMembersWithoutCurrentPeriodPayment({
@@ -79,6 +61,42 @@ function getMembersWithoutCurrentPeriodPayment({
     });
 
   return members.filter((member) => member.status === 'active' && !settledMemberIds.has(member.id));
+}
+
+function summarizeRenewalPending({
+  renewalMembers,
+  members,
+  period,
+  periodFeeCharges,
+  pendingFeeCharges,
+  activeConfig,
+}: {
+  renewalMembers: Array<UserEntityWithId<MemberDocument>>;
+  members: Array<UserEntityWithId<MemberDocument>>;
+  period: string;
+  periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+  pendingFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+  activeConfig: AccountingSummary['activeConfig'];
+}) {
+  const openChargesByMemberId = buildChargesByMemberId(
+    members,
+    getOpenFeeCharges([...periodFeeCharges, ...pendingFeeCharges]),
+  );
+
+  return renewalMembers.reduce(
+    (summary, member) => {
+      const charges = openChargesByMemberId.get(member.id) ?? [];
+      const openTotalMinor = charges.reduce((total, charge) => total + charge.finalAmountMinor, 0);
+      const hasCurrentPeriodOpenCharge = charges.some((charge) => charge.period === period);
+      const missingCurrentAmountMinor = hasCurrentPeriodOpenCharge ? 0 : estimateMemberFeeAmountMinor(member, activeConfig);
+
+      return {
+        conceptCount: summary.conceptCount + charges.length + (hasCurrentPeriodOpenCharge || missingCurrentAmountMinor <= 0 ? 0 : 1),
+        totalMinor: summary.totalMinor + openTotalMinor + missingCurrentAmountMinor,
+      };
+    },
+    { conceptCount: 0, totalMinor: 0 },
+  );
 }
 
 export async function getAccountingSummary(period = getCurrentAccountingPeriod()): Promise<AccountingSummary> {
@@ -101,6 +119,7 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     periodMovements,
     recentSettlements,
     recentExpenses,
+    pendingExpenses,
     recentSalaryPayments,
     periodReferences,
     periodFeeCharges,
@@ -119,10 +138,11 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     financialMovementsRepository.listByAccountingPeriod(period),
     macroDebitSettlementsRepository.listRecent(6),
     expenseSubmissionsRepository.listRecent(10),
+    expenseSubmissionsRepository.listByStatus('submitted', 100),
     salaryPaymentsRepository.listByPeriod(period),
     externalAccountingReferencesRepository.listByPeriod(period),
     memberFeeChargesRepository.listByPeriod(period),
-    memberFeeChargesRepository.listPending(100),
+    memberFeeChargesRepository.listPending(500),
     mercadoPagoCheckoutSessionsRepository.listRecent(8),
     membersRepository.listDirectory(),
     employeesRepository.listAlphabetical(10),
@@ -131,6 +151,16 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     expenseSubmissionsRepository.countByStatus('submitted'),
     memberFeeChargesRepository.countPendingByPeriod(period),
   ]);
+
+  const renewalMembers = getMembersWithoutCurrentPeriodPayment({ members: membersPreview, periodFeeCharges });
+  const renewalPending = summarizeRenewalPending({
+    renewalMembers,
+    members: membersPreview,
+    period,
+    periodFeeCharges,
+    pendingFeeCharges,
+    activeConfig,
+  });
 
   return {
     period,
@@ -144,13 +174,17 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     periodReferences,
     periodFeeCharges,
     pendingFeeCharges,
+    pendingExpenses,
     recentMercadoPagoSessions,
     membersPreview,
-    renewalMembers: getMembersWithoutCurrentPeriodPayment({ members: membersPreview, periodFeeCharges }),
+    renewalMembers,
+    renewalPendingConceptCount: renewalPending.conceptCount,
+    renewalPendingTotalMinor: renewalPending.totalMinor,
     employeesPreview,
     activeMembersCount,
     activeEmployeesCount,
     pendingExpenseCount,
+    pendingExpenseTotalMinor: pendingExpenses.reduce((total, expense) => total + expense.amountMinor, 0),
     pendingFeeCount,
   };
 }

@@ -8,23 +8,17 @@ import { AccountingCollapsibleSections } from '../components/AccountingCollapsib
 import { AccountingEmptyState } from '../components/AccountingEmptyState';
 import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
 import { AccountingMonthPicker } from '../components/AccountingMonthPicker';
-import { AccountingPeriodTabs } from '../components/AccountingPeriodTabs';
 import { ExternalDocumentAssignmentPanel } from '../components/ExternalDocumentAssignmentPanel';
 import { useExternalDocuments } from '../hooks/useExternalDocuments';
 import type { AccountingNotice } from '../types/accounting';
-import { buildArgentinaDateIso, formatCurrency, formatPeriod, formatTimestamp, getCurrentAccountingPeriod, normalizeAccountingPeriod, parseAmountInputToMinor, shiftAccountingPeriod } from '../utils/accountingFormatters';
-
-function buildPeriodOptions(period: string) {
-  const normalized = normalizeAccountingPeriod(period);
-  return [0, -1, -2, -3, -4, -5].map((offset) => shiftAccountingPeriod(normalized, offset));
-}
+import { buildArgentinaDateIso, formatCurrency, formatPeriod, formatTimestamp, getCurrentAccountingPeriod, normalizeAccountingPeriod, parseAmountInputToMinor } from '../utils/accountingFormatters';
 
 export function AccountingExternalDocsPage() {
   const [period, setPeriod] = useState(getCurrentAccountingPeriod());
   const externalDocs = useExternalDocuments(period);
   const [employees, setEmployees] = useState<Array<EntityWithId<EmployeeDocument>>>([]);
   const [notice, setNotice] = useState<AccountingNotice>(null);
-  const periodOptions = buildPeriodOptions(period);
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [form, setForm] = useState({
     referenceType: 'F931' as ExternalReferenceType,
     amount: '',
@@ -69,13 +63,12 @@ export function AccountingExternalDocsPage() {
     <div className="accounting-shell">
       <section className="floating-card accounting-hero">
         <div className="accounting-hero__copy">
-          <p className="eyebrow">Docs externos</p>
-          <h1>Documentos globales y asignaciones</h1>
-          <p>Primero se crea o vincula el documento global. Despues se asigna a empleados y periodos.</p>
+          <p className="eyebrow">Documentos laborales</p>
+          <h1>Crear y enlazar documentos laborales</h1>
+          <p>F931, ART, obra social y otros documentos del periodo seleccionado.</p>
         </div>
         <div className="accounting-hero__controls">
           <AccountingMonthPicker period={normalizeAccountingPeriod(period)} onChange={setPeriod} />
-          <AccountingPeriodTabs periods={periodOptions} activePeriod={normalizeAccountingPeriod(period)} onChange={setPeriod} />
         </div>
       </section>
 
@@ -86,8 +79,8 @@ export function AccountingExternalDocsPage() {
         sections={[
           {
             id: 'create',
-            title: 'Crear documento global',
-            eyebrow: 'Documento global',
+            title: 'Crear documento laboral',
+            eyebrow: 'Documento laboral',
             helper: 'F931, ART, obra social u otro',
             content: (
               <form className="accounting-entry-form" onSubmit={handleSubmit}>
@@ -102,26 +95,41 @@ export function AccountingExternalDocsPage() {
                 <label className="form-field"><span>Numero</span><input value={form.referenceNumber} onChange={(event) => setForm((current) => ({ ...current, referenceNumber: event.target.value }))} /></label>
                 <label className="form-field"><span>Fecha documento</span><input type="date" value={form.documentDate} onChange={(event) => setForm((current) => ({ ...current, documentDate: event.target.value }))} /></label>
                 <label className="form-field"><span>Vencimiento</span><input type="date" value={form.dueDate} onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))} /></label>
-                <div className="form-actions"><UiActionButton type="submit">Crear documento global</UiActionButton></div>
+                <div className="form-actions"><UiActionButton type="submit">Crear documento laboral</UiActionButton></div>
               </form>
             ),
           },
           {
-            id: 'assign',
-            title: 'Asignar a empleado / periodo',
-            eyebrow: 'Asignacion',
-            helper: 'Vinculacion posterior al documento global',
-            content: externalDocs.documents.length > 0
-              ? <ExternalDocumentAssignmentPanel documents={externalDocs.documents} employees={employees} onAssigned={() => void externalDocs.reload()} />
-              : <AccountingEmptyState title="Primero crea un documento global" />,
-          },
-          {
             id: 'documents',
-            title: `Documentos de ${formatPeriod(period)}`,
-            eyebrow: 'Documentos del periodo',
+            title: 'Documentos de este periodo',
+            eyebrow: `Historial ${formatPeriod(period)}`,
             helper: `${externalDocs.documents.length} comprobantes`,
             content: (
               <div className="accounting-list">
+                <article className="accounting-row accounting-row--actions accounting-document-assignment-row">
+                  <div className="accounting-row__main">
+                    <strong>Asignar empleado a periodo</strong>
+                    <small>Enlaza un documento laboral existente con un empleado del periodo.</small>
+                  </div>
+                  <div className="accounting-inline-actions">
+                    <UiActionButton
+                      type="button"
+                      variant="secondary"
+                      disabled={externalDocs.documents.length === 0}
+                      onClick={() => setAssignmentOpen((current) => !current)}
+                    >
+                      {assignmentOpen ? 'Ocultar asignacion' : 'Asignar empleado'}
+                    </UiActionButton>
+                  </div>
+                </article>
+                {assignmentOpen && externalDocs.documents.length > 0 && (
+                  <section className="accounting-inline-workbench">
+                    <ExternalDocumentAssignmentPanel documents={externalDocs.documents} employees={employees} onAssigned={() => {
+                      setAssignmentOpen(false);
+                      void externalDocs.reload();
+                    }} />
+                  </section>
+                )}
                 {externalDocs.documents.map((document) => (
                   <article key={document.id} className="accounting-row">
                     <div className="accounting-row__main">
@@ -134,6 +142,7 @@ export function AccountingExternalDocsPage() {
                     </div>
                   </article>
                 ))}
+                {!externalDocs.loading && externalDocs.documents.length === 0 && <AccountingEmptyState title="Sin documentos para este periodo" />}
               </div>
             ),
           },

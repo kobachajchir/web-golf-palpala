@@ -77,6 +77,7 @@ export interface FinancialConfigDocument extends AuditFields {
   advertisingDefaultPeriodicity: 'monthly' | 'one_time';
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
+  serverMonthlyExpenseMinor?: AmountMinor | null;
   notes?: string | null;
 }
 
@@ -104,6 +105,23 @@ export interface PaymentCommissionRuleDocument extends AuditFields {
   setByUid: UID;
   breakdown?: PaymentCommissionBreakdownItem[];
   notes?: string | null;
+}
+
+export interface FinancialIncomeCategoryDocument extends AuditFields {
+  name: string;
+  description?: string | null;
+  originType: string;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface FinancialExpenseCategoryDocument extends AuditFields {
+  name: string;
+  description?: string | null;
+  defaultBancarizado: boolean;
+  defaultImputableImpositivo: boolean;
+  active: boolean;
+  sortOrder: number;
 }
 
 export interface MercadoPagoCheckoutSessionItem {
@@ -198,6 +216,19 @@ export interface MacroDebitSettlementDocument extends AuditFields {
   accreditedAt: Timestamp;
   importedByUid: UID;
   notes?: string | null;
+}
+
+export interface SalaryConfigurationDocument extends AuditFields {
+  employeeId: DocId;
+  contractType: string;
+  baseAmountMinor: AmountMinor;
+  periodicity: SalaryPeriodicity;
+  effectiveFrom: Timestamp;
+  effectiveTo?: Timestamp | null;
+  isActive: boolean;
+  allowOvertime: boolean;
+  notes?: string | null;
+  setByUid: UID;
 }
 
 export interface MemberFeeChargeDocument extends AuditFields {
@@ -464,6 +495,7 @@ export interface UpsertFinancialConfigPayload {
   advertisingDefaultPeriodicity: 'monthly' | 'one_time';
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
+  serverMonthlyExpenseMinor?: AmountMinor | null;
   notes?: string | null;
 }
 

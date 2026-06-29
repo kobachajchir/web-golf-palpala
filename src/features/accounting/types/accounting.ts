@@ -40,6 +40,7 @@ export type AccountingSummary = {
   periodMovements: Array<EntityWithId<FinancialMovementDocument>>;
   pendingFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
   periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
+  pendingExpenses: Array<EntityWithId<ExpenseSubmissionDocument>>;
   recentExpenses: Array<EntityWithId<ExpenseSubmissionDocument>>;
   recentMercadoPagoSessions: Array<EntityWithId<MercadoPagoCheckoutSessionDocument>>;
   recentSettlements: Array<EntityWithId<MacroDebitSettlementDocument>>;
@@ -47,10 +48,13 @@ export type AccountingSummary = {
   recentSalaryPayments: Array<EntityWithId<SalaryPaymentDocument>>;
   membersPreview: Array<EntityWithId<MemberDocument>>;
   renewalMembers: Array<EntityWithId<MemberDocument>>;
+  renewalPendingConceptCount: number;
+  renewalPendingTotalMinor: number;
   employeesPreview: Array<EntityWithId<EmployeeDocument>>;
   activeMembersCount: number;
   activeEmployeesCount: number;
   pendingExpenseCount: number;
+  pendingExpenseTotalMinor: number;
   pendingFeeCount: number;
 };
 

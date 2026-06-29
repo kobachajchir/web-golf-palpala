@@ -102,7 +102,7 @@ export function MercadoPagoReturn() {
             <Link className="btn-secondary" to="/mi-membresia">
               Ver membresía
             </Link>
-            <Link className="btn-primary" to="/accounting/collections?mode=mercadopago">
+            <Link className="btn-primary" to="/accounting/caja?tab=cobros&mode=mercadopago">
               Ir a contabilidad
             </Link>
           </div>
@@ -158,7 +158,7 @@ export function MercadoPagoReturn() {
                   <strong>Pago confirmado internamente</strong>
                   <p>Movimientos contables: {session.financialMovementIds.join(', ')}</p>
                 </div>
-                <Link className="btn-primary" to={`/accounting/collections?receipt=${session.financialMovementIds[0]}`}>
+                <Link className="btn-primary" to={`/accounting/caja?tab=cobros&receipt=${session.financialMovementIds[0]}`}>
                   Ver recibo
                 </Link>
               </div>

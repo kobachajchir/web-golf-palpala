@@ -413,6 +413,38 @@
   color: var(--text);
 }
 
+.accounting-chart-summary {
+  overflow-x: auto;
+}
+
+.accounting-chart-summary__table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 260px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.accounting-chart-summary__table th,
+.accounting-chart-summary__table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.accounting-chart-summary__table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.accounting-chart-summary__table td:nth-child(2),
+.accounting-chart-summary__table td:nth-child(3) {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .accounting-bar-chart {
   display: grid;
   gap: 10px;
@@ -862,6 +894,243 @@
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.accounting-module-content .accounting-shell,
+.accounting-shell,
+.accounting-collapse-stack,
+.accounting-collapsible-section,
+.accounting-collapsible-trigger.ui-action-button,
+.accounting-collapsible-card,
+.accounting-collapsible-card__body,
+.accounting-list,
+.accounting-table-wrap,
+.accounting-centered-panel,
+.accounting-primary-panel,
+.accounting-secondary-panel {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-collapse-stack,
+.accounting-collapsible-section,
+.accounting-open-cash-close {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  justify-items: stretch;
+}
+
+.accounting-collapse-stack {
+  gap: 14px;
+}
+
+.accounting-collapsible-section,
+.accounting-open-cash-close {
+  gap: 12px;
+}
+
+.accounting-collapsible-trigger.ui-action-button {
+  justify-content: space-between;
+}
+
+.accounting-collapsible-card__body {
+  width: auto;
+  box-sizing: border-box;
+}
+
+.accounting-row {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.accounting-shell,
+.accounting-layout,
+.accounting-layout > *,
+.accounting-primary-panel,
+.accounting-secondary-panel,
+.accounting-panel,
+.accounting-collapsible-section,
+.accounting-collapsible-trigger,
+.accounting-collapsible-card,
+.accounting-collapsible-card > *,
+.accounting-list,
+.accounting-row,
+.accounting-table-wrap,
+.accounting-action-grid,
+.accounting-pricing-form,
+.accounting-pricing-summary,
+.accounting-collections-grid,
+.accounting-collections-main {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-shell {
+  justify-items: stretch;
+}
+
+.accounting-layout {
+  align-items: stretch;
+}
+
+.accounting-layout > * {
+  flex: 1 1 100%;
+}
+
+.accounting-collapsible-trigger__copy {
+  width: 100%;
+}
+
+.accounting-inline-workbench {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 14px;
+}
+
+.accounting-document-assignment-row,
+.accounting-employee-row__actions {
+  position: relative;
+}
+
+.accounting-employee-row__actions {
+  justify-content: flex-end;
+}
+
+.accounting-pending-lines {
+  max-height: 180px;
+  overflow-y: auto;
+  display: grid;
+  gap: 3px;
+  padding-right: 6px;
+}
+
+.accounting-pending-lines:empty {
+  display: none;
+}
+
+.accounting-collapse-stack,
+.accounting-collapsible-section,
+.accounting-collapsible-card,
+.accounting-full-width-section,
+.accounting-employees-list,
+.accounting-payment-methods-section {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-full-width-section {
+  display: grid;
+  gap: 18px;
+}
+
+.accounting-employees-stats-grid,
+.accounting-bank-stats-grid,
+.accounting-employee-cycle-summary-grid {
+  width: 100%;
+}
+
+.accounting-cycle-liquidation,
+.accounting-settlement-breakdown {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+
+.accounting-cycle-liquidation h3,
+.accounting-settlement-breakdown h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.accounting-cycle-liquidation__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.accounting-cycle-liquidation__grid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  display: grid;
+  gap: 4px;
+}
+
+.accounting-cycle-liquidation__grid span,
+.accounting-cycle-liquidation .form-actions small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.accounting-cycle-liquidation__grid strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.accounting-employee-expense-filters {
+  width: 100%;
+}
+
+.accounting-employee-expense-list,
+.accounting-renewals-list {
+  max-height: min(560px, 64svh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+
+.accounting-employee-expense-list::-webkit-scrollbar,
+.accounting-renewals-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.accounting-employee-expense-list::-webkit-scrollbar-thumb,
+.accounting-renewals-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(15, 122, 90, 0.34);
+  background-clip: content-box;
+}
+
+.accounting-renewal-row {
+  grid-template-columns: minmax(0, 1.4fr) minmax(130px, 0.5fr) auto;
+  align-items: center;
+}
+
+.accounting-renewal-row .accounting-inline-actions {
+  justify-content: flex-end;
+}
+
+.accounting-payment-methods-table td:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.accounting-payment-methods-table .accounting-row-menu-actions {
+  position: relative;
+}
+
+@media (max-width: 767px) {
+  .accounting-renewal-row {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-renewal-row .accounting-inline-actions {
+    justify-content: flex-start;
+  }
 }
 
 /* Notification dashboard visual refresh. */
@@ -5905,6 +6174,63 @@
   gap: 24px;
 }
 
+.person-profile-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(15, 122, 90, 0.1), rgba(255, 255, 255, 0.78)),
+    var(--field-bg);
+  text-align: left;
+}
+
+.person-profile-header__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  font-weight: 900;
+  box-shadow: 0 14px 28px rgba(15, 122, 90, 0.18);
+}
+
+.person-profile-header__copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.person-profile-header__copy h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1;
+}
+
+.person-profile-header__subtitle {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.person-profile-header__badges,
+.person-profile-header__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.person-profile-header__actions {
+  justify-content: flex-end;
+}
+
 .membership-profile-card__header {
   justify-content: space-between;
 }
@@ -5916,6 +6242,35 @@
 
 .membership-profile-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.membership-profile-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.membership-summary-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+
+.membership-summary-card span,
+.membership-summary-card small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.membership-summary-card strong {
+  color: var(--text);
+  font-size: 18px;
+  overflow-wrap: anywhere;
 }
 
 .membership-grid {
@@ -5938,6 +6293,121 @@
 .household-list {
   display: grid;
   gap: 12px;
+}
+
+.description-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.description-list__item {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.description-list dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.description-list dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.compact-details-toggle {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-details-toggle__button {
+  width: fit-content;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--primary-dark);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.compact-details-toggle__button:hover,
+.compact-details-toggle__button:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.compact-details-toggle__icon {
+  transition: transform 160ms ease;
+}
+
+.compact-details-toggle__icon--open {
+  transform: rotate(180deg);
+}
+
+.compact-details-toggle__content {
+  display: grid;
+  gap: 10px;
+}
+
+.membership-role-panel {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.membership-role-panel > div:first-child {
+  display: grid;
+  gap: 8px;
+}
+
+.membership-role-panel span,
+.membership-role-panel small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.role-chip-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-chip-list__item {
+  width: fit-content;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(15, 122, 90, 0.1);
+  color: var(--primary-dark) !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+.role-chip-list__item--empty {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--muted) !important;
 }
 
 .membership-panel__list > div,
@@ -6654,6 +7124,347 @@ button.accounting-hub-card:hover {
   grid-template-columns: minmax(0, 1.35fr) minmax(150px, 0.7fr) auto;
   align-items: center;
   gap: 16px;
+}
+
+.accounting-embedded-panel {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+}
+
+.accounting-embedded-panel .accounting-collections-grid {
+  width: 100%;
+}
+
+.accounting-pricing-summary {
+  width: 100%;
+  justify-content: center;
+}
+
+.accounting-pricing-summary .summary-card {
+  min-height: 132px;
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+}
+
+.accounting-pricing-form {
+  width: 100%;
+}
+
+.accounting-server-expense-card .accounting-section-header {
+  margin-bottom: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.accounting-server-expense-card .accounting-section-header strong {
+  flex: 0 0 auto;
+  padding: 12px 14px;
+  border: 1px solid rgba(47, 128, 83, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--primary-dark);
+  font-size: 20px;
+}
+
+.accounting-payment-method-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.accounting-payment-method-card {
+  min-width: 0;
+  min-height: 188px;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 246, 0.84)),
+    var(--field-bg);
+  box-shadow: 0 10px 26px rgba(20, 63, 73, 0.06);
+  display: grid;
+  gap: 14px;
+  align-content: space-between;
+}
+
+.accounting-payment-method-card__header,
+.accounting-payment-method-card__actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accounting-payment-method-card__header > div,
+.accounting-payment-method-card__body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.accounting-payment-method-card__header strong,
+.accounting-payment-method-card__body strong {
+  color: var(--text);
+}
+
+.accounting-payment-method-card__header small,
+.accounting-payment-method-card__body small,
+.accounting-payment-method-card__body span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.accounting-payment-method-card__body {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.accounting-payment-method-card__actions {
+  position: relative;
+  justify-content: flex-end;
+}
+
+.accounting-module-page {
+  width: 100%;
+  max-width: none;
+  align-items: flex-start;
+}
+
+.accounting-module-shell {
+  width: min(1480px, calc(100vw - 40px));
+  align-items: stretch;
+}
+
+.accounting-module-content,
+.accounting-module-content > .accounting-shell,
+.accounting-shell,
+.accounting-centered-panel,
+.accounting-cash-gate {
+  width: 100%;
+}
+
+.accounting-centered-panel,
+.accounting-cash-gate {
+  max-width: none;
+  margin-inline: auto;
+}
+
+.accounting-section-header--plain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.accounting-section-header--plain h2,
+.accounting-section-header > h2 {
+  margin: 0;
+  color: var(--text);
+}
+
+.accounting-action-grid.action-grid {
+  width: 100%;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.accounting-action-tile {
+  color: inherit;
+  text-decoration: none;
+}
+
+.accounting-action-tile:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.accounting-action-tile:disabled:hover {
+  border-color: var(--line);
+  box-shadow: none;
+  transform: none;
+}
+
+.accounting-operation-modal {
+  width: min(100%, 760px);
+  display: grid;
+  gap: 18px;
+}
+
+.accounting-operation-modal > .floating-card {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.accounting-operation-modal .accounting-section-header .eyebrow {
+  display: none;
+}
+
+.accounting-operation-modal .accounting-section-header {
+  margin-bottom: 0;
+}
+
+.accounting-dialog-form {
+  align-items: flex-end;
+}
+
+.accounting-dialog-form > .form-field {
+  width: auto;
+  flex: 1 1 220px;
+}
+
+.accounting-dialog-form > .form-field--wide {
+  width: 100%;
+  flex: 1 1 100%;
+}
+
+.accounting-dialog-form > .accounting-money-field {
+  width: min(190px, 100%);
+  flex: 0 1 190px;
+}
+
+.accounting-money-field input {
+  text-align: right;
+  font-weight: 850;
+}
+
+.accounting-renewal-payment-form {
+  align-items: stretch;
+}
+
+.renewal-payment-summary {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.renewal-payment-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.renewal-payment-summary span,
+.renewal-payment-summary small,
+.renewal-payment-line small,
+.renewal-payment-line__detail span,
+.renewal-payment-breakdown__total span,
+.form-actions__hint {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.renewal-payment-summary strong {
+  color: var(--text);
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.renewal-payment-breakdown {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 12px;
+}
+
+.renewal-payment-breakdown__header,
+.renewal-payment-breakdown__total,
+.renewal-payment-line__title,
+.renewal-payment-line__detail {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.renewal-payment-breakdown__header strong,
+.renewal-payment-breakdown__header span,
+.renewal-payment-breakdown__total strong,
+.renewal-payment-line__title strong,
+.renewal-payment-line__detail strong {
+  color: var(--text);
+}
+
+.renewal-payment-line {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  display: grid;
+  gap: 8px;
+}
+
+.renewal-payment-line__title > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.renewal-payment-line__detail--early span,
+.renewal-payment-line__detail--early strong {
+  color: #b02a2a;
+}
+
+.renewal-payment-line__detail--total {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.renewal-payment-breakdown__total {
+  padding-top: 10px;
+  border-top: 1px solid rgba(47, 128, 83, 0.16);
+}
+
+.renewal-payment-breakdown__total strong {
+  font-size: 20px;
+}
+
+.form-actions__hint {
+  margin-right: auto;
+  color: #b02a2a;
+}
+
+@media (max-width: 767px) {
+  .renewal-payment-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.accounting-cash-gate {
+  border-color: rgba(176, 42, 42, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 248, 242, 0.88)),
+    var(--field-bg);
+}
+
+.accounting-cash-gate p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: left;
 }
 
 .accounting-employee-row .accounting-row__main,

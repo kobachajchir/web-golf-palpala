@@ -6,6 +6,7 @@ import type {
   EntityWithId,
   ExternalAccountingReferenceDocument,
   OvertimeEntryDocument,
+  SalaryConfigurationDocument,
   SalaryPaymentDocument,
 } from '../../../modules/accounting/domain/models';
 import type { EmployeeDocument } from '../../../modules/users/domain/models';
@@ -34,6 +35,7 @@ export type EmployeePeriodState = {
   isLocked: boolean;
   summary: EmployeePeriodSummary;
   employee: EntityWithId<EmployeeDocument> | null;
+  salaryConfiguration: EntityWithId<SalaryConfigurationDocument> | null;
   payrollCycle: EntityWithId<EmployeePayrollCycleDocument> | null;
   salaryPayment: EntityWithId<SalaryPaymentDocument> | null;
   overtimeItems: Array<EntityWithId<OvertimeEntryDocument>>;

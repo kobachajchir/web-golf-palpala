@@ -47,6 +47,31 @@ export function AccountingPieChart({ title, data }: { title: string; data: Chart
         ))}
         {normalized.length === 0 && <small>No hay movimientos para este periodo.</small>}
       </div>
+      <div className="accounting-chart-summary">
+        <table className="accounting-chart-summary__table">
+          <thead>
+            <tr>
+              <th>Categoria</th>
+              <th>Monto</th>
+              <th>%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {normalized.map((item) => (
+              <tr key={item.label}>
+                <td>{item.label}</td>
+                <td>{formatCurrency(item.valueMinor)}</td>
+                <td>{total > 0 ? `${Math.round((item.valueMinor / total) * 100)}%` : '0%'}</td>
+              </tr>
+            ))}
+            {normalized.length === 0 && (
+              <tr>
+                <td colSpan={3}>Sin movimientos para este periodo.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </article>
   );
 }

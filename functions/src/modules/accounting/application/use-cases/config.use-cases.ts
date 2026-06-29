@@ -16,6 +16,7 @@ import {
   ensureDirectivo,
   ensureStaff,
   hasExecutiveAccess,
+  parseOptionalAmountMinor,
   parseOptionalBoolean,
   parseOptionalBps,
   parseOptionalInteger,
@@ -47,6 +48,7 @@ export interface UpsertFinancialConfigInput {
   advertisingDefaultPeriodicity: AdvertisingDefaultPeriodicity;
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
+  serverMonthlyExpenseMinor?: number | null | undefined;
   notes?: string | null | undefined;
 }
 
@@ -118,6 +120,11 @@ function assertAdministrativeFeeOnlyUpdate(
     input.requireApprovalForOvertimePosting,
     activeConfig.requireApprovalForOvertimePosting,
   );
+  assertConfigValueUnchanged(
+    'serverMonthlyExpenseMinor',
+    input.serverMonthlyExpenseMinor ?? activeConfig.serverMonthlyExpenseMinor ?? DEFAULT_FINANCIAL_CONFIG.serverMonthlyExpenseMinor,
+    activeConfig.serverMonthlyExpenseMinor ?? DEFAULT_FINANCIAL_CONFIG.serverMonthlyExpenseMinor,
+  );
 }
 
 export async function upsertFinancialConfigUseCase(params: {
@@ -174,6 +181,8 @@ export async function upsertFinancialConfigUseCase(params: {
         advertisingDefaultPeriodicity: params.input.advertisingDefaultPeriodicity,
         requireApprovalForExpensePosting: params.input.requireApprovalForExpensePosting,
         requireApprovalForOvertimePosting: params.input.requireApprovalForOvertimePosting,
+        serverMonthlyExpenseMinor:
+          params.input.serverMonthlyExpenseMinor ?? activeConfig?.serverMonthlyExpenseMinor ?? DEFAULT_FINANCIAL_CONFIG.serverMonthlyExpenseMinor,
         notes: params.input.notes ?? null,
       },
       actor.uid,
@@ -253,6 +262,7 @@ export function parseUpsertFinancialConfigInput(payload: unknown): UpsertFinanci
       parseOptionalBoolean(data, 'requireApprovalForExpensePosting') ?? DEFAULT_FINANCIAL_CONFIG.requireApprovalForExpensePosting,
     requireApprovalForOvertimePosting:
       parseOptionalBoolean(data, 'requireApprovalForOvertimePosting') ?? DEFAULT_FINANCIAL_CONFIG.requireApprovalForOvertimePosting,
+    serverMonthlyExpenseMinor: parseOptionalAmountMinor(data, 'serverMonthlyExpenseMinor'),
     notes: parseOptionalNullableString(data, 'notes'),
   };
 }

@@ -2340,8 +2340,8 @@ export function AccountingDashboard() {
                           </small>
                           <small>
                             {pendingCharges.length > 0
-                              ? `${pendingCharges.length} cuota${pendingCharges.length === 1 ? '' : 's'} emitida${pendingCharges.length === 1 ? '' : 's'} - ${formatCurrency(pendingAmountMinor)}`
-                              : `Sin cuota emitida para ${formatPeriod(selectedPeriod)}`}
+                              ? `${pendingCharges.length} cuota${pendingCharges.length === 1 ? '' : 's'} pendiente${pendingCharges.length === 1 ? '' : 's'} - ${formatCurrency(pendingAmountMinor)}`
+                              : `Renovacion pendiente para ${formatPeriod(selectedPeriod)}`}
                           </small>
                         </div>
                         <div className="accounting-row__meta">

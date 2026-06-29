@@ -8,6 +8,8 @@ import './role.use-case.test.js';
 import './auth.member-number.test.js';
 import './accounting.fee.use-case.test.js';
 import './accounting.cash-closure.use-case.test.js';
+import './accounting.config.use-case.test.js';
+import './accounting.expense.use-case.test.js';
 import './accounting.membership-renewal.use-case.test.js';
 import './accounting.mercado-pago.use-case.test.js';
 import './accounting.payment.use-case.test.js';

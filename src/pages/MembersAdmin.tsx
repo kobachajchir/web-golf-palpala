@@ -1054,6 +1054,13 @@ export function MembersAdmin() {
                           {canEditMembers &&
                             openMemberActionsId === member.id && (
                               <div className="member-actions-menu">
+                                <Link
+                                  className="member-actions-menu__item"
+                                  to={`/accounting/collections?memberId=${member.id}`}
+                                  onClick={() => setOpenMemberActionsId(null)}
+                                >
+                                  Cuenta del socio
+                                </Link>
                                 <button
                                   type="button"
                                   className="member-actions-menu__item"

@@ -11,14 +11,12 @@ export const ACCOUNTING_NAV_ITEMS: Array<{
   icon: string;
 }> = [
   { id: 'overview', label: 'Inicio', helper: 'KPIs, alertas y pendientes', to: '/accounting/overview', icon: 'home' },
-  { id: 'member-dues', label: 'Cuotas societarias', helper: 'Generacion, renovaciones y valores', to: '/accounting/member-dues', icon: 'dues' },
-  { id: 'collections', label: 'Cobros', helper: 'Socios, deuda, pagos y recibos', to: '/accounting/collections', icon: 'collections' },
-  { id: 'expenses', label: 'Egresos / Pagos', helper: 'Gastos, rendiciones y movimientos', to: '/accounting/expenses', icon: 'expenses' },
+  { id: 'cash-closures', label: 'Caja', helper: 'Movimientos, cobros, egresos y cierre', to: '/accounting/caja', icon: 'cash' },
+  { id: 'member-dues', label: 'Cuotas societarias', helper: 'Renovaciones y valores', to: '/accounting/member-dues', icon: 'dues' },
   { id: 'employees', label: 'Empleados y sueldos', helper: 'Ciclos mensuales y liquidacion', to: '/accounting/employees', icon: 'employees' },
   { id: 'external-docs', label: 'Comprobantes externos', helper: 'F931, ART, obra social y asignaciones', to: '/accounting/external-docs', icon: 'docs' },
   { id: 'payment-methods', label: 'Medios de pago', helper: 'Activos, bancarizados y comisiones', to: '/accounting/payment-methods', icon: 'cards' },
   { id: 'bank-settlements', label: 'Liquidaciones bancarias', helper: 'Mercado Pago, Macro y diferencias', to: '/accounting/bank-settlements', icon: 'bank' },
-  { id: 'cash-closures', label: 'Cierre de caja', helper: 'Apertura, arqueo y conciliacion diaria', to: '/accounting/cash-closures', icon: 'cash' },
   { id: 'reports', label: 'Reportes', helper: 'Filtros, historial y auditoria', to: '/accounting/reports', icon: 'reports' },
 ];
 

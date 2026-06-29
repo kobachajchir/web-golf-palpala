@@ -6,11 +6,12 @@ import { AccountingCollectionsPage } from '../pages/AccountingCollectionsPage';
 
 test('AccountingCollectionsPage exposes the guided collection workspace', () => {
   const html = renderToStaticMarkup(
-    <MemoryRouter initialEntries={['/accounting/collections?memberId=mem_123']}>
+    <MemoryRouter initialEntries={['/accounting/caja?tab=cobros&memberId=mem_123']}>
       <AccountingCollectionsPage />
     </MemoryRouter>,
   );
 
   assert.match(html, /Workspace de caja societaria/);
   assert.match(html, /Buscar y seleccionar/);
+  assert.match(html, /Cobro por categoria de ingreso/);
 });

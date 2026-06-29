@@ -29,9 +29,12 @@ export const ACCOUNTING_COLLECTIONS = {
   financialConfigs: 'financial_configs',
   paymentMethods: 'payment_methods',
   paymentCommissionRules: 'payment_commission_rules',
+  financialIncomeCategories: 'financial_income_categories',
+  financialExpenseCategories: 'financial_expense_categories',
   financialMovements: 'financial_movements',
   macroDebitSettlements: 'macro_debit_settlements',
   expenseSubmissions: 'expense_submissions',
+  salaryConfigurations: 'salary_configurations',
   salaryPayments: 'salary_payments',
   payrollConfigs: 'payroll_configs',
   externalAccountingReferences: 'external_accounting_references',
@@ -87,6 +90,7 @@ export const ACCOUNTING_EXPENSE_CATEGORY_IDS = {
   mantenimiento: 'mantenimiento',
   limpieza: 'limpieza',
   insumos: 'insumos',
+  servidor: 'servidor',
 } as const;
 
 export const ACCOUNTING_REFERENCE_TYPES = ['F931', 'OBRA_SOCIAL', 'ART', 'OTHER'] as const;
