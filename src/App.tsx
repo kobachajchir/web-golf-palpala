@@ -1,18 +1,20 @@
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
-import { AccountingRoute, AdminRoute, MembersRoute, PasswordChangeRoute, ProtectedRoute, PublicRoute } from './components/routes/RoleBasedRoute';
+import { AccountingRoute, AdminRoute, DeveloperRoute, MembersRoute, PasswordChangeRoute, ProtectedRoute, PublicRoute } from './components/routes/RoleBasedRoute';
 import { AccountingRoutes } from './features/accounting/routes/accountingRoutes';
 import { useAuth } from './hooks/useAuth';
 import { AdminUserProfile } from './pages/AdminUserProfile';
 import { ChangePassword } from './pages/ChangePassword';
+import { ClubContact } from './pages/ClubContact';
 import { CourtRequests } from './pages/CourtRequests';
+import { Developer } from './pages/Developer';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { Home } from './pages/Home';
 import { ExecutiveBoardAdmin } from './pages/ExecutiveBoardAdmin';
 import { Index } from './pages/Index';
 import { Login } from './pages/Login';
 import { MemberMembershipProfile } from './pages/MemberMembershipProfile';
-import { MercadoPagoReturn } from './pages/MercadoPagoReturn';
+import { MyReceipts } from './pages/MyReceipts';
 import { MembersAdmin } from './pages/MembersAdmin';
 import { NotificationsPortal } from './pages/NotificationsPortal';
 import { EmployeesAdmin } from './pages/EmployeesAdmin';
@@ -21,6 +23,7 @@ import { Profile } from './pages/Profile';
 import { SignUp } from './pages/SignUp';
 import { TournamentRegistration } from './pages/TournamentRegistration';
 import './styles/pages.css';
+import './styles/accounting-flow-overrides.css';
 
 function App() {
   const location = useLocation();
@@ -104,10 +107,37 @@ function App() {
           />
 
           <Route
+            path="/desarrollador"
+            element={
+              <DeveloperRoute>
+                <Developer />
+              </DeveloperRoute>
+            }
+          />
+
+          <Route
+            path="/contacto-club"
+            element={
+              <ProtectedRoute>
+                <ClubContact />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/mi-membresia"
             element={
               <ProtectedRoute>
                 <MemberMembershipProfile />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/mis-recibos"
+            element={
+              <ProtectedRoute>
+                <MyReceipts />
               </ProtectedRoute>
             }
           />
@@ -140,15 +170,6 @@ function App() {
           />
 
           {AccountingRoutes()}
-
-          <Route
-            path="/payments/mercado-pago/return/:result"
-            element={
-              <ProtectedRoute>
-                <MercadoPagoReturn />
-              </ProtectedRoute>
-            }
-          />
 
           <Route
             path="/admin/users/:id"

@@ -1,8 +1,16 @@
+import type { ReactNode } from 'react';
 import { formatCurrency } from '../utils/accountingFormatters';
 
 export type ChartDatum = {
   label: string;
   valueMinor: number;
+  color?: string;
+};
+
+export type VerticalTrendDatum = {
+  label: string;
+  incomeMinor: number;
+  expenseMinor: number;
 };
 
 const PIE_COLORS = ['#0f7a5a', '#2a6cb0', '#d39b0f', '#8f4aa8', '#64748b', '#b45309'];
@@ -14,7 +22,7 @@ function normalizeData(data: ChartDatum[]) {
     .slice(0, 6);
 }
 
-export function AccountingPieChart({ title, data }: { title: string; data: ChartDatum[] }) {
+export function AccountingPieChart({ title, data, colors = PIE_COLORS }: { title: string; data: ChartDatum[]; colors?: string[] }) {
   const normalized = normalizeData(data);
   const total = normalized.reduce((sum, item) => sum + item.valueMinor, 0);
   let cursor = 0;
@@ -23,14 +31,14 @@ export function AccountingPieChart({ title, data }: { title: string; data: Chart
         .map((item, index) => {
           const start = cursor;
           cursor += (item.valueMinor / total) * 100;
-          return `${PIE_COLORS[index % PIE_COLORS.length]} ${start}% ${cursor}%`;
+          return `${item.color ?? colors[index % colors.length]} ${start}% ${cursor}%`;
         })
         .join(', ')
     : '#e2e8f0 0 100%';
 
   return (
     <article className="accounting-chart-card">
-      <div>
+      <div className="accounting-chart-card__heading">
         <p className="eyebrow">Distribucion</p>
         <h3>{title}</h3>
       </div>
@@ -40,7 +48,7 @@ export function AccountingPieChart({ title, data }: { title: string; data: Chart
       <div className="accounting-chart-legend">
         {normalized.map((item, index) => (
           <span key={item.label}>
-            <i style={{ background: PIE_COLORS[index % PIE_COLORS.length] }} />
+            <i style={{ background: item.color ?? colors[index % colors.length] }} />
             {item.label}
             <strong>{formatCurrency(item.valueMinor)}</strong>
           </span>
@@ -91,11 +99,79 @@ export function AccountingBarChart({ title, data }: { title: string; data: Chart
           <div key={item.label} className="accounting-bar-chart__row">
             <span>{item.label}</span>
             <div className="accounting-bar-chart__track">
-              <i style={{ width: `${Math.max((Math.abs(item.valueMinor) / maxValue) * 100, item.valueMinor === 0 ? 0 : 4)}%` }} />
+              <i
+                style={{
+                  width: `${Math.max((Math.abs(item.valueMinor) / maxValue) * 100, item.valueMinor === 0 ? 0 : 4)}%`,
+                  background: item.color ?? (item.valueMinor < 0 ? '#b42318' : '#0f7a5a'),
+                }}
+              />
             </div>
             <strong>{formatCurrency(item.valueMinor)}</strong>
           </div>
         ))}
+      </div>
+    </article>
+  );
+}
+
+export function AccountingVerticalTrendChart({
+  title,
+  data,
+  showIncome,
+  showExpense,
+  toolbar,
+}: {
+  title: string;
+  data: VerticalTrendDatum[];
+  showIncome: boolean;
+  showExpense: boolean;
+  toolbar?: ReactNode;
+}) {
+  const visibleValues = data.flatMap((item) => [
+    showIncome ? item.incomeMinor : 0,
+    showExpense ? item.expenseMinor : 0,
+  ]);
+  const maxValue = Math.max(...visibleValues, 1);
+  const hasData = data.some((item) => (showIncome && item.incomeMinor > 0) || (showExpense && item.expenseMinor > 0));
+
+  return (
+    <article className="accounting-chart-card accounting-chart-card--wide accounting-vertical-trend-card">
+      {toolbar}
+      <div className="accounting-chart-card__heading">
+        <p className="eyebrow">Estadisticas</p>
+        <h3>{title}</h3>
+      </div>
+      <div className="accounting-vertical-trend-chart" role="img" aria-label={title}>
+        {data.map((item) => {
+          const netMinor = item.incomeMinor - item.expenseMinor;
+          return (
+            <div key={item.label} className="accounting-vertical-trend-chart__bucket">
+              <div className="accounting-vertical-trend-chart__bars">
+                {showIncome && (
+                  <i
+                    className="accounting-vertical-trend-chart__bar accounting-vertical-trend-chart__bar--income"
+                    style={{ height: `${Math.max((item.incomeMinor / maxValue) * 100, item.incomeMinor === 0 ? 0 : 5)}%` }}
+                    title={`Ingresos ${item.label}: ${formatCurrency(item.incomeMinor)}`}
+                  />
+                )}
+                {showExpense && (
+                  <i
+                    className="accounting-vertical-trend-chart__bar accounting-vertical-trend-chart__bar--expense"
+                    style={{ height: `${Math.max((item.expenseMinor / maxValue) * 100, item.expenseMinor === 0 ? 0 : 5)}%` }}
+                    title={`Egresos ${item.label}: ${formatCurrency(item.expenseMinor)}`}
+                  />
+                )}
+              </div>
+              <strong>{item.label}</strong>
+              <small>{formatCurrency(netMinor)}</small>
+            </div>
+          );
+        })}
+        {!hasData && <span className="accounting-vertical-trend-chart__empty">Sin datos para las series seleccionadas.</span>}
+      </div>
+      <div className="accounting-chart-legend accounting-chart-legend--inline">
+        {showIncome && <span><i style={{ background: '#0f7a5a' }} />Ingresos</span>}
+        {showExpense && <span><i style={{ background: '#b42318' }} />Egresos</span>}
       </div>
     </article>
   );

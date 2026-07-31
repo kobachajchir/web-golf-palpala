@@ -1,10 +1,11 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { normalizeMemberNumber } from '../../../auth/member-number-auth.js';
 import { assertCondition } from '../../domain/errors.js';
-import type { Actor, MemberDocument, MemberStatus } from '../../domain/models.js';
+import type { Actor, MemberStatus } from '../../domain/models.js';
 import type { UsersDataAccess, UsersTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
+  ensureAuthenticatedActor,
   ensureFamilyHolderEligibility,
   ensureStaff,
   parseOptionalBoolean,
@@ -320,6 +321,38 @@ export async function updateMemberUseCase(params: {
   });
 }
 
+export interface UpdateOwnMemberDniInput {
+  dni: string;
+}
+
+export async function updateOwnMemberDniUseCase(params: {
+  actor: Actor | null;
+  input: UpdateOwnMemberDniInput;
+  transactions: UsersTransactionManager;
+}): Promise<{ memberId: string; dni: string }> {
+  const actor = ensureAuthenticatedActor(params.actor);
+  assertCondition(
+    actor.user.profileType === 'member' && Boolean(actor.user.profileId),
+    'permission-denied',
+    'El usuario autenticado no tiene una ficha de socio propia.',
+  );
+  const dni = params.input.dni.replace(/\D/g, '');
+  assertCondition(dni.length >= 7 && dni.length <= 9, 'invalid-argument', 'El DNI debe tener entre 7 y 9 digitos.');
+
+  return params.transactions.runInTransaction(async (dataAccess) => {
+    const memberId = actor.user.profileId as string;
+    const member = await dataAccess.members.getById(memberId);
+    assertCondition(member, 'not-found', `No existe members/${memberId}.`);
+    assertCondition(
+      !member.linkedUserId || member.linkedUserId === actor.uid,
+      'permission-denied',
+      'La ficha de socio no pertenece al usuario autenticado.',
+    );
+    await dataAccess.members.update(memberId, { dni }, actor.uid);
+    return { memberId, dni };
+  });
+}
+
 export async function startLicenseUseCase(params: {
   actor: Actor | null;
   input: StartLicenseInput;
@@ -413,6 +446,11 @@ export function parseUpdateMemberInput(payload: unknown): UpdateMemberInput {
     familyGroupId: parseOptionalNullableString(data, 'familyGroupId'),
     isFamilyHolder: parseOptionalBoolean(data, 'isFamilyHolder'),
   };
+}
+
+export function parseUpdateOwnMemberDniInput(payload: unknown): UpdateOwnMemberDniInput {
+  const data = assertIsRecord(payload);
+  return { dni: parseRequiredString(data, 'dni') };
 }
 
 export function parseStartLicenseInput(payload: unknown): StartLicenseInput {

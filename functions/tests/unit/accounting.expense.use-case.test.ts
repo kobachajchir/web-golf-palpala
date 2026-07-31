@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FINANCIAL_EXPENSE_CATEGORY_IDS } from '../../src/modules/accounting/domain/constants.js';
 import {
+  parseRegisterExpenseMovementInput,
   postExpenseMovementUseCase,
+  registerExpenseMovementUseCase,
   reviewExpenseUseCase,
   submitExpenseUseCase,
 } from '../../src/modules/accounting/application/use-cases/expense.use-cases.js';
@@ -12,6 +14,7 @@ import {
   seedAccountingEmployee,
   seedActiveFinancialConfig,
   seedExpenseCategory,
+  seedPaymentMethod,
 } from '../helpers/accounting-fakes.js';
 
 function createAdminActor() {
@@ -142,4 +145,57 @@ test('gasto servidor queda como egreso categorizado normal', async () => {
   assert.equal(movement?.categoryId, FINANCIAL_EXPENSE_CATEGORY_IDS.servidor);
   assert.equal(movement?.bancarizado, true);
   assert.equal(movement?.imputableImpositivo, true);
+});
+
+test('egreso administrativo exige seleccionar una cuenta de origen', () => {
+  assert.throws(
+    () => parseRegisterExpenseMovementInput({
+      categoryId: FINANCIAL_EXPENSE_CATEGORY_IDS.proveedores,
+      amountMinor: 100_000,
+    }),
+    /paymentMethodId/i,
+  );
+});
+
+test('egreso Servidor usa la categoria incorporada aunque aun no este sembrada', async () => {
+  const manager = setupExpenseFixture();
+  manager.financialExpenseCategories.delete(FINANCIAL_EXPENSE_CATEGORY_IDS.servidor);
+  seedPaymentMethod(manager, 'transfer_galicia', { bancarizado: true, name: 'Transferencia Galicia' });
+
+  const result = await registerExpenseMovementUseCase({
+    actor: createAdminActor(),
+    input: {
+      categoryId: FINANCIAL_EXPENSE_CATEGORY_IDS.servidor,
+      description: 'Servidor mensual',
+      amountMinor: 180_000,
+      paymentMethodId: 'transfer_galicia',
+    },
+    transactions: manager,
+  });
+
+  const movement = manager.financialMovements.get(result.movementId);
+  assert.equal(movement?.categoryId, FINANCIAL_EXPENSE_CATEGORY_IDS.servidor);
+  assert.equal(movement?.categoryCodeSnapshot, FINANCIAL_EXPENSE_CATEGORY_IDS.servidor);
+  assert.equal(movement?.paymentMethodId, 'transfer_galicia');
+});
+
+test('egreso Varios usa el medio seleccionado aunque la categoria aun no este sembrada', async () => {
+  const manager = setupExpenseFixture();
+  seedPaymentMethod(manager, 'transfer_galicia', { bancarizado: true, name: 'Transferencia Galicia' });
+
+  const result = await registerExpenseMovementUseCase({
+    actor: createAdminActor(),
+    input: {
+      categoryId: FINANCIAL_EXPENSE_CATEGORY_IDS.varios,
+      description: 'Compra extraordinaria',
+      amountMinor: 175_000,
+      paymentMethodId: 'transfer_galicia',
+    },
+    transactions: manager,
+  });
+
+  const movement = manager.financialMovements.get(result.movementId);
+  assert.equal(movement?.categoryId, FINANCIAL_EXPENSE_CATEGORY_IDS.varios);
+  assert.equal(movement?.paymentMethodId, 'transfer_galicia');
+  assert.equal(movement?.bancarizado, true);
 });

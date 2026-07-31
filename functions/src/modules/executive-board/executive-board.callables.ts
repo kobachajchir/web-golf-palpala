@@ -21,6 +21,7 @@ import {
 import { USERS_COLLECTIONS } from '../users/domain/constants.js';
 import { assertCondition } from '../users/domain/errors.js';
 import type { UserDocument } from '../users/domain/models.js';
+import { setCustomClaimsPreservingInternalRoles } from '../users/infrastructure/firestore/auth-gateway.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../users/infrastructure/firestore/repositories.js';
 
 const EXECUTIVE_BOARD_TERMS_COLLECTION = 'executive_board_terms';
@@ -186,9 +187,10 @@ async function syncClaims(targets: ClaimsSyncTarget[]): Promise<void> {
 
   const auth = getAuth(getOrInitializeApp());
   for (const target of uniqueTargets.values()) {
-    await auth.setCustomUserClaims(
+    await setCustomClaimsPreservingInternalRoles(
       target.uid,
       buildCustomClaims(target.roleIds, target.claimsVersion, target.active),
+      auth,
     );
   }
 }

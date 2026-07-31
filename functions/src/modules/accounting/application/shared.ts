@@ -43,10 +43,12 @@ export function ensureAuthenticatedActor(actor: Actor | null): Actor {
 export function hasExecutiveAccess(actor: Actor): boolean {
   const hasExecutiveRole =
     actor.user.roleIds.includes('comite_ejecutivo') ||
-    actor.user.roleIds.includes('directivo');
+    actor.user.roleIds.includes('directivo') ||
+    actor.user.roleIds.includes('administrativo');
   const hasExecutiveClaim =
     actor.claims.comite_ejecutivo === true ||
-    actor.claims.directivo === true;
+    actor.claims.directivo === true ||
+    actor.claims.administrativo === true;
 
   return actor.user.active && hasExecutiveRole && hasExecutiveClaim;
 }
@@ -379,6 +381,16 @@ export function calculateEarlyPaymentDiscount(params: {
 export function calculateMembershipRenewalDueDate(paymentDate: Date): Date {
   const year = getClubDatePart(paymentDate, 'year');
   const month = getClubDatePart(paymentDate, 'month');
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  return new Date(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00${ACCOUNTING_TIME_ZONE_OFFSET}`);
+}
+
+export function calculateMembershipRenewalDueDateFromPeriod(period: AccountingPeriod): Date {
+  validateAccountingPeriod(period);
+  const [yearText, monthText] = period.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear = month === 12 ? year + 1 : year;
   return new Date(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00${ACCOUNTING_TIME_ZONE_OFFSET}`);

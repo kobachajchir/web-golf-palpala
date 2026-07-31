@@ -43,7 +43,7 @@ async function setupPayrollFixture() {
     defaultBancarizado: false,
     defaultImputableImpositivo: false,
   });
-  seedPaymentMethod(manager, PAYMENT_METHOD_IDS.transfer, { bancarizado: true });
+  seedPaymentMethod(manager, PAYMENT_METHOD_IDS.transferMacro, { bancarizado: true });
   seedPaymentMethod(manager, PAYMENT_METHOD_IDS.cash, { bancarizado: false });
 
   const actor = createDirectivoActor();

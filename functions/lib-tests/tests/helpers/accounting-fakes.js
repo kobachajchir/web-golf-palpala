@@ -286,6 +286,9 @@ class InMemoryFinancialMovementsStore {
         if (filters.status) {
             items = items.filter((item) => item.status === filters.status);
         }
+        if (filters.installmentPlanId) {
+            items = items.filter((item) => item.installmentPlanId === filters.installmentPlanId);
+        }
         if (filters.settlementId) {
             items = items.filter((item) => item.settlementId === filters.settlementId);
         }
@@ -301,6 +304,11 @@ class InMemoryFinancialMovementsStore {
     async listBySettlementId(settlementId) {
         return Array.from(this.items.values())
             .filter((item) => item.settlementId === settlementId)
+            .sort((a, b) => a.operationDate.toMillis() - b.operationDate.toMillis());
+    }
+    async listByInstallmentPlanId(installmentPlanId) {
+        return Array.from(this.items.values())
+            .filter((item) => item.installmentPlanId === installmentPlanId)
             .sort((a, b) => a.operationDate.toMillis() - b.operationDate.toMillis());
     }
 }
@@ -671,6 +679,9 @@ class InMemoryCashClosuresStore {
         items.sort((a, b) => b.closureDate.toMillis() - a.closureDate.toMillis());
         return pageFromItems(items, filters.limit, filters.cursorId);
     }
+    async listOpen() {
+        return Array.from(this.items.values()).filter((item) => item.status === 'open');
+    }
 }
 class InMemoryExternalAccountingReferencesStore {
     items;
@@ -892,71 +903,6 @@ class InMemoryMemberFeeChargesStore {
         return pageFromItems(items, filters.limit, filters.cursorId);
     }
 }
-class InMemoryMercadoPagoCheckoutSessionsStore {
-    items;
-    constructor(items) {
-        this.items = items;
-    }
-    async getById(sessionId) {
-        return this.items.get(sessionId) ?? null;
-    }
-    async getByExternalReference(externalReference) {
-        return Array.from(this.items.values()).find((item) => item.externalReference === externalReference) ?? null;
-    }
-    async getByPaymentId(paymentId) {
-        return Array.from(this.items.values()).find((item) => item.paymentId === paymentId) ?? null;
-    }
-    async set(sessionId, data, actorUid) {
-        this.items.set(sessionId, { id: sessionId, ...data, ...createAudit(actorUid) });
-    }
-    async update(sessionId, patch, actorUid) {
-        const existing = this.items.get(sessionId);
-        if (!existing) {
-            return;
-        }
-        this.items.set(sessionId, {
-            id: existing.id,
-            ...applyPatch(existing, patch),
-            updatedAt: timestampNow(),
-            updatedBy: actorUid,
-        });
-    }
-    async listPage(filters) {
-        let items = Array.from(this.items.values());
-        if (filters.status) {
-            items = items.filter((item) => item.status === filters.status);
-        }
-        if (filters.createdByUid) {
-            items = items.filter((item) => item.createdByUid === filters.createdByUid);
-        }
-        items.sort((left, right) => right.updatedAt.toDate().getTime() - left.updatedAt.toDate().getTime());
-        return pageFromItems(items, filters.limit, filters.cursorId);
-    }
-}
-class InMemoryMercadoPagoEventsStore {
-    items;
-    constructor(items) {
-        this.items = items;
-    }
-    async getById(eventId) {
-        return this.items.get(eventId) ?? null;
-    }
-    async set(eventId, data, actorUid) {
-        this.items.set(eventId, { id: eventId, ...data, ...createAudit(actorUid) });
-    }
-    async update(eventId, patch, actorUid) {
-        const existing = this.items.get(eventId);
-        if (!existing) {
-            return;
-        }
-        this.items.set(eventId, {
-            id: existing.id,
-            ...applyPatch(existing, patch),
-            updatedAt: timestampNow(),
-            updatedBy: actorUid,
-        });
-    }
-}
 export class InMemoryAccountingTransactionManager {
     users = new Map();
     members = new Map();
@@ -985,8 +931,6 @@ export class InMemoryAccountingTransactionManager {
     advertisingContracts = new Map();
     handicapCharges = new Map();
     memberFeeCharges = new Map();
-    mercadoPagoCheckoutSessions = new Map();
-    mercadoPagoEvents = new Map();
     counters = {
         financialConfig: 0,
         commissionRule: 0,
@@ -1034,8 +978,6 @@ export class InMemoryAccountingTransactionManager {
         advertisingContracts: new InMemoryAdvertisingContractsStore(this.advertisingContracts, () => `advertising-contract-${++this.counters.advertisingContract}`),
         handicapCharges: new InMemoryHandicapChargesStore(this.handicapCharges, () => `handicap-charge-${++this.counters.handicapCharge}`),
         memberFeeCharges: new InMemoryMemberFeeChargesStore(this.memberFeeCharges, () => `member-fee-charge-${++this.counters.memberFeeCharge}`),
-        mercadoPagoCheckoutSessions: new InMemoryMercadoPagoCheckoutSessionsStore(this.mercadoPagoCheckoutSessions),
-        mercadoPagoEvents: new InMemoryMercadoPagoEventsStore(this.mercadoPagoEvents),
     };
     async runInTransaction(handler) {
         return handler(this.dataAccess);
@@ -1170,6 +1112,7 @@ export function seedActiveFinancialConfig(manager, configId = 'financial-config-
         advertisingDefaultPeriodicity: 'monthly',
         requireApprovalForExpensePosting: true,
         requireApprovalForOvertimePosting: true,
+        serverMonthlyExpenseMinor: 0,
         ...createAudit(),
         ...overrides,
     };

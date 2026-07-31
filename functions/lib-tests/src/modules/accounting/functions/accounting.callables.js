@@ -1,148 +1,62 @@
 import { logger } from 'firebase-functions';
-import { onCall, onRequest } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { ACCOUNTING_TIME_ZONE, DEFAULT_FINANCIAL_EXPENSE_CATEGORIES, DEFAULT_FINANCIAL_INCOME_CATEGORIES, FINANCIAL_EXPENSE_CATEGORY_IDS, FINANCIAL_INCOME_CATEGORY_IDS, } from '../domain/constants.js';
 import { parseSetCreditCommissionRuleInput, parseUpsertFinancialConfigInput, setCreditCommissionRuleUseCase, upsertFinancialConfigUseCase } from '../application/use-cases/config.use-cases.js';
 import { generateCuotaUseCase, generateFeePreviewUseCase, parseGenerateCuotaInput, parseGenerateFeePreviewInput } from '../application/use-cases/fee.use-cases.js';
-import { parseRegisterPaymentInput, registerPaymentUseCase } from '../application/use-cases/payment.use-cases.js';
+import { editInternalTransferUseCase, parseEditInternalTransferInput, parseRegisterPaymentInput, parseTransferFundsInput, registerPaymentUseCase, transferFundsUseCase, } from '../application/use-cases/payment.use-cases.js';
 import { createMacroDebitSettlementUseCase, parseCreateMacroDebitSettlementInput, parseReconcileMacroSettlementInput, reconcileMacroSettlementUseCase } from '../application/use-cases/settlement.use-cases.js';
-import { parsePostExpenseMovementInput, parseReviewExpenseInput, parseSubmitExpenseInput, postExpenseMovementUseCase, reviewExpenseUseCase, submitExpenseUseCase } from '../application/use-cases/expense.use-cases.js';
-import { parsePostSalaryPaymentInput, parseUpsertSalaryConfigurationInput, postSalaryPaymentUseCase, upsertSalaryConfigurationUseCase } from '../application/use-cases/salary.use-cases.js';
+import { parsePostExpenseMovementInput, parseRegisterExpenseMovementInput, parseReviewExpenseInput, parseSubmitExpenseInput, postExpenseMovementUseCase, registerExpenseMovementUseCase, reviewExpenseUseCase, submitExpenseUseCase, } from '../application/use-cases/expense.use-cases.js';
+import { parsePostAnnualBonusPaymentInput, parsePostSalaryPaymentInput, parseUpsertSalaryConfigurationInput, postAnnualBonusPaymentUseCase, postSalaryPaymentUseCase, upsertSalaryConfigurationUseCase, } from '../application/use-cases/salary.use-cases.js';
 import { parseRecordExternalReferenceInput, parseUpsertEmployeeExternalReferenceInput, recordExternalReferenceUseCase, upsertEmployeeExternalReferenceUseCase, } from '../application/use-cases/external-reference.use-cases.js';
-import { createHandicapChargeUseCase, parseCreateHandicapChargeInput, parseTransferHandicapToAssociationInput, transferHandicapToAssociationUseCase } from '../application/use-cases/handicap.use-cases.js';
-import { parseVoidFinancialMovementInput, voidFinancialMovementUseCase } from '../application/use-cases/movement.use-cases.js';
+import { createHandicapChargeUseCase, parseCreateHandicapChargeInput, parseTransferHandicapToAssociationInput, parseTransferPendingHandicapToAssociationInput, transferHandicapToAssociationUseCase, transferPendingHandicapToAssociationUseCase, } from '../application/use-cases/handicap.use-cases.js';
+import { editFinancialMovementUseCase, parseEditFinancialMovementInput, parseSetFinancialMovementBalanceInclusionInput, parseVoidFinancialMovementInput, setFinancialMovementBalanceInclusionUseCase, voidFinancialMovementUseCase, } from '../application/use-cases/movement.use-cases.js';
 import { createCashClosureUseCase, closeCashClosureUseCase, parseCloseCashClosureInput, parseCreateCashClosureInput, } from '../application/use-cases/cash-closure.use-cases.js';
 import { createOvertimeEntryUseCase, linkExternalReferenceToEmployeeUseCase, listEmployeePayrollCycleUseCase, parseCreateOvertimeEntryInput, parseLinkExternalReferenceToEmployeeInput, parseListEmployeePayrollCycleInput, parsePostEmployeePayrollCycleInput, parseRecordEmployeeCertificateInput, parseReviewOvertimeEntryInput, postEmployeePayrollCycleUseCase, recordEmployeeCertificateUseCase, reviewOvertimeEntryUseCase, } from '../application/use-cases/payroll-cycle.use-cases.js';
-import { markMembershipRenewalsUseCase } from '../application/use-cases/membership-renewal.use-cases.js';
-import { createMercadoPagoCheckoutUseCase, getMercadoPagoCheckoutStatusUseCase, parseCreateMercadoPagoCheckoutInput, parseGetMercadoPagoCheckoutStatusInput, parseMercadoPagoPaymentResponse, reconcileMercadoPagoPaymentsUseCase, recordMercadoPagoEventUseCase, verifyMercadoPagoSignature, } from '../application/use-cases/mercado-pago.use-cases.js';
+import { markMembershipRenewalsUseCase, syncMembershipRenewalsDailyUseCase } from '../application/use-cases/membership-renewal.use-cases.js';
+import { parseRegisterMemberFeeBatchPaymentInput, registerMemberFeeBatchPaymentUseCase, } from '../application/use-cases/member-fee-payment.use-cases.js';
+import { parseReconcileMemberFeeRenewalsInput, reconcileMemberFeeRenewalsUseCase, } from '../application/use-cases/member-fee-reconciliation.use-cases.js';
+import { createInstallmentPlanUseCase, listMyReceiptsUseCase, parseCreateInstallmentPlanInput, parseRegisterInstallmentPaymentInput, registerInstallmentPaymentUseCase, } from '../application/use-cases/installment.use-cases.js';
 import { parseUpsertPayrollConfigInput, upsertPayrollConfigUseCase } from '../application/use-cases/payroll-config.use-cases.js';
-import { assertIsRecord, ensureStaff, resolveActor, toHttpsError } from '../application/shared.js';
+import { ensureStaff, getClubDayOfMonth, resolveActor, toClubAccountingPeriod, toHttpsError } from '../application/shared.js';
 import { FirestoreAccountingTransactionManager, SystemClock } from '../infrastructure/firestore/repositories.js';
-import { emitMemberPaymentNotification } from '../../notifications/notifications.service.js';
+import { emitMemberPaymentNotification, emitRoleNotification } from '../../notifications/notifications.service.js';
 const transactions = new FirestoreAccountingTransactionManager(new SystemClock());
-const clock = new SystemClock();
-function readEnv(name) {
-    const value = process.env[name];
-    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-function getAppBaseUrl() {
-    return readEnv('APP_BASE_URL') ?? readEnv('VITE_APP_BASE_URL') ?? 'http://localhost:5173';
-}
-function getMercadoPagoWebhookUrl() {
-    return readEnv('MP_WEBHOOK_URL') ?? `${getAppBaseUrl()}/mercadoPagoWebhook`;
-}
-function isEmulatorRuntime() {
-    return process.env.FUNCTIONS_EMULATOR === 'true' || process.env.FIRESTORE_EMULATOR_HOST !== undefined;
-}
-function shouldEnforceAppCheck() {
-    return !isEmulatorRuntime() && readEnv('ENFORCE_APP_CHECK') === 'true';
-}
-function sanitizeEventId(value) {
-    return value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 180);
-}
-function getHeaderValue(headers, key) {
-    const value = headers[key.toLowerCase()] ?? headers[key];
-    if (Array.isArray(value)) {
-        return value.join(',');
+const DEFAULT_SERVER_EXPENSE_DUE_DAY = 20;
+const DEFAULT_SERVER_MONTHLY_USD_MINOR = 6500;
+const ON_DEMAND_EXPENSE_CATEGORY_IDS = new Set([
+    FINANCIAL_EXPENSE_CATEGORY_IDS.servidor,
+    FINANCIAL_EXPENSE_CATEGORY_IDS.varios,
+]);
+async function ensureDefaultExpenseCategory(categoryId, actorUid) {
+    const defaultCategory = DEFAULT_FINANCIAL_EXPENSE_CATEGORIES.find((category) => category.id === categoryId);
+    if (!defaultCategory) {
+        return;
     }
-    return typeof value === 'string' ? value : '';
+    const dataAccess = transactions.getDataAccess();
+    if (!await dataAccess.financialExpenseCategories.getById(categoryId)) {
+        await dataAccess.financialExpenseCategories.set(categoryId, defaultCategory.data, actorUid);
+    }
 }
-function pickMercadoPagoHeaders(headers) {
-    return {
-        'x-request-id': getHeaderValue(headers, 'x-request-id'),
-        'x-signature': getHeaderValue(headers, 'x-signature'),
-        'user-agent': getHeaderValue(headers, 'user-agent'),
-    };
+async function ensureInternalTransferCategories(actorUid) {
+    const defaultIncomeCategory = DEFAULT_FINANCIAL_INCOME_CATEGORIES.find((category) => category.id === FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer);
+    const defaultExpenseCategory = DEFAULT_FINANCIAL_EXPENSE_CATEGORIES.find((category) => category.id === FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer);
+    const dataAccess = transactions.getDataAccess();
+    const [incomeCategory, expenseCategory] = await Promise.all([
+        dataAccess.financialIncomeCategories.getById(FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer),
+        dataAccess.financialExpenseCategories.getById(FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer),
+    ]);
+    await Promise.all([
+        !incomeCategory && defaultIncomeCategory
+            ? dataAccess.financialIncomeCategories.set(defaultIncomeCategory.id, defaultIncomeCategory.data, actorUid)
+            : Promise.resolve(),
+        !expenseCategory && defaultExpenseCategory
+            ? dataAccess.financialExpenseCategories.set(defaultExpenseCategory.id, defaultExpenseCategory.data, actorUid)
+            : Promise.resolve(),
+    ]);
 }
-function buildMercadoPagoRuntimeConfig() {
-    return {
-        appBaseUrl: getAppBaseUrl(),
-        webhookUrl: getMercadoPagoWebhookUrl(),
-        preferenceExpirationMinutes: Number(readEnv('MP_PREFERENCE_EXPIRATION_MINUTES') ?? '30'),
-    };
-}
-function createMercadoPagoClient() {
-    const accessToken = readEnv('MP_ACCESS_TOKEN');
-    const useMock = isEmulatorRuntime() && !accessToken;
-    return {
-        async createPreference(payload) {
-            if (useMock) {
-                const externalReference = payload.external_reference;
-                return {
-                    preferenceId: `mock_pref_${externalReference}`,
-                    checkoutUrl: `${getAppBaseUrl()}/payments/mercado-pago/return/success?sessionId=${encodeURIComponent(externalReference)}&mock=1`,
-                    rawResponse: {
-                        id: `mock_pref_${externalReference}`,
-                        init_point: null,
-                        sandbox_init_point: null,
-                    },
-                };
-            }
-            if (!accessToken) {
-                throw new Error('MP_ACCESS_TOKEN no está configurado.');
-            }
-            const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(8000),
-            });
-            const body = await response.json();
-            if (!response.ok) {
-                throw new Error(`Mercado Pago rechazó la preferencia: ${JSON.stringify(body)}`);
-            }
-            const preferenceId = typeof body.id === 'string' ? body.id : null;
-            const checkoutUrl = typeof body.init_point === 'string'
-                ? body.init_point
-                : typeof body.sandbox_init_point === 'string'
-                    ? body.sandbox_init_point
-                    : null;
-            if (!preferenceId || !checkoutUrl) {
-                throw new Error('Mercado Pago no devolvió preferenceId o checkoutUrl.');
-            }
-            return {
-                preferenceId,
-                checkoutUrl,
-                rawResponse: body,
-            };
-        },
-        async getPayment(paymentId) {
-            if (useMock) {
-                return {
-                    paymentId,
-                    status: 'approved',
-                    statusDetail: 'accredited',
-                    externalReference: null,
-                    merchantOrderId: null,
-                    transactionAmountMinor: 0,
-                    netAmountMinor: null,
-                    feeAmountMinor: null,
-                    moneyReleaseDate: null,
-                    paymentTypeId: 'account_money',
-                    providerPaymentMethodId: 'account_money',
-                    dateApproved: new Date().toISOString(),
-                };
-            }
-            if (!accessToken) {
-                throw new Error('MP_ACCESS_TOKEN no está configurado.');
-            }
-            const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
-                method: 'GET',
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                },
-                signal: AbortSignal.timeout(8000),
-            });
-            const body = await response.json();
-            if (!response.ok) {
-                throw new Error(`No se pudo consultar el pago de Mercado Pago: ${JSON.stringify(body)}`);
-            }
-            return parseMercadoPagoPaymentResponse(body);
-        },
-    };
+function formatServerUsdMinor(amountMinor) {
+    return `USD ${(amountMinor / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
 }
 async function getActorFromCallableRequest(auth) {
     return resolveActor(transactions.getDataAccess(), auth
@@ -217,14 +131,14 @@ export const accountingRegisterPayment = onCall(async (request) => {
             input,
             transactions,
         });
-        if (!result.duplicate && input.sourceType === 'member_fee_charge') {
+        if (!result.duplicate) {
             const memberId = input.memberId ?? input.thirdPartyId ?? null;
             if (memberId) {
                 try {
                     await emitMemberPaymentNotification({
                         memberId,
                         movementId: result.movementId,
-                        amountMinor: result.netAmountMinor,
+                        amountMinor: result.grossAmountMinor,
                         receiptNumber: result.receiptNumber,
                         actorUid: actor?.uid ?? 'system',
                     });
@@ -238,6 +152,45 @@ export const accountingRegisterPayment = onCall(async (request) => {
     }
     catch (error) {
         withCallableLogging('accountingRegisterPayment', error);
+    }
+});
+export const accountingRegisterMemberFeeBatchPayment = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const result = await registerMemberFeeBatchPaymentUseCase({
+            actor,
+            input: parseRegisterMemberFeeBatchPaymentInput(request.data),
+            transactions,
+        });
+        try {
+            await emitMemberPaymentNotification({
+                memberId: result.memberId,
+                movementId: result.movementId,
+                amountMinor: result.grossAmountMinor,
+                receiptNumber: result.receiptNumber,
+                actorUid: actor?.uid ?? 'system',
+            });
+        }
+        catch (notificationError) {
+            logger.warn('accountingRegisterMemberFeeBatchPayment notification emit failed', notificationError);
+        }
+        return result;
+    }
+    catch (error) {
+        withCallableLogging('accountingRegisterMemberFeeBatchPayment', error);
+    }
+});
+export const accountingReconcileMemberFeeRenewals = onCall({ timeoutSeconds: 120 }, async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return reconcileMemberFeeRenewalsUseCase({
+            actor,
+            input: parseReconcileMemberFeeRenewalsInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingReconcileMemberFeeRenewals', error);
     }
 });
 export const accountingCreateMacroDebitSettlement = onCall(async (request) => {
@@ -277,6 +230,108 @@ export const accountingSubmitExpense = onCall(async (request) => {
     }
     catch (error) {
         withCallableLogging('accountingSubmitExpense', error);
+    }
+});
+export const accountingCreateInstallmentPlan = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const input = parseCreateInstallmentPlanInput(request.data);
+        if (input.movementType === 'expense' && ON_DEMAND_EXPENSE_CATEGORY_IDS.has(input.categoryId)) {
+            const staffActor = ensureStaff(actor);
+            await ensureDefaultExpenseCategory(input.categoryId, staffActor.uid);
+        }
+        return createInstallmentPlanUseCase({ actor, input, transactions });
+    }
+    catch (error) {
+        withCallableLogging('accountingCreateInstallmentPlan', error);
+    }
+});
+export const accountingRegisterInstallmentPayment = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const result = await registerInstallmentPaymentUseCase({
+            actor,
+            input: parseRegisterInstallmentPaymentInput(request.data),
+            transactions,
+        });
+        if (result.receiptNumber) {
+            const root = await transactions.getDataAccess().financialMovements.getById(result.installmentPlanId);
+            if (root?.thirdPartyType === 'member' && root.thirdPartyId) {
+                try {
+                    await emitMemberPaymentNotification({
+                        memberId: root.thirdPartyId,
+                        movementId: result.movementId,
+                        amountMinor: result.grossAmountMinor,
+                        receiptNumber: result.receiptNumber,
+                        actorUid: actor?.uid ?? 'system',
+                    });
+                }
+                catch (notificationError) {
+                    logger.warn('accountingRegisterInstallmentPayment notification emit failed', notificationError);
+                }
+            }
+        }
+        return result;
+    }
+    catch (error) {
+        withCallableLogging('accountingRegisterInstallmentPayment', error);
+    }
+});
+export const accountingListMyReceipts = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return listMyReceiptsUseCase({ actor, transactions });
+    }
+    catch (error) {
+        withCallableLogging('accountingListMyReceipts', error);
+    }
+});
+export const accountingTransferFunds = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const staffActor = ensureStaff(actor);
+        await ensureInternalTransferCategories(staffActor.uid);
+        return transferFundsUseCase({
+            actor: staffActor,
+            input: parseTransferFundsInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingTransferFunds', error);
+    }
+});
+export const accountingEditInternalTransfer = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const staffActor = ensureStaff(actor);
+        await ensureInternalTransferCategories(staffActor.uid);
+        return editInternalTransferUseCase({
+            actor: staffActor,
+            input: parseEditInternalTransferInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingEditInternalTransfer', error);
+    }
+});
+export const accountingRegisterExpenseMovement = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const staffActor = ensureStaff(actor);
+        const input = parseRegisterExpenseMovementInput(request.data);
+        if (ON_DEMAND_EXPENSE_CATEGORY_IDS.has(input.categoryId)) {
+            await ensureDefaultExpenseCategory(input.categoryId, staffActor.uid);
+        }
+        return registerExpenseMovementUseCase({
+            actor: staffActor,
+            input,
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingRegisterExpenseMovement', error);
     }
 });
 export const accountingReviewExpense = onCall(async (request) => {
@@ -344,6 +399,19 @@ export const accountingPostSalaryPayment = onCall(async (request) => {
         withCallableLogging('accountingPostSalaryPayment', error);
     }
 });
+export const accountingPostAnnualBonusPayment = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return postAnnualBonusPaymentUseCase({
+            actor,
+            input: parsePostAnnualBonusPaymentInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingPostAnnualBonusPayment', error);
+    }
+});
 export const accountingRecordExternalReference = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
@@ -373,11 +441,27 @@ export const accountingUpsertEmployeeExternalReference = onCall(async (request) 
 export const accountingCreateHandicapCharge = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return createHandicapChargeUseCase({
+        const input = parseCreateHandicapChargeInput(request.data);
+        const result = await createHandicapChargeUseCase({
             actor,
-            input: parseCreateHandicapChargeInput(request.data),
+            input,
             transactions,
         });
+        if (!result.duplicate && result.incomeMovementId && result.receiptNumber) {
+            try {
+                await emitMemberPaymentNotification({
+                    memberId: input.memberId,
+                    movementId: result.incomeMovementId,
+                    amountMinor: result.grossAmountMinor ?? input.collectionAmountMinor,
+                    receiptNumber: result.receiptNumber,
+                    actorUid: actor?.uid ?? 'system',
+                });
+            }
+            catch (notificationError) {
+                logger.warn('accountingCreateHandicapCharge notification emit failed', notificationError);
+            }
+        }
+        return result;
     }
     catch (error) {
         withCallableLogging('accountingCreateHandicapCharge', error);
@@ -396,6 +480,19 @@ export const accountingTransferHandicapToAssociation = onCall(async (request) =>
         withCallableLogging('accountingTransferHandicapToAssociation', error);
     }
 });
+export const accountingTransferPendingHandicapToAssociation = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return transferPendingHandicapToAssociationUseCase({
+            actor,
+            input: parseTransferPendingHandicapToAssociationInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingTransferPendingHandicapToAssociation', error);
+    }
+});
 export const accountingVoidFinancialMovement = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
@@ -407,6 +504,32 @@ export const accountingVoidFinancialMovement = onCall(async (request) => {
     }
     catch (error) {
         withCallableLogging('accountingVoidFinancialMovement', error);
+    }
+});
+export const accountingEditFinancialMovement = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return editFinancialMovementUseCase({
+            actor,
+            input: parseEditFinancialMovementInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingEditFinancialMovement', error);
+    }
+});
+export const accountingSetFinancialMovementBalanceInclusion = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return setFinancialMovementBalanceInclusionUseCase({
+            actor,
+            input: parseSetFinancialMovementBalanceInclusionInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingSetFinancialMovementBalanceInclusion', error);
     }
 });
 export const accountingCreateOvertimeEntry = onCall(async (request) => {
@@ -523,151 +646,77 @@ export const accountingMarkMembershipRenewals = onCall(async (request) => {
         withCallableLogging('accountingMarkMembershipRenewals', error);
     }
 });
-export const accountingCreateMercadoPagoCheckout = onCall({
-    enforceAppCheck: shouldEnforceAppCheck(),
-    consumeAppCheckToken: shouldEnforceAppCheck(),
-    timeoutSeconds: 30,
-}, async (request) => {
-    try {
-        const actor = await getActorFromCallableRequest(request.auth);
-        return createMercadoPagoCheckoutUseCase({
-            actor,
-            input: parseCreateMercadoPagoCheckoutInput(request.data),
-            transactions,
-            clock,
-            mercadoPagoClient: createMercadoPagoClient(),
-            runtimeConfig: buildMercadoPagoRuntimeConfig(),
-        });
-    }
-    catch (error) {
-        withCallableLogging('accountingCreateMercadoPagoCheckout', error);
-    }
-});
-export const accountingGetMercadoPagoCheckoutStatus = onCall(async (request) => {
-    try {
-        const actor = await getActorFromCallableRequest(request.auth);
-        return getMercadoPagoCheckoutStatusUseCase({
-            actor,
-            sessionId: parseGetMercadoPagoCheckoutStatusInput(request.data).sessionId,
-            transactions,
-        });
-    }
-    catch (error) {
-        withCallableLogging('accountingGetMercadoPagoCheckoutStatus', error);
-    }
-});
-export const accountingMercadoPagoWebhook = onRequest({
-    timeoutSeconds: 60,
-}, async (request, response) => {
-    try {
-        if (request.method !== 'POST') {
-            response.status(405).json({ ok: false, error: 'method_not_allowed' });
-            return;
-        }
-        const payload = assertIsRecord(request.body);
-        const paymentData = typeof payload.data === 'object' && payload.data !== null
-            ? payload.data
-            : {};
-        const queryDataId = request.query['data.id'];
-        const paymentId = String((typeof queryDataId === 'string' ? queryDataId : undefined)
-            ?? paymentData.id
-            ?? payload.id
-            ?? '');
-        if (!paymentId) {
-            response.status(400).json({ ok: false, error: 'missing_payment_id' });
-            return;
-        }
-        const webhookSecret = readEnv('MP_WEBHOOK_SECRET');
-        if (webhookSecret) {
-            const xRequestId = getHeaderValue(request.headers, 'x-request-id');
-            const xSignature = getHeaderValue(request.headers, 'x-signature');
-            const validSignature = verifyMercadoPagoSignature({
-                dataId: paymentId,
-                xRequestId,
-                xSignature,
-                secret: webhookSecret,
-            });
-            if (!validSignature) {
-                response.status(401).json({ ok: false, error: 'invalid_signature' });
-                return;
-            }
-        }
-        else if (!isEmulatorRuntime()) {
-            response.status(500).json({ ok: false, error: 'missing_webhook_secret' });
-            return;
-        }
-        const payment = await createMercadoPagoClient().getPayment(paymentId);
-        const eventId = sanitizeEventId(`payment_${payload.action ?? 'updated'}_${payment.paymentId}`);
-        const result = await recordMercadoPagoEventUseCase({
-            eventId,
-            payload,
-            headers: pickMercadoPagoHeaders(request.headers),
-            payment,
-            transactions,
-            clock,
-        });
-        for (const receipt of result.receipts) {
-            if (!receipt.memberId) {
-                continue;
-            }
-            try {
-                await emitMemberPaymentNotification({
-                    memberId: receipt.memberId,
-                    movementId: receipt.movementId,
-                    amountMinor: receipt.amountMinor,
-                    receiptNumber: receipt.receiptNumber,
-                    actorUid: 'system',
-                });
-            }
-            catch (notificationError) {
-                logger.warn('accountingMercadoPagoWebhook notification emit failed', notificationError);
-            }
-        }
-        response.status(200).json({ ok: true, ...result });
-    }
-    catch (error) {
-        logger.error('accountingMercadoPagoWebhook failed', error);
-        response.status(500).json({
-            ok: false,
-            error: error instanceof Error ? error.message : 'unexpected_error',
-        });
-    }
-});
-export const accountingReconcileMercadoPagoPayments = onSchedule({
-    schedule: 'every 30 minutes',
-    timeZone: 'America/Argentina/Buenos_Aires',
-}, async () => {
-    const result = await reconcileMercadoPagoPaymentsUseCase({
-        transactions,
-        mercadoPagoClient: createMercadoPagoClient(),
-        clock,
-    });
-    for (const receipt of result.receipts) {
-        if (!receipt.memberId) {
-            continue;
-        }
-        try {
-            await emitMemberPaymentNotification({
-                memberId: receipt.memberId,
-                movementId: receipt.movementId,
-                amountMinor: receipt.amountMinor,
-                receiptNumber: receipt.receiptNumber,
-                actorUid: 'system',
-            });
-        }
-        catch (notificationError) {
-            logger.warn('accountingReconcileMercadoPagoPayments notification emit failed', notificationError);
-        }
-    }
-    logger.info('accountingReconcileMercadoPagoPayments completed', result);
-});
 export const accountingMarkMembershipRenewalsDaily = onSchedule({
-    schedule: '5 0 1 * *',
+    schedule: '5 0 * * *',
     timeZone: 'America/Argentina/Buenos_Aires',
     timeoutSeconds: 540,
 }, async () => {
-    const result = await markMembershipRenewalsUseCase({ transactions });
+    const result = await syncMembershipRenewalsDailyUseCase({ transactions });
     logger.info('accountingMarkMembershipRenewalsDaily completed', result);
+});
+export const accountingCheckServerExpenseDue = onSchedule({
+    schedule: '15 9 * * *',
+    timeZone: ACCOUNTING_TIME_ZONE,
+    timeoutSeconds: 120,
+}, async () => {
+    const now = new Date();
+    const dayOfMonth = getClubDayOfMonth(now);
+    const dataAccess = transactions.getDataAccess();
+    const activeConfig = await dataAccess.financialConfigs.getActive();
+    const serverExpenseDueDay = activeConfig?.serverMonthlyExpenseDueDay && activeConfig.serverMonthlyExpenseDueDay >= 1
+        ? activeConfig.serverMonthlyExpenseDueDay
+        : DEFAULT_SERVER_EXPENSE_DUE_DAY;
+    if (dayOfMonth <= serverExpenseDueDay) {
+        logger.info('accountingCheckServerExpenseDue skipped before notification day', { dayOfMonth, serverExpenseDueDay });
+        return;
+    }
+    const period = toClubAccountingPeriod(now);
+    const serverMovements = await dataAccess.financialMovements.listPage({
+        accountingPeriod: period,
+        movementType: 'expense',
+        categoryCodeSnapshot: FINANCIAL_EXPENSE_CATEGORY_IDS.servidor,
+        status: 'posted',
+        limit: 1,
+    });
+    if (serverMovements.items.length > 0) {
+        logger.info('accountingCheckServerExpenseDue completed with server expense found', { period });
+        return;
+    }
+    const configuredAmountMinor = activeConfig?.serverMonthlyExpenseMinor && activeConfig.serverMonthlyExpenseMinor > 0
+        ? activeConfig.serverMonthlyExpenseMinor
+        : DEFAULT_SERVER_MONTHLY_USD_MINOR;
+    try {
+        const result = await emitRoleNotification({
+            type: 'accounting_server_expense_due',
+            sourceModule: 'accounting',
+            sourceCollection: 'financial_movements',
+            sourceId: `server-expense-${period}`,
+            title: 'Pago de servidor pendiente',
+            body: `No se registro el egreso SERVIDOR de ${period}. Vencimiento: dia ${serverExpenseDueDay}. Monto configurado: ${formatServerUsdMinor(configuredAmountMinor)}.`,
+            severity: 'warning',
+            roleIds: ['directivo', 'administrativo', 'comision_directiva'],
+            deliveryScope: 'shared_role_action',
+            route: '/accounting/caja?tab=egresos',
+            action: {
+                key: 'notifications.open_route',
+                label: 'Ir a Caja',
+                requiresConfirmation: false,
+                route: '/accounting/caja?tab=egresos',
+            },
+            metadata: {
+                period,
+                dueDay: serverExpenseDueDay,
+                configuredAmountMinor,
+                currency: 'USD',
+            },
+            dedupeKey: `accounting-server-expense-due:${period}`,
+            actorUid: 'system',
+        });
+        logger.info('accountingCheckServerExpenseDue emitted notification', { period, result });
+    }
+    catch (error) {
+        logger.warn('accountingCheckServerExpenseDue notification skipped', { period, error });
+    }
 });
 export const accounting = {
     upsertFinancialConfig: accountingUpsertFinancialConfig,
@@ -675,14 +724,23 @@ export const accounting = {
     generateFeePreview: accountingGenerateFeePreview,
     generateCuota: accountingGenerateCuota,
     registerPayment: accountingRegisterPayment,
+    registerMemberFeeBatchPayment: accountingRegisterMemberFeeBatchPayment,
+    reconcileMemberFeeRenewals: accountingReconcileMemberFeeRenewals,
+    createInstallmentPlan: accountingCreateInstallmentPlan,
+    registerInstallmentPayment: accountingRegisterInstallmentPayment,
+    listMyReceipts: accountingListMyReceipts,
+    transferFunds: accountingTransferFunds,
+    editInternalTransfer: accountingEditInternalTransfer,
     createMacroDebitSettlement: accountingCreateMacroDebitSettlement,
     reconcileMacroSettlement: accountingReconcileMacroSettlement,
     submitExpense: accountingSubmitExpense,
+    registerExpenseMovement: accountingRegisterExpenseMovement,
     reviewExpense: accountingReviewExpense,
     postExpenseMovement: accountingPostExpenseMovement,
     upsertSalaryConfiguration: accountingUpsertSalaryConfiguration,
     upsertPayrollConfig: accountingUpsertPayrollConfig,
     postSalaryPayment: accountingPostSalaryPayment,
+    postAnnualBonusPayment: accountingPostAnnualBonusPayment,
     recordExternalReference: accountingRecordExternalReference,
     upsertEmployeeExternalReference: accountingUpsertEmployeeExternalReference,
     createOvertimeEntry: accountingCreateOvertimeEntry,
@@ -694,10 +752,12 @@ export const accounting = {
     createCashClosure: accountingCreateCashClosure,
     closeCashClosure: accountingCloseCashClosure,
     markMembershipRenewals: accountingMarkMembershipRenewals,
-    createMercadoPagoCheckout: accountingCreateMercadoPagoCheckout,
-    getMercadoPagoCheckoutStatus: accountingGetMercadoPagoCheckoutStatus,
+    checkServerExpenseDue: accountingCheckServerExpenseDue,
     createHandicapCharge: accountingCreateHandicapCharge,
     transferHandicapToAssociation: accountingTransferHandicapToAssociation,
+    transferPendingHandicapToAssociation: accountingTransferPendingHandicapToAssociation,
     voidFinancialMovement: accountingVoidFinancialMovement,
+    editFinancialMovement: accountingEditFinancialMovement,
+    setFinancialMovementBalanceInclusion: accountingSetFinancialMovementBalanceInclusion,
 };
 //# sourceMappingURL=accounting.callables.js.map

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ACCOUNTING_PAYMENT_METHOD_IDS } from '../../../modules/accounting/domain/constants';
-import type { CheckoutSession, PaymentComposerMode, PaymentComposerState, PaymentMethod, OpenItem } from '../types/payment';
+import type { PaymentComposerState, PaymentMethod, OpenItem } from '../types/payment';
 import { validatePaymentDraft } from '../utils/accountingValidators';
+import { isVisiblePaymentMethod } from '../utils/paymentMethods';
 
 function todayInputValue() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -16,27 +16,19 @@ export function usePaymentComposer({
   memberId,
   openItems,
   paymentMethods,
-  initialMode = 'manual',
 }: {
   memberId: string | null;
   openItems: OpenItem[];
   paymentMethods: PaymentMethod[];
-  initialMode?: PaymentComposerMode;
 }) {
-  const defaultPaymentMethodId = paymentMethods.find((method) =>
-    initialMode === 'mercadopago'
-      ? method.id === ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago
-      : method.id !== ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago,
-  )?.id ?? paymentMethods[0]?.id ?? null;
+  const defaultPaymentMethodId = paymentMethods.find(isVisiblePaymentMethod)?.id ?? paymentMethods[0]?.id ?? null;
   const [state, setState] = useState<PaymentComposerState>({
     selectedOpenItemIds: [],
     paymentMethodId: defaultPaymentMethodId,
     paymentDate: todayInputValue(),
     reference: '',
     notes: '',
-    mode: initialMode,
     isSubmitting: false,
-    checkoutSession: null,
   });
 
   const selectedOpenItems = useMemo(
@@ -71,15 +63,12 @@ export function usePaymentComposer({
   };
 
   const setSubmitting = (isSubmitting: boolean) => setState((current) => ({ ...current, isSubmitting }));
-  const setCheckoutSession = (checkoutSession: CheckoutSession | null) =>
-    setState((current) => ({ ...current, checkoutSession }));
   const clearSelection = () =>
     setState((current) => ({
       ...current,
       selectedOpenItemIds: [],
       reference: '',
       notes: '',
-      checkoutSession: null,
     }));
 
   return {
@@ -90,7 +79,6 @@ export function usePaymentComposer({
     validationError,
     toggleOpenItem,
     setSubmitting,
-    setCheckoutSession,
     clearSelection,
   };
 }

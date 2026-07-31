@@ -9,6 +9,7 @@ import {
   normalizeMemberNumber,
 } from '../modules/auth/member-number-auth.js';
 import { buildCustomClaims, pickPrimaryRoleId } from '../modules/users/application/shared.js';
+import { setCustomClaimsPreservingInternalRoles } from '../modules/users/infrastructure/firestore/auth-gateway.js';
 import {
   DEFAULT_MEMBER_TYPES,
   DEFAULT_PERMISSIONS,
@@ -266,7 +267,7 @@ async function run() {
       );
     });
 
-    await getAuth().setCustomUserClaims(authUser.uid, buildCustomClaims(mergedRoleIds, claimsVersion, true));
+    await setCustomClaimsPreservingInternalRoles(authUser.uid, buildCustomClaims(mergedRoleIds, claimsVersion, true));
     report.processed += 1;
     report.createdAuthUsers += authUser.created ? 1 : 0;
     report.updatedUsers += 1;

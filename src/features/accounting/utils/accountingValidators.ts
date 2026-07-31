@@ -4,8 +4,7 @@ import type { OpenItem, PaymentMethod } from '../types/payment';
 export function requiresPaymentReference(paymentMethodId: string | null | undefined) {
   return Boolean(
     paymentMethodId
-      && paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.cash
-      && paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.mercadoPago,
+      && paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.cash,
   );
 }
 

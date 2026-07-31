@@ -13,13 +13,11 @@ import {
 } from 'firebase/firestore';
 import { firestore } from '../../../lib/firebase';
 import {
-  createExpenseSubmissionsRepository,
   createExternalAccountingReferencesRepository,
   createFinancialConfigsRepository,
   createFinancialMovementsRepository,
   createMacroDebitSettlementsRepository,
   createMemberFeeChargesRepository,
-  createMercadoPagoCheckoutSessionsRepository,
   createPaymentMethodsRepository,
   createSalaryPaymentsRepository,
 } from '../../../modules/accounting/infrastructure/firestore/repositories';
@@ -34,7 +32,9 @@ import type {
   ReportScope,
 } from '../types/accounting';
 import { getCurrentAccountingPeriod, getSignedMovementAmount, normalizeAccountingPeriod, timestampToDate } from '../utils/accountingFormatters';
+import { isMovementExcludedFromBalance } from '../utils/balanceInclusion';
 import { buildChargesByMemberId, estimateMemberFeeAmountMinor, getChargeTargetMemberIds, getOpenFeeCharges } from '../utils/memberFeeEstimates';
+import { isVisiblePaymentMethod } from '../utils/paymentMethods';
 
 const ACCOUNTING_REPORTS_COLLECTION = 'accounting_reports';
 
@@ -46,7 +46,7 @@ function requireFirestore(): Firestore {
   return firestore;
 }
 
-function getMembersWithoutCurrentPeriodPayment({
+export function getMembersWithoutCurrentPeriodPayment({
   members,
   periodFeeCharges,
 }: {
@@ -60,7 +60,11 @@ function getMembersWithoutCurrentPeriodPayment({
       getChargeTargetMemberIds(charge, members).forEach((memberId) => settledMemberIds.add(memberId));
     });
 
-  return members.filter((member) => member.status === 'active' && !settledMemberIds.has(member.id));
+  return members.filter((member) => (
+    (member.status === 'active' || member.status === 'license')
+    && !member.membershipBillingExempt
+    && !settledMemberIds.has(member.id)
+  ));
 }
 
 function summarizeRenewalPending({
@@ -104,51 +108,41 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
   const paymentMethodsRepository = createPaymentMethodsRepository();
   const financialMovementsRepository = createFinancialMovementsRepository();
   const macroDebitSettlementsRepository = createMacroDebitSettlementsRepository();
-  const expenseSubmissionsRepository = createExpenseSubmissionsRepository();
   const salaryPaymentsRepository = createSalaryPaymentsRepository();
   const externalAccountingReferencesRepository = createExternalAccountingReferencesRepository();
   const memberFeeChargesRepository = createMemberFeeChargesRepository();
-  const mercadoPagoCheckoutSessionsRepository = createMercadoPagoCheckoutSessionsRepository();
   const membersRepository = createMembersRepository();
   const employeesRepository = createEmployeesRepository();
 
   const [
     activeConfig,
-    paymentMethods,
+    allPaymentMethods,
     recentMovements,
     periodMovements,
     recentSettlements,
-    recentExpenses,
-    pendingExpenses,
     recentSalaryPayments,
     periodReferences,
     periodFeeCharges,
     pendingFeeCharges,
-    recentMercadoPagoSessions,
     membersPreview,
     employeesPreview,
     activeMembersCount,
     activeEmployeesCount,
-    pendingExpenseCount,
     pendingFeeCount,
   ] = await Promise.all([
     financialConfigsRepository.getActive(),
-    paymentMethodsRepository.listActiveSorted(),
+    paymentMethodsRepository.listActiveWithCommissions(),
     financialMovementsRepository.listRecent(10),
     financialMovementsRepository.listByAccountingPeriod(period),
     macroDebitSettlementsRepository.listRecent(6),
-    expenseSubmissionsRepository.listRecent(10),
-    expenseSubmissionsRepository.listByStatus('submitted', 100),
     salaryPaymentsRepository.listByPeriod(period),
     externalAccountingReferencesRepository.listByPeriod(period),
     memberFeeChargesRepository.listByPeriod(period),
     memberFeeChargesRepository.listPending(500),
-    mercadoPagoCheckoutSessionsRepository.listRecent(8),
     membersRepository.listDirectory(),
     employeesRepository.listAlphabetical(10),
     membersRepository.countActive(),
     employeesRepository.countActive(),
-    expenseSubmissionsRepository.countByStatus('submitted'),
     memberFeeChargesRepository.countPendingByPeriod(period),
   ]);
 
@@ -165,17 +159,16 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
   return {
     period,
     activeConfig,
-    paymentMethods,
+    paymentMethods: allPaymentMethods.filter(isVisiblePaymentMethod),
     recentMovements,
     periodMovements,
     recentSettlements,
-    recentExpenses,
+    recentExpenses: [],
     recentSalaryPayments,
     periodReferences,
     periodFeeCharges,
     pendingFeeCharges,
-    pendingExpenses,
-    recentMercadoPagoSessions,
+    pendingExpenses: [],
     membersPreview,
     renewalMembers,
     renewalPendingConceptCount: renewalPending.conceptCount,
@@ -183,8 +176,8 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     employeesPreview,
     activeMembersCount,
     activeEmployeesCount,
-    pendingExpenseCount,
-    pendingExpenseTotalMinor: pendingExpenses.reduce((total, expense) => total + expense.amountMinor, 0),
+    pendingExpenseCount: 0,
+    pendingExpenseTotalMinor: 0,
     pendingFeeCount,
   };
 }
@@ -216,7 +209,10 @@ export async function summarizeReportData({
   const movements = movementGroups
     .flat()
     .filter((movement) => scope === 'period' || isMovementInsideRange(movement.operationDate, dateFrom ?? '', dateTo ?? ''));
-  const visibleMovements = movements.filter((movement) => movement.status !== 'voided');
+  const visibleMovements = movements.filter((movement) => (
+    movement.status !== 'voided'
+    && !isMovementExcludedFromBalance(movement)
+  ));
   const feeCharges = feeGroups.flat();
   const salaryPayments = salaryGroups.flat();
 
@@ -323,8 +319,7 @@ export async function listCashMovements(period: string) {
 }
 
 export async function listSubmittedExpenses() {
-  const repository = createExpenseSubmissionsRepository();
-  return repository.listRecent(30).then((expenses) => expenses.filter((expense) => expense.status === 'submitted'));
+  return [];
 }
 
 function enumeratePeriods(from: string, to: string) {

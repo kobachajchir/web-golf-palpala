@@ -7,7 +7,7 @@ export type UserProfileType = 'member' | 'employee' | 'none';
 export type MemberStatus = 'active' | 'inactive' | 'license' | 'suspended';
 export type MembershipRenewalStatus = 'current' | 'needs_renewal';
 export type EmployeeStatus = 'active' | 'inactive';
-export type EmployeeContractType = 'monthly' | 'seasonal' | 'daily' | 'honorarios' | 'eventual';
+export type EmployeeContractType = 'monthly' | 'trial' | 'seasonal' | 'daily' | 'honorarios' | 'eventual';
 export type HandicapStatus = 'active' | 'inactive' | 'expired';
 export type BillingConfigKey = 'FULL' | 'FAMILY_ASSOC' | 'LIFETIME' | 'MINOR' | 'LICENSE';
 export type QuickActionPreferences = Record<string, string[]>;
@@ -121,6 +121,8 @@ export interface MemberDocument extends AuditFields {
   lastFeePaidAmountMinor?: number;
   lastFeeDiscountPctBps?: number;
   lastFeeDiscountAmountMinor?: number;
+  membershipBillingExempt?: boolean;
+  membershipBillingExemptReason?: string;
   notes?: string;
 }
 
@@ -136,6 +138,7 @@ export interface EmployeeDocument extends AuditFields {
   firstName: string;
   lastName: string;
   dni?: string;
+  linkedMemberId?: string;
   linkedUserId?: string;
   position: string;
   contractType: EmployeeContractType;
@@ -225,6 +228,7 @@ export interface CreateEmployeePayload {
   canSubmitExpenses: boolean;
   employeeCode?: string;
   dni?: string;
+  linkedMemberId?: string | null;
   linkedUserId?: string | null;
   endDate?: string | null;
   notes?: string;
@@ -241,6 +245,7 @@ export interface UpdateEmployeePayload {
   canSubmitExpenses?: boolean;
   employeeCode?: string | null;
   dni?: string | null;
+  linkedMemberId?: string | null;
   linkedUserId?: string | null;
   status?: EmployeeStatus;
   notes?: string | null;

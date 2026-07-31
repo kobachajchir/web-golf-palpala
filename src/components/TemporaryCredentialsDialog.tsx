@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import { useEffect } from 'react';
 
 type TemporaryCredentialsDialogProps = {
   open: boolean;
@@ -15,18 +15,26 @@ export function TemporaryCredentialsDialog({
   temporaryPassword,
   onClose,
 }: TemporaryCredentialsDialogProps) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose, open]);
+
   if (!open) {
     return null;
   }
 
-  const handleOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
+    <div className="modal-overlay">
       <section className="floating-card credentials-dialog-card" role="dialog" aria-modal="true">
         <div className="confirm-dialog-card__copy">
           <p className="eyebrow">Credenciales de acceso</p>

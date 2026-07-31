@@ -1,16 +1,20 @@
-import { ROLE_LABELS, type RoleType } from '../constants/roles';
+import { getVisibleRoleIds, ROLE_LABELS, type RoleType } from '../constants/roles';
 
 export function RoleChipList({
   roleIds,
   emptyLabel = 'Sin roles asignados',
+  showInternalRoles = false,
 }: {
   roleIds: RoleType[];
   emptyLabel?: string;
+  showInternalRoles?: boolean;
 }) {
+  const visibleRoleIds = getVisibleRoleIds(roleIds, showInternalRoles);
+
   return (
     <div className="role-chip-list">
-      {roleIds.length > 0 ? (
-        roleIds.map((roleId) => (
+      {visibleRoleIds.length > 0 ? (
+        visibleRoleIds.map((roleId) => (
           <span key={roleId} className="role-chip-list__item">
             {ROLE_LABELS[roleId] ?? roleId}
           </span>

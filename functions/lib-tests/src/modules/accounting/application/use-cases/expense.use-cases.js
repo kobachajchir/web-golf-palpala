@@ -1,17 +1,18 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { FINANCIAL_EXPENSE_CATEGORY_IDS } from '../../domain/constants.js';
+import { DEFAULT_FINANCIAL_EXPENSE_CATEGORIES, FINANCIAL_EXPENSE_CATEGORY_IDS, } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureEmployeeOrStaff, ensureStaff, hasExecutiveAccess, parseOptionalFiniteNumber, parseOptionalNullableString, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
+import { assertIsRecord, ensureStaff, parseOptionalFiniteNumber, parseOptionalNullableString, parseOptionalRecord, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
 import { createPostedMovement } from '../movement-helpers.js';
+import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 export async function submitExpenseUseCase(params) {
-    const actor = ensureEmployeeOrStaff(params.actor);
+    const actor = ensureStaff(params.actor);
     return params.transactions.runInTransaction(async (dataAccess) => {
         const employee = await dataAccess.employees.getById(params.input.employeeId);
         assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
         const category = await dataAccess.financialExpenseCategories.getById(params.input.categoryId);
         assertCondition(category, 'not-found', `No existe financial_expense_categories/${params.input.categoryId}.`);
         assertCondition(category.active, 'failed-precondition', `La categoría ${params.input.categoryId} está inactiva.`);
-        const isStaff = hasExecutiveAccess(actor) || actor.claims.administrativo === true;
+        const isStaff = true;
         if (!isStaff) {
             assertCondition(actor.user.profileType === 'employee', 'permission-denied', 'El usuario autenticado no está vinculado a un empleado.');
             assertCondition(actor.user.profileId === params.input.employeeId, 'permission-denied', 'Solo podés cargar tus propias rendiciones.');
@@ -43,6 +44,61 @@ export async function submitExpenseUseCase(params) {
             paymentMethodId: params.input.paymentMethodId ?? null,
         }, actor.uid);
         return { expenseSubmissionId };
+    });
+}
+export async function registerExpenseMovementUseCase(params) {
+    const actor = ensureStaff(params.actor);
+    return params.transactions.runInTransaction(async (dataAccess) => {
+        const operationDate = new Date();
+        await assertCashOperationDateAllowed({
+            dataAccess,
+            operationDate,
+        });
+        const storedCategory = await dataAccess.financialExpenseCategories.getById(params.input.categoryId);
+        const builtInCategory = (params.input.categoryId === FINANCIAL_EXPENSE_CATEGORY_IDS.servidor
+            || params.input.categoryId === FINANCIAL_EXPENSE_CATEGORY_IDS.varios)
+            ? DEFAULT_FINANCIAL_EXPENSE_CATEGORIES.find((category) => category.id === params.input.categoryId)
+            : null;
+        const category = storedCategory ?? (builtInCategory ? { id: builtInCategory.id, ...builtInCategory.data } : null);
+        assertCondition(category, 'not-found', `No existe financial_expense_categories/${params.input.categoryId}.`);
+        assertCondition(category.active, 'failed-precondition', `La categoria ${params.input.categoryId} esta inactiva.`);
+        const employee = params.input.employeeId ? await dataAccess.employees.getById(params.input.employeeId) : null;
+        if (params.input.employeeId) {
+            assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
+        }
+        const paymentMethod = await dataAccess.paymentMethods.getById(params.input.paymentMethodId);
+        assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.input.paymentMethodId}.`);
+        assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.input.paymentMethodId} esta inactivo.`);
+        const description = params.input.description?.trim()
+            || (employee ? `Pago ${category.name} - ${employee.lastName}, ${employee.firstName}` : category.name);
+        const isOvertime = category.id === FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra;
+        const movement = await createPostedMovement({
+            dataAccess,
+            actorUid: actor.uid,
+            movementType: 'expense',
+            categoryId: category.id,
+            categoryCodeSnapshot: category.id,
+            grossAmountMinor: params.input.amountMinor,
+            operationDate,
+            originType: 'admin_expense',
+            originCollection: null,
+            originId: null,
+            thirdPartyType: employee ? 'employee' : params.input.vendorName ? 'vendor' : null,
+            thirdPartyId: employee?.id ?? null,
+            paymentMethodId: paymentMethod.id,
+            bancarizado: paymentMethod.bancarizado,
+            imputableImpositivo: isOvertime ? false : category.defaultImputableImpositivo,
+            metadata: {
+                ...(params.input.metadata ?? {}),
+                description,
+                vendorName: params.input.vendorName ?? null,
+                employeeName: employee ? `${employee.lastName}, ${employee.firstName}` : null,
+            },
+            notes: params.input.notes ?? description,
+            applyPaymentCommission: true,
+            paymentCommissionMode: 'add_to_expense',
+        });
+        return { movementId: movement.movementId, netAmountMinor: movement.netAmountMinor };
     });
 }
 export async function reviewExpenseUseCase(params) {
@@ -110,7 +166,8 @@ export async function postExpenseMovementUseCase(params) {
             imputableImpositivo,
             ...(expenseSubmission.liters ? { metadata: { liters: expenseSubmission.liters } } : {}),
             notes: params.input.notes ?? null,
-            applyPaymentCommission: false,
+            applyPaymentCommission: true,
+            paymentCommissionMode: 'add_to_expense',
         });
         await dataAccess.expenseSubmissions.update(expenseSubmission.id, {
             status: 'posted',
@@ -131,6 +188,19 @@ export function parseSubmitExpenseInput(payload) {
         vendorName: parseOptionalNullableString(data, 'vendorName'),
         receiptFileUrl: parseOptionalNullableString(data, 'receiptFileUrl'),
         paymentMethodId: parseOptionalNullableString(data, 'paymentMethodId'),
+    };
+}
+export function parseRegisterExpenseMovementInput(payload) {
+    const data = assertIsRecord(payload);
+    return {
+        categoryId: parseRequiredString(data, 'categoryId'),
+        employeeId: parseOptionalNullableString(data, 'employeeId'),
+        description: parseOptionalNullableString(data, 'description'),
+        amountMinor: parseRequiredAmountMinor(data, 'amountMinor'),
+        vendorName: parseOptionalNullableString(data, 'vendorName'),
+        paymentMethodId: parseRequiredString(data, 'paymentMethodId'),
+        metadata: parseOptionalRecord(data, 'metadata'),
+        notes: parseOptionalNullableString(data, 'notes'),
     };
 }
 export function parseReviewExpenseInput(payload) {

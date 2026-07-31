@@ -1,0 +1,168 @@
+{
+  "ok": true,
+  "mode": "dry-run",
+  "projectId": "webgolfclub",
+  "selectedPeriod": "all",
+  "periods": [
+    "2026-07"
+  ],
+  "totals": {
+    "movements": 32,
+    "matchedAllocations": 0,
+    "repairedCharges": 0,
+    "repairedMembers": 0,
+    "ambiguous": 32
+  },
+  "safety": {
+    "financialMovementsWritten": false,
+    "unrelatedCategoriesWritten": false,
+    "writesLimitedToMatchedChargesAndTheirMembers": true,
+    "executionConfirmation": "--execute --yes-membership-renewals-only"
+  },
+  "results": [
+    {
+      "period": "2026-07",
+      "mode": "dry-run",
+      "scannedMovementCount": 251,
+      "feeMovementCount": 32,
+      "scannedPeriodChargeCount": 0,
+      "matchedAllocationCount": 0,
+      "alreadySynchronizedCount": 0,
+      "repairedChargeCount": 0,
+      "repairedMemberCount": 0,
+      "ambiguousCount": 32,
+      "skipped": [
+        {
+          "movementId": "uX047h8e9damNwenmjHT",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "nKzrQbGDkEW4VJHybPOU",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "jyncxUnBuyIEOnRLyJrb",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "jRSNfn87DHb71OQtY4lI",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "dgpr7oKIBYNSXkBJtOOB",
+          "reason": "El movimiento no tiene un vinculo inequivoco con una renovacion."
+        },
+        {
+          "movementId": "ZMOiKGzK5lM12c74D5Mf",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "WYqUnrVvm9PrDpRpYFO2",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "FPbKluoUI9fpZGg1eF1C",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "FKqX0TwiKCHuZNE0CUYH",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "7N6ugbexM1KfxrKs8GNt",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "ynwCJfZqPZRg1AK9gBvU",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "Y5uxYZAgi78Dd1tGvuQM",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "SD5kfvslSnssXLJctteY",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "KbW38WZ0Uoacm5ZhqDRv",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "CkbSbWrpkduw96Aqic1w",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "4yhc7PMf5UcQUvz7Zvdu",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "4KhXDwSDUF4Yah52bvK1",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "zVwkOG0DKgCl8OvBNxI0",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "p19LOOH1p0TE7SApwr3z",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "k7cWuPecoIaJrb3a13ui",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "QpCEfkgQPMGdq3Uvhhta",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "KrTeEDJDFQ2dGbhykBA1",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "84Pv5mtQU0iAA4yAcdRW",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "pUJ3QLMfFI8cfzkOjlfK",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "Gc6GgpSpkrFMnrs6cZaK",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "McxvlKWKthhUeIJRvN1c",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "jM2zT1jscHHSVdcmgoA6",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "ztL6KhPd969hZjr7FNmt",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "z3dBdCLB0TGAlCHbuhEE",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "oDXXfXWELco45xgNUFGg",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "V6QMajnSmaIBXAqFMLCc",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        },
+        {
+          "movementId": "SKNYuqUAPPGR7Z1H8jhz",
+          "reason": "No hay una cuota individual abierta del mismo socio y periodo."
+        }
+      ],
+      "repairs": []
+    }
+  ],
+  "reportPath": "D:\\WebGolfPalpala\\web-golf-palpala\\migration-reports\\member-fee-renewals-1784667333526.json"
+}

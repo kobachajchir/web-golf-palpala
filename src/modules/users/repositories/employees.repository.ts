@@ -49,6 +49,7 @@ function matchesEmployeeSearch(employee: EntityWithId<EmployeeDocument>, search:
     employee.firstName,
     employee.lastName,
     employee.dni,
+    employee.linkedMemberId,
     employee.position,
     employee.contractType,
     employee.status,

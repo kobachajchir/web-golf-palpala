@@ -4,6 +4,8 @@ import {
   DEFAULT_FINANCIAL_EXPENSE_CATEGORIES,
   DEFAULT_FINANCIAL_INCOME_CATEGORIES,
   DEFAULT_PAYMENT_METHODS,
+  CLIENT_PAYMENT_METHODS,
+  DEPRECATED_PAYMENT_METHOD_IDS,
   PAYMENT_METHOD_IDS,
   SYSTEM_ACTOR_UID,
 } from '../modules/accounting/domain/constants.js';
@@ -15,6 +17,27 @@ async function main() {
 
   for (const method of DEFAULT_PAYMENT_METHODS) {
     await dataAccess.paymentMethods.set(method.id, method.data, SYSTEM_ACTOR_UID);
+  }
+
+  for (const method of CLIENT_PAYMENT_METHODS) {
+    await dataAccess.paymentMethods.set(method.id, method.data, SYSTEM_ACTOR_UID);
+  }
+
+  for (const methodId of DEPRECATED_PAYMENT_METHOD_IDS) {
+    const existingMethod = await dataAccess.paymentMethods.getById(methodId);
+    if (existingMethod) {
+      await dataAccess.paymentMethods.set(
+        methodId,
+        {
+          name: existingMethod.name,
+          bancarizado: existingMethod.bancarizado,
+          specialReportingType: existingMethod.specialReportingType ?? null,
+          active: false,
+          sortOrder: existingMethod.sortOrder,
+        },
+        SYSTEM_ACTOR_UID,
+      );
+    }
   }
 
   for (const category of DEFAULT_FINANCIAL_INCOME_CATEGORIES) {
@@ -67,11 +90,11 @@ async function main() {
     }
   }
 
-  const activeCreditRule = await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(PAYMENT_METHOD_IDS.credit);
+  const activeCreditRule = await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(PAYMENT_METHOD_IDS.creditGalicia);
   if (!activeCreditRule) {
     await dataAccess.paymentCommissionRules.create(
       {
-        paymentMethodId: PAYMENT_METHOD_IDS.credit,
+        paymentMethodId: PAYMENT_METHOD_IDS.creditGalicia,
         percentageBps: DEFAULT_FINANCIAL_CONFIG.creditCommissionPctBps,
         isActive: true,
         validFrom: Timestamp.fromDate(new Date()),

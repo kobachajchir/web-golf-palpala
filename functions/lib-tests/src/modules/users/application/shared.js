@@ -204,6 +204,7 @@ export async function resolveActor(dataAccess, authContext) {
             empleado: token.empleado === true,
             comision_directiva: token.comision_directiva === true,
             socio: token.socio === true,
+            desarrollador: token.desarrollador === true,
             claimsVersion: typeof token.claimsVersion === 'number' ? token.claimsVersion : user.claimsVersion,
         },
         user,

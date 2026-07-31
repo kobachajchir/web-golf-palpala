@@ -69,22 +69,38 @@ test('directivo puede configurar gasto fijo mensual servidor', async () => {
   assert.equal(manager.financialConfigs.get(activeConfig.id)?.isActive, false);
 });
 
-test('administracion no puede modificar gasto servidor', async () => {
+test('administracion puede modificar gasto servidor y cuota societaria', async () => {
   const manager = new InMemoryAccountingTransactionManager();
   const activeConfig = seedActiveFinancialConfig(manager, 'config-active', { serverMonthlyExpenseMinor: 120_000 });
 
-  await assert.rejects(
-    () =>
-      upsertFinancialConfigUseCase({
-        actor: createAdminActor(),
-        input: payloadFromConfig(activeConfig, {
-          fullMemberFeeMinor: activeConfig.fullMemberFeeMinor + 10_000,
-          serverMonthlyExpenseMinor: 185_000,
-        }),
-        transactions: manager,
-      }),
-    /serverMonthlyExpenseMinor/i,
-  );
+  const result = await upsertFinancialConfigUseCase({
+    actor: createAdminActor(),
+    input: payloadFromConfig(activeConfig, {
+      fullMemberFeeMinor: activeConfig.fullMemberFeeMinor + 10_000,
+      serverMonthlyExpenseMinor: 185_000,
+    }),
+    transactions: manager,
+  });
+
+  const nextConfig = manager.financialConfigs.get(result.configId);
+  assert.equal(nextConfig?.fullMemberFeeMinor, activeConfig.fullMemberFeeMinor + 10_000);
+  assert.equal(nextConfig?.serverMonthlyExpenseMinor, 185_000);
+  assert.equal(manager.financialConfigs.get(activeConfig.id)?.isActive, false);
+});
+
+test('administracion puede modificar comision de credito en configuracion activa', async () => {
+  const manager = new InMemoryAccountingTransactionManager();
+  const activeConfig = seedActiveFinancialConfig(manager, 'config-active', { creditCommissionPctBps: 300 });
+
+  const result = await upsertFinancialConfigUseCase({
+    actor: createAdminActor(),
+    input: payloadFromConfig(activeConfig, { creditCommissionPctBps: 450 }),
+    transactions: manager,
+  });
+
+  const nextConfig = manager.financialConfigs.get(result.configId);
+  assert.equal(nextConfig?.creditCommissionPctBps, 450);
+  assert.equal(manager.financialConfigs.get(activeConfig.id)?.isActive, false);
 });
 
 test('parser acepta monto de servidor como configuracion contable normal', () => {

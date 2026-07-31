@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ModalCloseIcon } from '../components/ModalCloseIcon';
 import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
@@ -22,13 +23,14 @@ import type {
   EmployeeDocument,
   EmployeeStatus,
   EntityWithId,
+  MemberDocument,
   UpdateEmployeePayload,
 } from '../modules/users/domain/models';
 import { createUsersCallables } from '../modules/users/functions/users.callables';
+import { createMembersRepository as createMembersDirectoryRepository } from '../modules/users/infrastructure/firestore/repositories';
 import { createEmployeesRepository } from '../modules/users/repositories/employees.repository';
 import type {
   EmployeeContractFilter,
-  EmployeeExpenseFilter,
   EmployeeListCursor,
   EmployeeStatusFilter,
 } from '../modules/users/types/employee.types';
@@ -39,6 +41,7 @@ type EmployeeEditorState = {
   firstName: string;
   lastName: string;
   dni: string;
+  linkedMemberId: string;
   position: string;
   contractType: EmployeeContractType;
   status: EmployeeStatus;
@@ -50,15 +53,16 @@ type EmployeeEditorState = {
 
 type EmployeeStats = {
   totalEmployees: number;
-  activeEmployees: number;
-  inactiveEmployees: number;
-  canSubmitExpenses: number;
 };
 
 type EmployeeAccessState = {
   employee: EntityWithId<EmployeeDocument>;
   email: string;
-  inviteLink: string;
+  employeeCode: string;
+  loginPath: string;
+  temporaryPassword: string;
+  passwordGeneratedAt: string;
+  administrativeAccess: boolean;
   isSubmitting: boolean;
 };
 
@@ -66,22 +70,14 @@ type TimestampLike = { toDate: () => Date } | Date | string | number | null | un
 
 const CONTRACT_OPTIONS: Array<{ value: EmployeeContractType; label: string }> = [
   { value: 'monthly', label: 'Mensual' },
-  { value: 'daily', label: 'Diaria' },
-  { value: 'seasonal', label: 'Temporada' },
-  { value: 'honorarios', label: 'Honorarios' },
-  { value: 'eventual', label: 'Eventual' },
 ];
+const ADMINISTRATIVE_EMPLOYEE_CODE = 'E001';
+const EMPLOYEE_ACCESS_TIMEOUT_MS = 30000;
 
 const STATUS_OPTIONS: Array<{ value: EmployeeStatusFilter; label: string }> = [
   { value: 'all', label: 'Todos' },
   { value: 'active', label: 'Activos' },
   { value: 'inactive', label: 'Inactivos' },
-];
-
-const EXPENSE_ACCESS_OPTIONS: Array<{ value: EmployeeExpenseFilter; label: string }> = [
-  { value: 'all', label: 'Todos' },
-  { value: 'enabled', label: 'Puede rendir' },
-  { value: 'disabled', label: 'Sin rendicion' },
 ];
 
 type IconType =
@@ -151,12 +147,13 @@ function createEmptyEditorState(): EmployeeEditorState {
     firstName: '',
     lastName: '',
     dni: '',
+    linkedMemberId: '',
     position: '',
     contractType: 'monthly',
     status: 'active',
     startDate: new Date().toISOString().slice(0, 10),
     endDate: '',
-    canSubmitExpenses: true,
+    canSubmitExpenses: false,
     notes: '',
   };
 }
@@ -197,7 +194,7 @@ function toIsoDate(value: string): string {
 }
 
 function getContractLabel(value: EmployeeContractType): string {
-  return CONTRACT_OPTIONS.find((option) => option.value === value)?.label ?? value;
+  return CONTRACT_OPTIONS.find((option) => option.value === value)?.label ?? 'Mensual';
 }
 
 function getEmployeeDisplayName(employee: EntityWithId<EmployeeDocument>): string {
@@ -212,6 +209,32 @@ function getCurrentAccountingPeriod(): string {
   }).format(new Date());
 }
 
+function canEmployeeUseApp(employee: EntityWithId<EmployeeDocument>): boolean {
+  return Boolean(employee.linkedUserId);
+}
+
+function isAdministrativeEmployee(employee: EntityWithId<EmployeeDocument>): boolean {
+  return employee.employeeCode === ADMINISTRATIVE_EMPLOYEE_CODE;
+}
+
+function withEmployeeAccessTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('La generacion del acceso tardo demasiado. Revisa si el empleado ya quedo activo y volve a intentar.'));
+    }, EMPLOYEE_ACCESS_TIMEOUT_MS);
+  });
+
+  return Promise.race([
+    promise.finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }),
+    timeoutPromise,
+  ]);
+}
+
 function createEditorState(employee: EntityWithId<EmployeeDocument>): EmployeeEditorState {
   return {
     id: employee.id,
@@ -219,11 +242,12 @@ function createEditorState(employee: EntityWithId<EmployeeDocument>): EmployeeEd
     firstName: employee.firstName,
     lastName: employee.lastName,
     dni: employee.dni ?? '',
+    linkedMemberId: employee.linkedMemberId ?? '',
     position: employee.position,
-    contractType: employee.contractType,
+    contractType: 'monthly',
     status: employee.status,
     startDate: formatDateInput(employee.startDate as TimestampLike),
-    endDate: formatDateInput(employee.endDate as TimestampLike),
+    endDate: '',
     canSubmitExpenses: employee.canSubmitExpenses,
     notes: employee.notes ?? '',
   };
@@ -236,14 +260,6 @@ function SummaryCard({ label, value, helper }: { label: string; value: string; h
       <strong>{value}</strong>
       <small>{helper}</small>
     </article>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
-      <path d="M6.7 5.3a1 1 0 0 1 1.4 0L12 9.17l3.9-3.88a1 1 0 1 1 1.4 1.42L13.41 10.6l3.89 3.9a1 1 0 0 1-1.42 1.4L12 12.01l-3.88 3.89a1 1 0 0 1-1.42-1.42l3.89-3.88-3.9-3.9a1 1 0 0 1 0-1.4Z" />
-    </svg>
   );
 }
 
@@ -282,11 +298,13 @@ function ChevronIcon() {
 export function EmployeesAdmin() {
   const { interfaceMode } = useAuth();
   const canManageEmployees = interfaceMode === ROLES.ADMINISTRATIVO || interfaceMode === ROLES.DIRECTIVO;
-  const canConfigureSalaries = interfaceMode === ROLES.DIRECTIVO;
+  const canConfigureSalaries = canManageEmployees;
   const currentAccountingPeriod = useMemo(() => getCurrentAccountingPeriod(), []);
   const usersCallables = useMemo(() => createUsersCallables(), []);
   const employeesRepository = useMemo(() => createEmployeesRepository(), []);
+  const membersRepository = useMemo(() => createMembersDirectoryRepository(), []);
   const [employees, setEmployees] = useState<Array<EntityWithId<EmployeeDocument>>>([]);
+  const [members, setMembers] = useState<Array<EntityWithId<MemberDocument>>>([]);
   const [loading, setLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -296,7 +314,6 @@ export function EmployeesAdmin() {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [statusFilter, setStatusFilter] = useState<EmployeeStatusFilter>('all');
   const [contractFilter, setContractFilter] = useState<EmployeeContractFilter>('all');
-  const [expenseAccessFilter, setExpenseAccessFilter] = useState<EmployeeExpenseFilter>('all');
   const [nextCursor, setNextCursor] = useState<EmployeeListCursor>(null);
   const [hasMoreEmployees, setHasMoreEmployees] = useState(false);
   const [stats, setStats] = useState<EmployeeStats | null>(null);
@@ -313,19 +330,16 @@ export function EmployeesAdmin() {
     () => employees.find((employee) => employee.id === selectedEmployeeId) ?? null,
     [employees, selectedEmployeeId],
   );
+  const membersById = useMemo(
+    () => new Map(members.map((member) => [member.id, member])),
+    [members],
+  );
 
   const loadStats = useCallback(async () => {
-    const [totalEmployees, activeEmployees, canSubmitExpenses] = await Promise.all([
-      employeesRepository.countAll(),
-      employeesRepository.countActive(),
-      employeesRepository.countExpenseEnabled(),
-    ]);
+    const totalEmployees = await employeesRepository.countAll();
 
     setStats({
       totalEmployees,
-      activeEmployees,
-      inactiveEmployees: Math.max(totalEmployees - activeEmployees, 0),
-      canSubmitExpenses,
     });
   }, [employeesRepository]);
 
@@ -343,7 +357,6 @@ export function EmployeesAdmin() {
           search: deferredSearchQuery,
           status: statusFilter,
           contractType: contractFilter,
-          expenseAccess: expenseAccessFilter,
           cursor,
           pageSize: 25,
         });
@@ -359,12 +372,24 @@ export function EmployeesAdmin() {
         setIsLoadingMore(false);
       }
     },
-    [contractFilter, deferredSearchQuery, employeesRepository, expenseAccessFilter, loadStats, statusFilter],
+    [contractFilter, deferredSearchQuery, employeesRepository, loadStats, statusFilter],
   );
+
+  const loadMembers = useCallback(async () => {
+    try {
+      setMembers(await membersRepository.listDirectory());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'No pudimos cargar socios para vincular empleados.');
+    }
+  }, [membersRepository]);
 
   useEffect(() => {
     void loadEmployees();
   }, [loadEmployees]);
+
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -378,9 +403,21 @@ export function EmployeesAdmin() {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, []);
 
-  const activeFilterCount =
-    Number(statusFilter !== 'all') + Number(contractFilter !== 'all') + Number(expenseAccessFilter !== 'all');
+  const activeFilterCount = Number(contractFilter !== 'all');
   const activeSearchCount = activeFilterCount + Number(searchQuery.trim().length > 0);
+  const getLinkedMemberSummary = useCallback(
+    (employee: EntityWithId<EmployeeDocument>) => {
+      if (!employee.linkedMemberId) {
+        return '';
+      }
+
+      const linkedMember = membersById.get(employee.linkedMemberId);
+      return linkedMember
+        ? `Socio #${linkedMember.memberNumber} - ${linkedMember.lastName}, ${linkedMember.firstName}`
+        : `Socio vinculado: ${employee.linkedMemberId}`;
+    },
+    [membersById],
+  );
 
   const openCreateModal = () => {
     setSelectedEmployeeId(null);
@@ -402,7 +439,11 @@ export function EmployeesAdmin() {
     setEmployeeAccessState({
       employee,
       email: '',
-      inviteLink: '',
+      employeeCode: employee.employeeCode ?? '',
+      loginPath: '',
+      temporaryPassword: '',
+      passwordGeneratedAt: '',
+      administrativeAccess: isAdministrativeEmployee(employee),
       isSubmitting: false,
     });
     setOpenEmployeeActionsId(null);
@@ -423,7 +464,6 @@ export function EmployeesAdmin() {
   const handleOverlayClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       closeEditor();
-      closeEmployeeAccessModal();
     }
   };
 
@@ -462,10 +502,6 @@ export function EmployeesAdmin() {
       return 'La fecha de inicio es obligatoria.';
     }
 
-    if (editorState.endDate && editorState.endDate < editorState.startDate) {
-      return 'La fecha de baja no puede ser anterior al inicio.';
-    }
-
     return '';
   };
 
@@ -493,13 +529,11 @@ export function EmployeesAdmin() {
           firstName: editorState.firstName.trim(),
           lastName: editorState.lastName.trim(),
           position: editorState.position.trim(),
-          contractType: editorState.contractType,
-          startDate: toIsoDate(editorState.startDate),
-          endDate: editorState.endDate ? toIsoDate(editorState.endDate) : null,
-          canSubmitExpenses: editorState.canSubmitExpenses,
-          employeeCode: editorState.employeeCode.trim() || null,
+          contractType: 'monthly',
+          endDate: null,
+          canSubmitExpenses: false,
           dni: editorState.dni.trim() || null,
-          status: editorState.status,
+          linkedMemberId: editorState.linkedMemberId || null,
           notes: editorState.notes.trim() || null,
         };
         await usersCallables.updateEmployee(payload);
@@ -509,12 +543,11 @@ export function EmployeesAdmin() {
           firstName: editorState.firstName.trim(),
           lastName: editorState.lastName.trim(),
           position: editorState.position.trim(),
-          contractType: editorState.contractType,
+          contractType: 'monthly',
           startDate: toIsoDate(editorState.startDate),
-          canSubmitExpenses: editorState.canSubmitExpenses,
-          ...(editorState.employeeCode.trim() ? { employeeCode: editorState.employeeCode.trim() } : {}),
+          canSubmitExpenses: false,
+          ...(editorState.linkedMemberId ? { linkedMemberId: editorState.linkedMemberId } : {}),
           ...(editorState.dni.trim() ? { dni: editorState.dni.trim() } : {}),
-          ...(editorState.endDate ? { endDate: toIsoDate(editorState.endDate) } : {}),
           ...(editorState.notes.trim() ? { notes: editorState.notes.trim() } : {}),
         };
         await usersCallables.createEmployee(payload);
@@ -565,28 +598,31 @@ export function EmployeesAdmin() {
       return;
     }
 
-    const email = employeeAccessState.email.trim().toLowerCase();
-    if (!email) {
-      setError('Ingresa un email para vincular el acceso del empleado.');
-      return;
-    }
-
-    setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: true, inviteLink: '' } : current));
+    setEmployeeAccessState((current) => (current ? {
+      ...current,
+      isSubmitting: true,
+      loginPath: '',
+      temporaryPassword: '',
+      passwordGeneratedAt: '',
+    } : current));
     setError('');
 
     try {
-      const result = await usersCallables.linkEmployeeAuthUser({
+      const result = await withEmployeeAccessTimeout(usersCallables.linkEmployeeAuthUser({
         employeeId: employeeAccessState.employee.id,
-        email,
         displayName: `${employeeAccessState.employee.firstName} ${employeeAccessState.employee.lastName}`.trim(),
-      });
+        administrativeAccess: isAdministrativeEmployee(employeeAccessState.employee),
+      }));
       setEmployeeAccessState((current) => (current ? {
         ...current,
-        inviteLink: result.inviteLink,
+        employeeCode: result.employeeCode ?? current.employee.employeeCode ?? '',
+        loginPath: result.loginPath ?? '/login',
+        temporaryPassword: result.temporaryPassword ?? '',
+        passwordGeneratedAt: result.passwordGeneratedAt ?? '',
         email: result.email,
         isSubmitting: false,
       } : current));
-      setNotice('Acceso vinculado. El link permite que el empleado cree o restablezca su contraseña.');
+      setNotice('Acceso vinculado. El empleado debe ingresar con la clave temporal y cambiarla en el primer inicio.');
       await loadEmployees();
     } catch (accessError) {
       setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: false } : current));
@@ -599,18 +635,29 @@ export function EmployeesAdmin() {
       return;
     }
 
-    setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: true, inviteLink: '' } : current));
+    setEmployeeAccessState((current) => (current ? {
+      ...current,
+      isSubmitting: true,
+      loginPath: '',
+      temporaryPassword: '',
+      passwordGeneratedAt: '',
+    } : current));
     setError('');
 
     try {
-      const result = await usersCallables.inviteEmployeeUser({ employeeId: employeeAccessState.employee.id });
+      const result = await withEmployeeAccessTimeout(
+        usersCallables.inviteEmployeeUser({ employeeId: employeeAccessState.employee.id }),
+      );
       setEmployeeAccessState((current) => (current ? {
         ...current,
-        inviteLink: result.inviteLink,
+        employeeCode: result.employeeCode ?? current.employee.employeeCode ?? '',
+        loginPath: result.loginPath ?? '/login',
+        temporaryPassword: result.temporaryPassword ?? '',
+        passwordGeneratedAt: result.passwordGeneratedAt ?? '',
         email: result.email,
         isSubmitting: false,
       } : current));
-      setNotice('Invitacion generada para el empleado.');
+      setNotice('Clave temporal restablecida para el empleado.');
     } catch (accessError) {
       setEmployeeAccessState((current) => (current ? { ...current, isSubmitting: false } : current));
       setError(accessError instanceof Error ? accessError.message : 'No pudimos generar la invitacion.');
@@ -624,12 +671,7 @@ export function EmployeesAdmin() {
       <div className="directory-shell directory-workbench-shell">
         <section className="floating-card tournament-hero directory-workbench-hero">
           <div className="tournament-hero__copy">
-            <p className="eyebrow">Administracion de personal</p>
             <h1>Legajos de empleados</h1>
-            <p>
-              Alta, baja, acceso al sistema y trazabilidad contable laboral
-              desde una vista operativa unificada.
-            </p>
           </div>
 
           {canManageEmployees && (
@@ -656,31 +698,12 @@ export function EmployeesAdmin() {
             helper="Legajos registrados"
           />
           <SummaryCard
-            label="Activos"
+            label="Mensuales"
             value={String(
-              stats?.activeEmployees ??
-                employees.filter((employee) => employee.status === "active")
-                  .length,
+              employees.filter((employee) => employee.contractType === "monthly")
+                .length,
             )}
-            helper="Disponibles para operar"
-          />
-          <SummaryCard
-            label="Inactivos"
-            value={String(
-              stats?.inactiveEmployees ??
-                employees.filter((employee) => employee.status === "inactive")
-                  .length,
-            )}
-            helper="Bajas administrativas"
-          />
-          <SummaryCard
-            label="Rinden gastos"
-            value={String(
-              stats?.canSubmitExpenses ??
-                employees.filter((employee) => employee.canSubmitExpenses)
-                  .length,
-            )}
-            helper="Habilitados para rendiciones"
+            helper="Contratacion mensual"
           />
         </section>
 
@@ -689,10 +712,6 @@ export function EmployeesAdmin() {
             <div>
               <p className="eyebrow">Listado operativo</p>
               <h2>Empleados, permisos y contabilidad mensual</h2>
-              <p className="profile-note">
-                Filtra legajos, entra a la contabilidad de cada empleado y
-                gestiona acciones administrativas.
-              </p>
             </div>
           </div>
 
@@ -701,7 +720,7 @@ export function EmployeesAdmin() {
             onToggle={() => setIsFiltersOpen((current) => !current)}
             panelRef={filtersRef}
             title="Busqueda y filtros"
-            helper="Buscar por legajo, nombre, estado, contrato o rendiciones"
+            helper="Buscar por legajo o nombre"
             activeCount={activeSearchCount}
             icon={<SearchIcon />}
             chevron={<ChevronIcon />}
@@ -713,13 +732,6 @@ export function EmployeesAdmin() {
                 type: 'search',
               },
               {
-                label: 'Estado',
-                value: statusFilter,
-                onChange: (value) => setStatusFilter(value as EmployeeStatusFilter),
-                type: 'select',
-                options: STATUS_OPTIONS,
-              },
-              {
                 label: 'Contrato',
                 value: contractFilter,
                 onChange: (value) => setContractFilter(value as EmployeeContractFilter),
@@ -728,13 +740,6 @@ export function EmployeesAdmin() {
                   { value: 'all', label: 'Todos' },
                   ...CONTRACT_OPTIONS,
                 ],
-              },
-              {
-                label: 'Rendiciones',
-                value: expenseAccessFilter,
-                onChange: (value) => setExpenseAccessFilter(value as EmployeeExpenseFilter),
-                type: 'select',
-                options: EXPENSE_ACCESS_OPTIONS,
               },
             ]}
           />
@@ -762,8 +767,8 @@ export function EmployeesAdmin() {
                   <span>Legajo</span>
                   <span>Persona</span>
                   <span>Trabajo</span>
-                  <span>Rendiciones</span>
-                  <span>Estado</span>
+                  <span>Contrato</span>
+                  <span>Acceso app</span>
                   <span>Acciones</span>
                 </div>
 
@@ -792,6 +797,9 @@ export function EmployeesAdmin() {
                               ? `DNI ${employee.dni}`
                               : "DNI pendiente"}
                           </small>
+                          {employee.linkedMemberId && (
+                            <small>{getLinkedMemberSummary(employee)}</small>
+                          )}
                         </div>
 
                         <div className="member-cell">
@@ -804,35 +812,15 @@ export function EmployeesAdmin() {
 
                         <div className="member-cell">
                           <span className="member-type-badge">
-                            {employee.canSubmitExpenses
-                              ? "Habilitado"
-                              : "No habilitado"}
+                            Mensual
                           </span>
-                          <small>
-                            {employee.canSubmitExpenses
-                              ? "Puede cargar gastos"
-                              : "Sin carga de gastos"}
-                          </small>
-                          <small>
-                            {employee.linkedUserId
-                              ? "Con acceso al sistema"
-                              : "Sin usuario vinculado"}
-                          </small>
+                          <small>Modalidad de contratacion unica</small>
                         </div>
 
                         <div className="member-cell">
-                          <span
-                            className={`status-pill ${employee.status === "active" ? "status-pill-green" : "status-pill--bloqueado"}`}
-                          >
-                            {employee.status === "active"
-                              ? "Activo"
-                              : "Inactivo"}
+                          <span className={`employee-access-pill ${canEmployeeUseApp(employee) ? 'employee-access-pill--active' : 'employee-access-pill--inactive'}`}>
+                            {canEmployeeUseApp(employee) ? 'Activo' : 'Sin acceso'}
                           </span>
-                          <small>
-                            {employee.endDate
-                              ? `Baja ${formatDate(employee.endDate as TimestampLike)}`
-                              : "Sin fecha de baja"}
-                          </small>
                         </div>
 
                         <div className="member-actions">
@@ -875,13 +863,13 @@ export function EmployeesAdmin() {
                                 >
                                   Ver contabilidad
                                 </Link>
-                                <Link
+                                <button
+                                  type="button"
                                   className="member-actions-menu__item"
-                                  to={`/accounting/employees/${employee.id}?period=${currentAccountingPeriod}&section=references`}
-                                  onClick={() => setOpenEmployeeActionsId(null)}
+                                  onClick={() => openEmployeeAccessModal(employee)}
                                 >
-                                  Cargar comprobante / rendición
-                                </Link>
+                                  {canEmployeeUseApp(employee) ? 'Restablecer clave temporal' : 'Conceder acceso'}
+                                </button>
                                 {canConfigureSalaries && (
                                   <Link
                                     className="member-actions-menu__item"
@@ -890,20 +878,9 @@ export function EmployeesAdmin() {
                                       setOpenEmployeeActionsId(null)
                                     }
                                   >
-                                    Configurar sueldo
+                                    Modificar sueldo
                                   </Link>
                                 )}
-                                <button
-                                  type="button"
-                                  className="member-actions-menu__item"
-                                  onClick={() =>
-                                    openEmployeeAccessModal(employee)
-                                  }
-                                >
-                                  {employee.linkedUserId
-                                    ? "Enviar invitación"
-                                    : "Vincular acceso al sistema"}
-                                </button>
                                 <button
                                   type="button"
                                   className={
@@ -947,28 +924,29 @@ export function EmployeesAdmin() {
       </div>
 
       {isEditorOpen && (
-        <div className="modal-overlay" onClick={handleOverlayClick}>
+        <div className="modal-overlay quick-actions-modal-overlay" onClick={handleOverlayClick}>
           <section
-            className="floating-card member-modal-card"
+            className="floating-card member-modal-card quick-actions-modal accounting-operation-modal"
             role="dialog"
             aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div className="member-modal__header">
-              <div className="member-modal__title">
+            <div className="member-modal__header quick-actions-modal__header">
+              <div className="member-modal__title accounting-operation-modal__title-block">
                 <p className="eyebrow">
                   {selectedEmployee
                     ? "Modificacion de empleado"
                     : "Alta de empleado"}
                 </p>
                 {selectedEmployee ? (
-                  <h2>Actualizar legajo</h2>
+                  <h2 className="accounting-operation-modal__title">Actualizar legajo</h2>
                 ) : (
-                  <h2>Nuevo legajo</h2>
+                  <h2 className="accounting-operation-modal__title">Nuevo legajo</h2>
                 )}
               </div>
 
               <div className="member-modal__header-actions">
-                {selectedEmployee && (
+                {false && selectedEmployee && (
                   <span
                     className={`status-pill ${editorState.status === "active" ? "status-pill-green" : "status-pill--bloqueado"}`}
                   >
@@ -978,11 +956,11 @@ export function EmployeesAdmin() {
 
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close-button"
                   aria-label="Cerrar formulario"
                   onClick={closeEditor}
                 >
-                  <CloseIcon />
+                  <ModalCloseIcon />
                 </button>
               </div>
             </div>
@@ -996,14 +974,16 @@ export function EmployeesAdmin() {
                 </div>
                 <div className="employee-form-section__grid">
                   <label className="form-field" htmlFor="employeeCode">
-                    <span>Codigo interno</span>
+                    <span>Legajo automatico</span>
                     <input
                       id="employeeCode"
                       name="employeeCode"
                       type="text"
                       value={editorState.employeeCode}
-                      onChange={handleEditorChange}
+                      placeholder="Se genera como E + ID al guardar"
+                      readOnly
                     />
+                    <small>{selectedEmployee ? 'Generado automaticamente desde el ID del empleado.' : 'Se genera automaticamente al guardar el empleado.'}</small>
                   </label>
 
                   <label className="form-field" htmlFor="dni">
@@ -1038,6 +1018,24 @@ export function EmployeesAdmin() {
                       onChange={handleEditorChange}
                     />
                   </label>
+
+                  <label className="form-field employee-form-section__wide" htmlFor="linkedMemberId">
+                    <span>Socio vinculado (opcional)</span>
+                    <select
+                      id="linkedMemberId"
+                      name="linkedMemberId"
+                      value={editorState.linkedMemberId}
+                      onChange={handleEditorChange}
+                    >
+                      <option value="">No es socio / sin vinculo</option>
+                      {members.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {`#${member.memberNumber} - ${member.lastName}, ${member.firstName}`}
+                        </option>
+                      ))}
+                    </select>
+                    <small>El empleado puede existir sin socio. Si tambien esta en el padron, queda vinculado a ese registro.</small>
+                  </label>
                 </div>
               </div>
 
@@ -1060,21 +1058,11 @@ export function EmployeesAdmin() {
                     />
                   </label>
 
-                  <label className="form-field" htmlFor="contractType">
-                    <span>Tipo de contrato</span>
-                    <select
-                      id="contractType"
-                      name="contractType"
-                      value={editorState.contractType}
-                      onChange={handleEditorChange}
-                    >
-                      {CONTRACT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="form-field">
+                    <span>Modalidad de contratacion</span>
+                    <strong>Mensual</strong>
+                    <small>Unica modalidad habilitada para empleados.</small>
+                  </div>
 
                   <label className="form-field" htmlFor="startDate">
                     <span>Fecha de ingreso</span>
@@ -1083,55 +1071,9 @@ export function EmployeesAdmin() {
                       name="startDate"
                       type="date"
                       value={editorState.startDate}
+                      disabled={Boolean(selectedEmployee)}
                       onChange={handleEditorChange}
                     />
-                  </label>
-                </div>
-              </div>
-
-              <div className="employee-form-section member-editor-form__wide">
-                <div className="employee-form-section__title">
-                  <strong>Estado operativo</strong>
-                </div>
-                <div className="employee-form-section__grid">
-                  {selectedEmployee && (
-                    <label className="form-field" htmlFor="status">
-                      <span>Estado</span>
-                      <select
-                        id="status"
-                        name="status"
-                        value={editorState.status}
-                        onChange={handleEditorChange}
-                      >
-                        <option value="active">Activo</option>
-                        <option value="inactive">Inactivo</option>
-                      </select>
-                    </label>
-                  )}
-
-                  <label className="form-field" htmlFor="endDate">
-                    <span>Fecha de baja</span>
-                    <input
-                      id="endDate"
-                      name="endDate"
-                      type="date"
-                      value={editorState.endDate}
-                      onChange={handleEditorChange}
-                    />
-                  </label>
-
-                  <label
-                    className="check-field employee-form-section__wide"
-                    htmlFor="canSubmitExpenses"
-                  >
-                    <input
-                      id="canSubmitExpenses"
-                      name="canSubmitExpenses"
-                      type="checkbox"
-                      checked={editorState.canSubmitExpenses}
-                      onChange={handleEditorChange}
-                    />
-                    <span>Puede cargar rendiciones y gastos</span>
                   </label>
                 </div>
               </div>
@@ -1176,53 +1118,63 @@ export function EmployeesAdmin() {
       )}
 
       {employeeAccessState && (
-        <div className="modal-overlay" onClick={handleOverlayClick}>
+        <div className="modal-overlay" onClick={closeEmployeeAccessModal}>
           <section
             className="floating-card member-modal-card"
             role="dialog"
             aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="member-modal__header">
               <div className="member-modal__title">
                 <p className="eyebrow">Acceso del empleado</p>
-                <h2>{getEmployeeDisplayName(employeeAccessState.employee)}</h2>
+                <h2>{canEmployeeUseApp(employeeAccessState.employee) ? 'Restablecer clave temporal' : 'Conceder acceso'}</h2>
                 <p className="profile-note">
-                  El ingreso se gestiona con Firebase Authentication. No se
-                  guarda ninguna contraseña en Firestore.
+                  {canEmployeeUseApp(employeeAccessState.employee)
+                    ? 'Se va a asignar una clave temporal. En el primer ingreso la app va a obligar al empleado a cambiarla.'
+                    : 'Se va a conceder acceso a la app con una clave temporal. En el primer ingreso la app va a obligar al empleado a cambiarla.'}
                 </p>
               </div>
 
               <button
                 type="button"
-                className="icon-button"
+                className="modal-close-button"
                 aria-label="Cerrar acceso del empleado"
                 onClick={closeEmployeeAccessModal}
               >
-                <CloseIcon />
+                <ModalCloseIcon />
               </button>
             </div>
 
             {error && <div className="error-message">{error}</div>}
 
-            <div className="summary-grid">
-              <SummaryCard
-                label="Estado"
-                value={
-                  employeeAccessState.employee.linkedUserId
-                    ? "Vinculado"
-                    : "Sin usuario"
-                }
-                helper={
-                  employeeAccessState.employee.linkedUserId
-                    ? employeeAccessState.employee.linkedUserId
-                    : "Pendiente de crear o vincular"
-                }
-              />
-              <SummaryCard
-                label="Rol"
-                value="empleado"
-                helper="Solo puede cargar y ver sus propias rendiciones"
-              />
+            <div className="membership-note member-editor-form__wide employee-access-explanation">
+              <span>{canEmployeeUseApp(employeeAccessState.employee) ? 'Acceso ya creado' : 'Nuevo acceso a la app'}</span>
+              <p>
+                El empleado va a ingresar con el codigo {employeeAccessState.employee.employeeCode ?? 'Exxx'}.
+                {employeeAccessState.administrativeAccess
+                  ? ' Este legajo conserva roles Empleado + Administrativo.'
+                  : ' Este acceso queda con rol Empleado.'}
+              </p>
+            </div>
+
+            <div className="membership-panel__list employee-access-detail-list">
+              <div>
+                <span>Codigo de empleado</span>
+                <strong>{employeeAccessState.employee.employeeCode ?? 'Exxx'}</strong>
+              </div>
+              <div>
+                <span>DNI</span>
+                <strong>{employeeAccessState.employee.dni || 'DNI pendiente'}</strong>
+              </div>
+              <div>
+                <span>Apellido</span>
+                <strong>{employeeAccessState.employee.lastName}</strong>
+              </div>
+              <div>
+                <span>Nombres</span>
+                <strong>{employeeAccessState.employee.firstName}</strong>
+              </div>
             </div>
 
             {employeeAccessState.employee.linkedUserId ? (
@@ -1242,7 +1194,7 @@ export function EmployeesAdmin() {
                 >
                   {employeeAccessState.isSubmitting
                     ? "Generando..."
-                    : "Generar invitación / reset"}
+                    : "Restablecer clave temporal"}
                 </button>
               </div>
             ) : (
@@ -1250,22 +1202,6 @@ export function EmployeesAdmin() {
                 className="member-editor-form"
                 onSubmit={handleLinkEmployeeAccess}
               >
-                <label className="form-field member-editor-form__wide">
-                  <span>Email de acceso</span>
-                  <input
-                    type="email"
-                    value={employeeAccessState.email}
-                    onChange={(event) =>
-                      setEmployeeAccessState((current) =>
-                        current
-                          ? { ...current, email: event.target.value }
-                          : current,
-                      )
-                    }
-                    placeholder="empleado@club.com"
-                  />
-                </label>
-
                 <div className="form-actions">
                   <button
                     type="button"
@@ -1280,21 +1216,39 @@ export function EmployeesAdmin() {
                     disabled={employeeAccessState.isSubmitting}
                   >
                     {employeeAccessState.isSubmitting
-                      ? "Vinculando..."
-                      : "Crear / vincular usuario"}
+                      ? "Creando..."
+                      : "Conceder acceso"}
                   </button>
                 </div>
               </form>
             )}
 
-            {employeeAccessState.inviteLink && (
+            {employeeAccessState.temporaryPassword && (
               <div className="success-message">
-                <strong>Link seguro generado</strong>
+                <strong>Credenciales temporales generadas</strong>
                 <p>
                   Compartilo por un canal confiable para que el empleado defina
                   su contraseña.
                 </p>
-                <input readOnly value={employeeAccessState.inviteLink} />
+                <div className="credentials-dialog-card__details employee-access-credentials">
+                  <div>
+                    <span>Usuario o legajo</span>
+                    <strong>{employeeAccessState.employeeCode || employeeAccessState.employee.employeeCode || 'Exxx'}</strong>
+                  </div>
+                  <div>
+                    <span>Contrasena temporal</span>
+                    <strong>{employeeAccessState.temporaryPassword || 'Clave temporal no disponible'}</strong>
+                  </div>
+                </div>
+                <div className="form-actions form-actions--right">
+                  <button
+                    type="button"
+                    className="ui-action-button"
+                    onClick={() => window.location.assign(employeeAccessState.loginPath || '/login')}
+                  >
+                    Ir al login
+                  </button>
+                </div>
               </div>
             )}
           </section>

@@ -2,7 +2,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { FINANCIAL_EXPENSE_CATEGORY_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import { assertIsRecord, ensureDirectivo, ensureStaff, parseOptionalAccountingPeriod, parseOptionalAmountMinor, parseOptionalIsoDate, parseOptionalNullableString, parseRequiredAccountingPeriod, parseRequiredAmountMinor, parseRequiredFiniteNumber, parseRequiredIsoDate, parseRequiredString, parseRequiredStringArray, } from '../shared.js';
-import { postSalaryPaymentUseCase } from './salary.use-cases.js';
+import { calculateAnnualBonusPreview, postSalaryPaymentUseCase } from './salary.use-cases.js';
 function isApprovedDecision(value) {
     return value === 'approved' || value === 'rejected';
 }
@@ -55,12 +55,13 @@ export async function listEmployeePayrollCycleUseCase(params) {
     const dataAccess = params.transactions.getDataAccess();
     const employee = await dataAccess.employees.getById(params.input.employeeId);
     assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
-    const [payrollCycle, salaryPayment, overtimeEntries, accountingLinks, certificates] = await Promise.all([
+    const [payrollCycle, salaryPayment, overtimeEntries, accountingLinks, certificates, annualBonusPreview] = await Promise.all([
         dataAccess.employeePayrollCycles.findByEmployeeAndPeriod(params.input.employeeId, params.input.period),
         dataAccess.salaryPayments.findByEmployeeAndPeriod(params.input.employeeId, params.input.period),
         dataAccess.overtimeEntries.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
         dataAccess.employeeAccountingLinks.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
         dataAccess.employeeCertificates.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
+        calculateAnnualBonusPreview({ dataAccess, employeeId: params.input.employeeId, period: params.input.period }),
     ]);
     return {
         payrollCycle,
@@ -68,6 +69,7 @@ export async function listEmployeePayrollCycleUseCase(params) {
         overtimeEntries: overtimeEntries.items,
         accountingLinks: accountingLinks.items,
         certificates: certificates.items,
+        annualBonusPreview,
     };
 }
 export async function postEmployeePayrollCycleUseCase(params) {

@@ -33,8 +33,8 @@ import type {
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
   MemberFeeChargeDocument,
-  MercadoPagoCheckoutSessionDocument,
   OvertimeEntryDocument,
+  PaymentCommissionRuleDocument,
   PaymentMethodDocument,
   SalaryConfigurationDocument,
   SalaryPaymentDocument,
@@ -101,6 +101,30 @@ export function createFinancialConfigsRepository(db: Firestore = requireFirestor
 export function createPaymentMethodsRepository(db: Firestore = requireFirestore()) {
   const repository = createRepository<PaymentMethodDocument>(db, ACCOUNTING_COLLECTIONS.paymentMethods);
 
+  const attachActiveCommissions = async (methods: Array<EntityWithId<PaymentMethodDocument>>) => {
+    const commissionRepository = createRepository<PaymentCommissionRuleDocument>(db, ACCOUNTING_COLLECTIONS.paymentCommissionRules);
+    const rules = await commissionRepository.listByQuery(
+      query(commissionRepository.collectionRef, where('isActive', '==', true)),
+    );
+    const activeRuleByMethodId = new Map<string, EntityWithId<PaymentCommissionRuleDocument>>();
+    [...rules]
+      .sort((left, right) => right.validFrom.toMillis() - left.validFrom.toMillis())
+      .forEach((rule) => {
+        if (!activeRuleByMethodId.has(rule.paymentMethodId)) {
+          activeRuleByMethodId.set(rule.paymentMethodId, rule);
+        }
+      });
+
+    return methods.map((method) => {
+      const rule = activeRuleByMethodId.get(method.id);
+      return {
+        ...method,
+        activeCommissionPctBps: rule?.percentageBps ?? null,
+        activeCommissionBreakdown: rule?.breakdown ?? [],
+      };
+    });
+  };
+
   return {
     ...repository,
     async listActiveSorted() {
@@ -108,6 +132,12 @@ export function createPaymentMethodsRepository(db: Firestore = requireFirestore(
         query(repository.collectionRef, where('active', '==', true)),
       );
       return [...items].sort((left, right) => left.sortOrder - right.sortOrder);
+    },
+    async listActiveWithCommissions() {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('active', '==', true)),
+      );
+      return attachActiveCommissions([...items].sort((left, right) => left.sortOrder - right.sortOrder));
     },
     async listAllSorted() {
       const items = await repository.listByQuery(
@@ -161,6 +191,22 @@ export function createFinancialMovementsRepository(db: Firestore = requireFirest
         query(repository.collectionRef, where('accountingPeriod', '==', period)),
       );
       return sortByTimestampDesc(items, (item) => item.operationDate?.toDate() ?? null);
+    },
+    async listThroughAccountingPeriod(period: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('accountingPeriod', '<=', period)),
+      );
+      return sortByTimestampDesc(items, (item) => item.operationDate?.toDate() ?? null);
+    },
+    async listByInstallmentPlanId(installmentPlanId: string) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('installmentPlanId', '==', installmentPlanId)),
+      );
+      return [...items].sort((left, right) => {
+        if (left.installmentRole === 'charge') return -1;
+        if (right.installmentRole === 'charge') return 1;
+        return (left.installmentNumber ?? 0) - (right.installmentNumber ?? 0);
+      });
     },
     listRecentBanked(pageSize = 12) {
       return repository.listByQuery(
@@ -308,6 +354,16 @@ export function createHandicapChargesRepository(db: Firestore = requireFirestore
       );
       return sortByPeriodDesc(items);
     },
+    async listCollectedPendingTransfer(pageSize = 100) {
+      const items = await repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('status', '==', 'collected'),
+          limit(pageSize),
+        ),
+      );
+      return sortByPeriodDesc(items.filter((item) => !item.expenseMovementId));
+    },
   };
 }
 
@@ -325,6 +381,12 @@ export function createMemberFeeChargesRepository(db: Firestore = requireFirestor
     async listByMember(memberId: string, pageSize = 12) {
       const items = await repository.listByQuery(
         query(repository.collectionRef, where('memberId', '==', memberId), orderBy('period', 'desc'), limit(pageSize)),
+      );
+      return sortByPeriodDesc(items);
+    },
+    async listByHolderMember(memberId: string, pageSize = 12) {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('holderMemberId', '==', memberId), limit(pageSize)),
       );
       return sortByPeriodDesc(items);
     },
@@ -346,27 +408,6 @@ export function createMemberFeeChargesRepository(db: Firestore = requireFirestor
           where('period', '==', period),
           where('status', '==', 'pending'),
         ),
-      );
-    },
-  };
-}
-
-export function createMercadoPagoCheckoutSessionsRepository(db: Firestore = requireFirestore()) {
-  const repository = createRepository<MercadoPagoCheckoutSessionDocument>(
-    db,
-    ACCOUNTING_COLLECTIONS.mercadoPagoCheckoutSessions,
-  );
-
-  return {
-    ...repository,
-    listRecent(pageSize = 10) {
-      return repository.listByQuery(
-        query(repository.collectionRef, orderBy('updatedAt', 'desc'), limit(pageSize)),
-      );
-    },
-    listByStatus(status: MercadoPagoCheckoutSessionDocument['status'], pageSize = 10) {
-      return repository.listByQuery(
-        query(repository.collectionRef, where('status', '==', status), orderBy('updatedAt', 'desc'), limit(pageSize)),
       );
     },
   };
@@ -463,6 +504,12 @@ export function createCashClosuresRepository(db: Firestore = requireFirestore())
     async listByPeriod(period: string) {
       const items = await repository.listByQuery(
         query(repository.collectionRef, where('period', '==', period)),
+      );
+      return sortByTimestampDesc(items, (item) => item.closureDate?.toDate() ?? null);
+    },
+    async listOpen() {
+      const items = await repository.listByQuery(
+        query(repository.collectionRef, where('status', '==', 'open')),
       );
       return sortByTimestampDesc(items, (item) => item.closureDate?.toDate() ?? null);
     },

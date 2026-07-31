@@ -1,14 +1,19 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
+import {
+  DEFAULT_FINANCIAL_EXPENSE_CATEGORIES,
+  DEFAULT_FINANCIAL_INCOME_CATEGORIES,
+  FINANCIAL_EXPENSE_CATEGORY_IDS,
+  FINANCIAL_INCOME_CATEGORY_IDS,
+  PAYMENT_METHOD_IDS,
+} from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import type { Actor, ThirdPartyType } from '../../domain/models.js';
+import type { Actor, FinancialMovementDocument, ThirdPartyType } from '../../domain/models.js';
 import type { AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   calculateEarlyPaymentDiscount,
   calculateMembershipRenewalDueDate,
   ensureStaff,
-  parseOptionalAmountMinor,
   parseOptionalIsoDate,
   parseOptionalNullableString,
   parseOptionalRecord,
@@ -18,6 +23,7 @@ import {
   toClubAccountingPeriod,
 } from '../shared.js';
 import { createPostedMovement } from '../movement-helpers.js';
+import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 
 export interface RegisterPaymentInput {
   sourceType: string;
@@ -34,6 +40,43 @@ export interface RegisterPaymentInput {
   metadata?: Record<string, unknown> | undefined;
 }
 
+export interface TransferFundsInput {
+  sourcePaymentMethodId: string;
+  destinationPaymentMethodId: string;
+  amountMinor: number;
+  operationDate: Date;
+  reference?: string | null | undefined;
+  notes?: string | null | undefined;
+}
+
+export interface EditInternalTransferInput {
+  movementId: string;
+  sourcePaymentMethodId: string;
+  destinationPaymentMethodId: string;
+  reference?: string | null | undefined;
+  notes?: string | null | undefined;
+  reason: string;
+}
+
+function getMovementMetadataString(movement: FinancialMovementDocument, key: string): string {
+  const value = movement.metadata?.[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isInternalTransferMovement(movement: FinancialMovementDocument): boolean {
+  return movement.originType === 'internal_transfer'
+    || movement.categoryId === FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer
+    || movement.categoryId === FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer;
+}
+
+function appendTransferEditHistory(
+  movement: FinancialMovementDocument,
+  entry: Record<string, unknown>,
+): unknown[] {
+  const current = movement.metadata?.transferEditHistory;
+  return [...(Array.isArray(current) ? current.slice(-19) : []), entry];
+}
+
 function buildReceiptNumber(operationDate: Date, movementId: string): string {
   const year = operationDate.getUTCFullYear();
   const month = String(operationDate.getUTCMonth() + 1).padStart(2, '0');
@@ -46,14 +89,46 @@ function getReceiptNumberFromMovementMetadata(metadata: Record<string, unknown> 
   return typeof receiptNumber === 'string' && receiptNumber.trim().length > 0 ? receiptNumber : null;
 }
 
+const LEGACY_INCOME_PAYMENT_METHOD_IDS = new Set<string>([
+  PAYMENT_METHOD_IDS.transfer,
+  PAYMENT_METHOD_IDS.debit,
+  PAYMENT_METHOD_IDS.credit,
+]);
+
+function assertPaymentMethodAllowedForIncomeCategory(paymentMethodId: string, categoryId: string) {
+  assertCondition(
+    !LEGACY_INCOME_PAYMENT_METHOD_IDS.has(paymentMethodId),
+    'failed-precondition',
+    `El medio de pago ${paymentMethodId} ya no esta disponible para nuevos cobros.`,
+  );
+  assertCondition(
+    paymentMethodId !== PAYMENT_METHOD_IDS.debitMacro || categoryId === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria,
+    'invalid-argument',
+    'Cuenta debito Macro solo esta disponible para cuotas societarias.',
+  );
+}
+
 export async function registerPaymentUseCase(params: {
   actor: Actor | null;
   input: RegisterPaymentInput;
   transactions: AccountingTransactionManager;
-}): Promise<{ movementId: string; netAmountMinor: number; duplicate: boolean; receiptNumber: string | null }> {
+}): Promise<{
+  movementId: string;
+  grossAmountMinor: number;
+  netAmountMinor: number;
+  appliedCommissionPctBps: number | null;
+  appliedCommissionAmountMinor: number | null;
+  duplicate: boolean;
+  receiptNumber: string | null;
+}> {
   const actor = ensureStaff(params.actor);
 
   return params.transactions.runInTransaction(async (dataAccess) => {
+    await assertCashOperationDateAllowed({
+      dataAccess,
+      operationDate: params.input.operationDate,
+    });
+
     const category = await dataAccess.financialIncomeCategories.getById(params.input.categoryId);
     assertCondition(category, 'not-found', `No existe financial_income_categories/${params.input.categoryId}.`);
     assertCondition(category.active, 'failed-precondition', `La categoría ${params.input.categoryId} está inactiva.`);
@@ -61,6 +136,7 @@ export async function registerPaymentUseCase(params: {
     const paymentMethod = await dataAccess.paymentMethods.getById(params.input.paymentMethodId);
     assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.input.paymentMethodId}.`);
     assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.input.paymentMethodId} está inactivo.`);
+    assertPaymentMethodAllowedForIncomeCategory(paymentMethod.id, category.id);
     const paymentReference = params.input.paymentReference?.trim() || null;
     const paymentReferenceRequired =
       params.input.sourceType !== 'manual_income' && paymentMethod.id !== PAYMENT_METHOD_IDS.cash;
@@ -77,6 +153,11 @@ export async function registerPaymentUseCase(params: {
         member.status !== 'inactive' && member.status !== 'suspended',
         'failed-precondition',
         'No se pueden registrar pagos nuevos para socios dados de baja o suspendidos.',
+      );
+      assertCondition(
+        !member.membershipBillingExempt,
+        'failed-precondition',
+        'El usuario tecnico esta exento y no admite cobros asociados a su ficha.',
       );
     }
 
@@ -101,7 +182,10 @@ export async function registerPaymentUseCase(params: {
         assertCondition(existingMovement, 'failed-precondition', 'La cuota ya fue pagada y el movimiento vinculado no existe.');
         return {
           movementId: existingMovement.id,
+          grossAmountMinor: existingMovement.grossAmountMinor,
           netAmountMinor: existingMovement.netAmountMinor,
+          appliedCommissionPctBps: existingMovement.appliedCommissionPctBps ?? null,
+          appliedCommissionAmountMinor: existingMovement.appliedCommissionAmountMinor ?? null,
           duplicate: true,
           receiptNumber: getReceiptNumberFromMovementMetadata(existingMovement.metadata),
         };
@@ -121,6 +205,11 @@ export async function registerPaymentUseCase(params: {
         chargeMember.status !== 'inactive' && chargeMember.status !== 'suspended',
         'failed-precondition',
         'No se pueden cobrar cuotas de socios dados de baja o suspendidos.',
+      );
+      assertCondition(
+        !chargeMember.membershipBillingExempt,
+        'failed-precondition',
+        'El usuario tecnico esta exento y no admite cobros de cuota societaria.',
       );
 
       const activeConfig = await dataAccess.financialConfigs.getActive();
@@ -144,7 +233,10 @@ export async function registerPaymentUseCase(params: {
         if (existingMovement) {
           return {
             movementId: existingMovement.id,
+            grossAmountMinor: existingMovement.grossAmountMinor,
             netAmountMinor: existingMovement.netAmountMinor,
+            appliedCommissionPctBps: existingMovement.appliedCommissionPctBps ?? null,
+            appliedCommissionAmountMinor: existingMovement.appliedCommissionAmountMinor ?? null,
             duplicate: true,
             receiptNumber: getReceiptNumberFromMovementMetadata(existingMovement.metadata),
           };
@@ -168,7 +260,10 @@ export async function registerPaymentUseCase(params: {
         if (existingMovement) {
           return {
             movementId: existingMovement.id,
+            grossAmountMinor: existingMovement.grossAmountMinor,
             netAmountMinor: existingMovement.netAmountMinor,
+            appliedCommissionPctBps: existingMovement.appliedCommissionPctBps ?? null,
+            appliedCommissionAmountMinor: existingMovement.appliedCommissionAmountMinor ?? null,
             duplicate: true,
             receiptNumber: getReceiptNumberFromMovementMetadata(existingMovement.metadata),
           };
@@ -241,7 +336,8 @@ export async function registerPaymentUseCase(params: {
           : {}),
       },
       notes: params.input.notes ?? null,
-      applyPaymentCommission: paymentMethod.id === 'credit',
+      applyPaymentCommission: true,
+      paymentCommissionMode: 'add_to_charge',
     });
     const receiptNumber = buildReceiptNumber(params.input.operationDate, movement.movementId);
     await dataAccess.financialMovements.update(
@@ -253,6 +349,10 @@ export async function registerPaymentUseCase(params: {
           receiptNumber,
           receiptIssuedAt: Timestamp.fromDate(params.input.operationDate),
           receiptSource: params.input.sourceType,
+          appliedCommissionPctBps: movement.appliedCommissionPctBps,
+          appliedCommissionAmountMinor: movement.appliedCommissionAmountMinor,
+          clubAmountMinor: movement.netAmountMinor,
+          amountToChargeMinor: movement.grossAmountMinor,
           specialReportingType: paymentMethod.specialReportingType ?? null,
           ...(feePaymentSnapshot
             ? {
@@ -323,6 +423,10 @@ export async function registerPaymentUseCase(params: {
             receiptNumber,
             receiptIssuedAt: Timestamp.fromDate(params.input.operationDate),
             receiptSource: params.input.sourceType,
+            appliedCommissionPctBps: movement.appliedCommissionPctBps,
+            appliedCommissionAmountMinor: movement.appliedCommissionAmountMinor,
+            clubAmountMinor: movement.netAmountMinor,
+            amountToChargeMinor: movement.grossAmountMinor,
             specialReportingType: paymentMethod.specialReportingType ?? null,
             ...(feePaymentSnapshot
               ? {
@@ -344,9 +448,268 @@ export async function registerPaymentUseCase(params: {
 
     return {
       movementId: movement.movementId,
+      grossAmountMinor: movement.grossAmountMinor,
       netAmountMinor: movement.netAmountMinor,
+      appliedCommissionPctBps: movement.appliedCommissionPctBps,
+      appliedCommissionAmountMinor: movement.appliedCommissionAmountMinor,
       duplicate: false,
       receiptNumber,
+    };
+  });
+}
+
+export async function transferFundsUseCase(params: {
+  actor: Actor | null;
+  input: TransferFundsInput;
+  transactions: AccountingTransactionManager;
+}): Promise<{ outgoingMovementId: string; incomingMovementId: string; amountMinor: number; reference: string }> {
+  const actor = ensureStaff(params.actor);
+
+  return params.transactions.runInTransaction(async (dataAccess) => {
+    await assertCashOperationDateAllowed({
+      dataAccess,
+      operationDate: params.input.operationDate,
+    });
+
+    assertCondition(params.input.amountMinor > 0, 'invalid-argument', 'El monto de la transferencia debe ser mayor a cero.');
+    assertCondition(
+      params.input.sourcePaymentMethodId !== params.input.destinationPaymentMethodId,
+      'invalid-argument',
+      'La cuenta origen y destino no pueden ser la misma.',
+    );
+
+    const [sourceMethod, destinationMethod, storedIncomeCategory, storedExpenseCategory] = await Promise.all([
+      dataAccess.paymentMethods.getById(params.input.sourcePaymentMethodId),
+      dataAccess.paymentMethods.getById(params.input.destinationPaymentMethodId),
+      dataAccess.financialIncomeCategories.getById(FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer),
+      dataAccess.financialExpenseCategories.getById(FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer),
+    ]);
+    const defaultIncomeCategory = DEFAULT_FINANCIAL_INCOME_CATEGORIES.find(
+      (category) => category.id === FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer,
+    );
+    const defaultExpenseCategory = DEFAULT_FINANCIAL_EXPENSE_CATEGORIES.find(
+      (category) => category.id === FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer,
+    );
+    const incomeCategory = storedIncomeCategory
+      ?? (defaultIncomeCategory ? { id: defaultIncomeCategory.id, ...defaultIncomeCategory.data } : null);
+    const expenseCategory = storedExpenseCategory
+      ?? (defaultExpenseCategory ? { id: defaultExpenseCategory.id, ...defaultExpenseCategory.data } : null);
+    assertCondition(sourceMethod, 'not-found', `No existe payment_methods/${params.input.sourcePaymentMethodId}.`);
+    assertCondition(destinationMethod, 'not-found', `No existe payment_methods/${params.input.destinationPaymentMethodId}.`);
+    assertCondition(sourceMethod.active, 'failed-precondition', `El medio de pago ${params.input.sourcePaymentMethodId} estÃ¡ inactivo.`);
+    assertCondition(destinationMethod.active, 'failed-precondition', `El medio de pago ${params.input.destinationPaymentMethodId} estÃ¡ inactivo.`);
+    assertCondition(incomeCategory, 'not-found', `No existe financial_income_categories/${FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer}.`);
+    assertCondition(expenseCategory, 'not-found', `No existe financial_expense_categories/${FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer}.`);
+    assertCondition(incomeCategory.active, 'failed-precondition', 'Falta activar la categorÃ­a de ingreso por transferencia interna.');
+    assertCondition(expenseCategory.active, 'failed-precondition', 'Falta activar la categorÃ­a de egreso por transferencia interna.');
+
+    const reference = params.input.reference?.trim()
+      || `TRF-${params.input.operationDate.toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString(36).toUpperCase()}`;
+    const commonMetadata = {
+      transferReference: reference,
+      sourcePaymentMethodId: sourceMethod.id,
+      destinationPaymentMethodId: destinationMethod.id,
+      sourcePaymentMethodName: sourceMethod.name,
+      destinationPaymentMethodName: destinationMethod.name,
+    };
+
+    const outgoing = await createPostedMovement({
+      dataAccess,
+      actorUid: actor.uid,
+      movementType: 'expense',
+      categoryId: expenseCategory.id,
+      categoryCodeSnapshot: expenseCategory.id,
+      grossAmountMinor: params.input.amountMinor,
+      operationDate: params.input.operationDate,
+      originType: 'internal_transfer',
+      originCollection: null,
+      originId: null,
+      thirdPartyType: null,
+      thirdPartyId: null,
+      paymentMethodId: sourceMethod.id,
+      bancarizado: sourceMethod.bancarizado,
+      imputableImpositivo: false,
+      metadata: {
+        ...commonMetadata,
+        transferDirection: 'out',
+      },
+      notes: params.input.notes ?? `Transferencia interna a ${destinationMethod.name}`,
+    });
+
+    const incoming = await createPostedMovement({
+      dataAccess,
+      actorUid: actor.uid,
+      movementType: 'income',
+      categoryId: incomeCategory.id,
+      categoryCodeSnapshot: incomeCategory.id,
+      grossAmountMinor: params.input.amountMinor,
+      operationDate: params.input.operationDate,
+      originType: 'internal_transfer',
+      originCollection: null,
+      originId: outgoing.movementId,
+      thirdPartyType: null,
+      thirdPartyId: null,
+      paymentMethodId: destinationMethod.id,
+      bancarizado: destinationMethod.bancarizado,
+      imputableImpositivo: false,
+      metadata: {
+        ...commonMetadata,
+        transferDirection: 'in',
+        counterpartMovementId: outgoing.movementId,
+      },
+      notes: params.input.notes ?? `Transferencia interna desde ${sourceMethod.name}`,
+    });
+
+    await dataAccess.financialMovements.update(
+      outgoing.movementId,
+      {
+        originId: incoming.movementId,
+        metadata: {
+          ...commonMetadata,
+          transferDirection: 'out',
+          counterpartMovementId: incoming.movementId,
+        },
+      },
+      actor.uid,
+    );
+
+    return {
+      outgoingMovementId: outgoing.movementId,
+      incomingMovementId: incoming.movementId,
+      amountMinor: params.input.amountMinor,
+      reference,
+    };
+  });
+}
+
+export async function editInternalTransferUseCase(params: {
+  actor: Actor | null;
+  input: EditInternalTransferInput;
+  transactions: AccountingTransactionManager;
+}): Promise<{ outgoingMovementId: string; incomingMovementId: string; reference: string }> {
+  const actor = ensureStaff(params.actor);
+
+  return params.transactions.runInTransaction(async (dataAccess) => {
+    const selectedMovement = await dataAccess.financialMovements.getById(params.input.movementId);
+    assertCondition(selectedMovement, 'not-found', `No existe financial_movements/${params.input.movementId}.`);
+    assertCondition(isInternalTransferMovement(selectedMovement), 'failed-precondition', 'El movimiento no es una transferencia interna.');
+    assertCondition(selectedMovement.status === 'posted', 'failed-precondition', 'Solo se pueden editar transferencias posteadas.');
+    assertCondition(params.input.reason.trim().length >= 5, 'invalid-argument', 'El motivo de edicion debe tener al menos 5 caracteres.');
+    assertCondition(
+      params.input.sourcePaymentMethodId !== params.input.destinationPaymentMethodId,
+      'invalid-argument',
+      'La cuenta origen y destino no pueden ser la misma.',
+    );
+
+    const counterpartMovementId = getMovementMetadataString(selectedMovement, 'counterpartMovementId')
+      || selectedMovement.originId
+      || '';
+    assertCondition(counterpartMovementId, 'failed-precondition', 'La transferencia historica no tiene vinculado su contramovimiento.');
+    const counterpartMovement = await dataAccess.financialMovements.getById(counterpartMovementId);
+    assertCondition(counterpartMovement, 'not-found', `No existe financial_movements/${counterpartMovementId}.`);
+    assertCondition(isInternalTransferMovement(counterpartMovement), 'failed-precondition', 'El contramovimiento no pertenece a una transferencia interna.');
+    assertCondition(counterpartMovement.status === 'posted', 'failed-precondition', 'El contramovimiento de la transferencia no esta posteado.');
+    assertCondition(
+      selectedMovement.movementType !== counterpartMovement.movementType,
+      'failed-precondition',
+      'La transferencia debe tener un egreso y un ingreso vinculados.',
+    );
+
+    const outgoing = selectedMovement.movementType === 'expense' ? selectedMovement : counterpartMovement;
+    const incoming = selectedMovement.movementType === 'income' ? selectedMovement : counterpartMovement;
+    const [sourceMethod, destinationMethod] = await Promise.all([
+      dataAccess.paymentMethods.getById(params.input.sourcePaymentMethodId),
+      dataAccess.paymentMethods.getById(params.input.destinationPaymentMethodId),
+    ]);
+    assertCondition(sourceMethod, 'not-found', `No existe payment_methods/${params.input.sourcePaymentMethodId}.`);
+    assertCondition(destinationMethod, 'not-found', `No existe payment_methods/${params.input.destinationPaymentMethodId}.`);
+    assertCondition(sourceMethod.active, 'failed-precondition', `El medio de pago ${sourceMethod.id} esta inactivo.`);
+    assertCondition(destinationMethod.active, 'failed-precondition', `El medio de pago ${destinationMethod.id} esta inactivo.`);
+
+    const editedAt = new Date();
+    const reference = params.input.reference?.trim()
+      || getMovementMetadataString(outgoing, 'transferReference')
+      || getMovementMetadataString(incoming, 'transferReference')
+      || `TRF-HIST-${outgoing.id.slice(0, 8).toUpperCase()}`;
+    const notes = params.input.notes?.trim() || null;
+    const previousSnapshot = {
+      sourcePaymentMethodId: outgoing.paymentMethodId ?? outgoing.paymentMethodCodeSnapshot ?? null,
+      destinationPaymentMethodId: incoming.paymentMethodId ?? incoming.paymentMethodCodeSnapshot ?? null,
+      sourceMetadataPaymentMethodId: getMovementMetadataString(outgoing, 'sourcePaymentMethodId') || null,
+      destinationMetadataPaymentMethodId: getMovementMetadataString(outgoing, 'destinationPaymentMethodId') || null,
+      reference: getMovementMetadataString(outgoing, 'transferReference') || null,
+      notes: outgoing.notes ?? incoming.notes ?? null,
+    };
+    const editHistoryEntry = {
+      editedAt: editedAt.toISOString(),
+      editedByUid: actor.uid,
+      reason: params.input.reason.trim(),
+      previous: previousSnapshot,
+    };
+    const commonMetadata = {
+      transferReference: reference,
+      sourcePaymentMethodId: sourceMethod.id,
+      destinationPaymentMethodId: destinationMethod.id,
+      sourcePaymentMethodName: sourceMethod.name,
+      destinationPaymentMethodName: destinationMethod.name,
+      lastEditReason: params.input.reason.trim(),
+      lastEditedAt: editedAt.toISOString(),
+      lastEditedByUid: actor.uid,
+    };
+
+    await dataAccess.financialMovements.update(
+      outgoing.id,
+      {
+        categoryId: FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer,
+        categoryCodeSnapshot: FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer,
+        originType: 'internal_transfer',
+        originId: incoming.id,
+        paymentMethodId: sourceMethod.id,
+        paymentMethodCodeSnapshot: sourceMethod.id,
+        bancarizado: sourceMethod.bancarizado,
+        imputableImpositivo: false,
+        approvedByUid: actor.uid,
+        approvedAt: Timestamp.fromDate(editedAt),
+        metadata: {
+          ...(outgoing.metadata ?? {}),
+          ...commonMetadata,
+          transferDirection: 'out',
+          counterpartMovementId: incoming.id,
+          transferEditHistory: appendTransferEditHistory(outgoing, editHistoryEntry),
+        },
+        notes,
+      },
+      actor.uid,
+    );
+    await dataAccess.financialMovements.update(
+      incoming.id,
+      {
+        categoryId: FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer,
+        categoryCodeSnapshot: FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer,
+        originType: 'internal_transfer',
+        originId: outgoing.id,
+        paymentMethodId: destinationMethod.id,
+        paymentMethodCodeSnapshot: destinationMethod.id,
+        bancarizado: destinationMethod.bancarizado,
+        imputableImpositivo: false,
+        approvedByUid: actor.uid,
+        approvedAt: Timestamp.fromDate(editedAt),
+        metadata: {
+          ...(incoming.metadata ?? {}),
+          ...commonMetadata,
+          transferDirection: 'in',
+          counterpartMovementId: outgoing.id,
+          transferEditHistory: appendTransferEditHistory(incoming, editHistoryEntry),
+        },
+        notes,
+      },
+      actor.uid,
+    );
+
+    return {
+      outgoingMovementId: outgoing.id,
+      incomingMovementId: incoming.id,
+      reference,
     };
   });
 }
@@ -367,5 +730,31 @@ export function parseRegisterPaymentInput(payload: unknown): RegisterPaymentInpu
     operationDate: parseOptionalIsoDate(data, 'operationDate') ?? parseRequiredIsoDate(data, 'operationDate'),
     notes: parseOptionalNullableString(data, 'notes'),
     metadata: parseOptionalRecord(data, 'metadata'),
+  };
+}
+
+export function parseTransferFundsInput(payload: unknown): TransferFundsInput {
+  const data = assertIsRecord(payload);
+
+  return {
+    sourcePaymentMethodId: parseRequiredString(data, 'sourcePaymentMethodId'),
+    destinationPaymentMethodId: parseRequiredString(data, 'destinationPaymentMethodId'),
+    amountMinor: parseRequiredAmountMinor(data, 'amountMinor'),
+    operationDate: parseOptionalIsoDate(data, 'operationDate') ?? parseRequiredIsoDate(data, 'operationDate'),
+    reference: parseOptionalNullableString(data, 'reference'),
+    notes: parseOptionalNullableString(data, 'notes'),
+  };
+}
+
+export function parseEditInternalTransferInput(payload: unknown): EditInternalTransferInput {
+  const data = assertIsRecord(payload);
+
+  return {
+    movementId: parseRequiredString(data, 'movementId'),
+    sourcePaymentMethodId: parseRequiredString(data, 'sourcePaymentMethodId'),
+    destinationPaymentMethodId: parseRequiredString(data, 'destinationPaymentMethodId'),
+    reference: parseOptionalNullableString(data, 'reference'),
+    notes: parseOptionalNullableString(data, 'notes'),
+    reason: parseRequiredString(data, 'reason'),
   };
 }

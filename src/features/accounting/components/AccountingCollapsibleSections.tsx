@@ -24,11 +24,11 @@ export function AccountingCollapsibleSections({
   onOpenChange,
 }: {
   sections: AccountingCollapsibleSection[];
-  initialOpenId?: string;
+  initialOpenId?: string | undefined;
   openId?: string | null;
   onOpenChange?: (sectionId: string | null) => void;
 }) {
-  const [internalOpenId, setInternalOpenId] = useState(initialOpenId ?? sections[0]?.id ?? '');
+  const [internalOpenId, setInternalOpenId] = useState(initialOpenId ?? '');
   const activeId = openId === undefined ? internalOpenId : openId;
 
   const setActive = (sectionId: string) => {
@@ -56,6 +56,7 @@ export function AccountingCollapsibleSections({
               onClick={() => setActive(section.id)}
             >
               <span className="accounting-collapsible-trigger__copy">
+                {section.eyebrow && <small className="eyebrow">{section.eyebrow}</small>}
                 <strong>{section.title}</strong>
                 {section.helper && <small>{section.helper}</small>}
               </span>
@@ -66,9 +67,12 @@ export function AccountingCollapsibleSections({
                   <div>
                     {section.eyebrow && <p className="eyebrow">{section.eyebrow}</p>}
                     <h2>{section.title}</h2>
+                    {section.helper && <p>{section.helper}</p>}
                   </div>
                 </div>
-                {section.content}
+                <div className="accounting-collapsible-card__body">
+                  {section.content}
+                </div>
               </div>
             )}
           </section>

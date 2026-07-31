@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ClubContactForm } from '../components/ClubContactForm';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { UiActionButton } from '../components/UiActionButton';
@@ -86,6 +86,7 @@ function ForwardChevronIcon() {
 
 export function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const tournamentCallables = useMemo(() => createTournamentCallables(), []);
   const [formData, setFormData] = useState<LoginFormState>({
@@ -112,6 +113,23 @@ export function Login() {
   const [publicRegistrationConfirmationOpen, setPublicRegistrationConfirmationOpen] = useState(false);
   const [publicRegistrationError, setPublicRegistrationError] = useState('');
   const [isPublicRegistrationSubmitting, setIsPublicRegistrationSubmitting] = useState(false);
+  const loginUserFromQuery =
+    searchParams.get('usuario')
+    ?? searchParams.get('legajo')
+    ?? searchParams.get('memberNumber')
+    ?? '';
+
+  useEffect(() => {
+    if (!loginUserFromQuery) {
+      return;
+    }
+
+    setFormData((current) => (
+      current.memberNumber === loginUserFromQuery
+        ? current
+        : { ...current, memberNumber: loginUserFromQuery }
+    ));
+  }, [loginUserFromQuery]);
 
   useEffect(() => {
     if (!showOpenTournaments) {

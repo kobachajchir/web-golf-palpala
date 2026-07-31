@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "mode": "execute",
+  "projectId": "webgolfclub",
+  "target": {
+    "memberNumber": "999",
+    "memberId": "dev-member-999-koba-chajchir",
+    "uid": "NUUg0nWThKX66DC6F8AaXcQOsnQ2"
+  },
+  "safety": {
+    "exactMemberMatchCount": 1,
+    "linkedUserValidated": true,
+    "groupedChargesFound": 0,
+    "otherMembersReadOrWritten": false,
+    "financialMovementsWritten": false,
+    "paidChargesWritten": false
+  },
+  "plannedChanges": {
+    "userAccess": true,
+    "memberExemption": false,
+    "openChargesToExempt": []
+  },
+  "untouchedPaidChargeCount": 0,
+  "authClaimsNeedUpdate": true,
+  "confirmationRequiredForExecution": "--execute --yes-member-999-only",
+  "reportPath": "D:\\WebGolfPalpala\\web-golf-palpala\\migration-reports\\member-999-developer-1784656573538.json"
+}

@@ -56,10 +56,6 @@ try {
     throw 'Auth Emulator no responde en 127.0.0.1:9099. Primero ejecuta npm run emulators:start:users en otra terminal.'
   }
 
-  if (-not $env:MEMBER_TEMP_PASSWORD_HASH_SECRET) {
-    $env:MEMBER_TEMP_PASSWORD_HASH_SECRET = 'club-dev-local-secret'
-  }
-
   Write-Host 'Ejecutando seed de accesos de socios desde members...'
   & node .\lib\scripts\seed-member-auth-users.js
   if ($LASTEXITCODE -ne 0) {

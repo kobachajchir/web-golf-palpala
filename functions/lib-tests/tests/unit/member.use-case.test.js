@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Timestamp } from 'firebase-admin/firestore';
 import { AppError } from '../../src/modules/users/domain/errors.js';
-import { createMemberUseCase, updateMemberUseCase, } from '../../src/modules/users/application/use-cases/member.use-cases.js';
+import { createMemberUseCase, updateOwnMemberDniUseCase, updateMemberUseCase, } from '../../src/modules/users/application/use-cases/member.use-cases.js';
 import { createActor, InMemoryUsersTransactionManager, seedMember, seedMemberType, seedUser, } from '../helpers/fakes.js';
 function createStaffActor(manager) {
     return createActor(seedUser(manager, 'staff-1', { roleIds: ['administrativo'], primaryRoleId: 'administrativo' }), {
@@ -82,5 +82,38 @@ test('updateMember impide cambiar memberNumber aunque no tenga acceso app', asyn
             memberNumber: '000124',
         },
     }), (error) => error instanceof AppError && error.code === 'failed-precondition');
+});
+test('updateOwnMemberDni permite al socio modificar unicamente el DNI de su ficha vinculada', async () => {
+    const manager = new InMemoryUsersTransactionManager();
+    seedMember(manager, 'member-1', { linkedUserId: 'member-user', dni: '11111111' });
+    const actor = createActor(seedUser(manager, 'member-user', {
+        profileType: 'member',
+        profileId: 'member-1',
+        roleIds: ['socio'],
+        primaryRoleId: 'socio',
+    }));
+    const result = await updateOwnMemberDniUseCase({
+        actor,
+        transactions: manager,
+        input: { dni: '22.222.222' },
+    });
+    assert.deepEqual(result, { memberId: 'member-1', dni: '22222222' });
+    assert.equal(manager.members.get('member-1')?.dni, '22222222');
+    assert.equal(manager.members.get('member-1')?.firstName, 'Nombre');
+});
+test('updateOwnMemberDni rechaza una ficha que pertenece a otro usuario', async () => {
+    const manager = new InMemoryUsersTransactionManager();
+    seedMember(manager, 'member-1', { linkedUserId: 'other-user' });
+    const actor = createActor(seedUser(manager, 'member-user', {
+        profileType: 'member',
+        profileId: 'member-1',
+        roleIds: ['socio'],
+        primaryRoleId: 'socio',
+    }));
+    await assert.rejects(() => updateOwnMemberDniUseCase({
+        actor,
+        transactions: manager,
+        input: { dni: '22222222' },
+    }), (error) => error instanceof AppError && error.code === 'permission-denied');
 });
 //# sourceMappingURL=member.use-case.test.js.map

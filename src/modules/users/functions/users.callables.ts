@@ -28,6 +28,7 @@ import type {
 const CALLABLE_NAMES = {
   createMember: 'usersCreateMember',
   updateMember: 'usersUpdateMember',
+  updateOwnMemberDni: 'usersUpdateOwnMemberDni',
   createFamilyGroup: 'usersCreateFamilyGroup',
   addMemberToFamilyGroup: 'usersAddMemberToFamilyGroup',
   removeMemberFromFamilyGroup: 'usersRemoveMemberFromFamilyGroup',
@@ -107,6 +108,12 @@ export function createUsersCallables(functionsInstance?: Functions) {
       return (await httpsCallable<UpdateMemberPayload, CreateMemberResult>(
         functionsRef,
         CALLABLE_NAMES.updateMember,
+      )(payload)).data;
+    },
+    async updateOwnMemberDni(payload: { dni: string }) {
+      return (await httpsCallable<{ dni: string }, { memberId: string; dni: string }>(
+        functionsRef,
+        CALLABLE_NAMES.updateOwnMemberDni,
       )(payload)).data;
     },
     async createFamilyGroup(payload: CreateFamilyGroupPayload) {

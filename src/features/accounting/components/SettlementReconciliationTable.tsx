@@ -21,45 +21,43 @@ export function SettlementReconciliationTable({
   }
 
   return (
-    <div className="accounting-table-wrap">
-      <table className="accounting-data-table">
-        <thead>
-          <tr>
-            <th>Proveedor</th>
-            <th>Bruto</th>
-            <th>Comision</th>
-            <th>Liberado</th>
-            <th>Estado</th>
-            <th>Accion</th>
-          </tr>
-        </thead>
-        <tbody>
-          {settlements.map((settlement) => (
-            <tr key={settlement.id}>
-              <td>
-                <strong>{settlement.bankName}</strong>
-                <small>{settlement.externalBatchRef} - {formatTimestamp(settlement.accreditedAt)}</small>
-              </td>
-              <td>{formatCurrency(settlement.grossAmountMinor)}</td>
-              <td>{formatCurrency(settlement.commissionAmountMinor)}</td>
-              <td><strong>{formatCurrency(settlement.netAmountMinor)}</strong></td>
-              <td><span className={`status-chip status-chip--${settlement.status}`}>{settlement.status}</span></td>
-              <td>
-                {settlement.status === 'imported' && (
-                  <button type="button" className="btn-secondary" onClick={() => void handleReconcile(settlement.id)}>
-                    Conciliar
-                  </button>
-                )}
-                {settlement.status === 'reconciled' && (
-                  <button type="button" className="btn-primary" onClick={() => void handleReconcile(settlement.id, true)}>
-                    Cerrar
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="accounting-list accounting-bank-settlements-history-list">
+      {settlements.map((settlement) => (
+        <article key={settlement.id} className="accounting-row accounting-bank-settlement-row">
+          <span className="accounting-row__main">
+            <strong>{settlement.bankName}</strong>
+            <small>{settlement.externalBatchRef} - {formatTimestamp(settlement.accreditedAt)}</small>
+          </span>
+          <span className="accounting-row__meta">
+            <small>Bruto</small>
+            <strong>{formatCurrency(settlement.grossAmountMinor)}</strong>
+          </span>
+          <span className="accounting-row__meta">
+            <small>Comision</small>
+            <strong>{formatCurrency(settlement.commissionAmountMinor)}</strong>
+          </span>
+          <span className="accounting-row__meta">
+            <small>Liberado</small>
+            <strong>{formatCurrency(settlement.netAmountMinor)}</strong>
+          </span>
+          <span className="accounting-row__meta">
+            <small>Estado</small>
+            <span className={`status-chip status-chip--${settlement.status}`}>{settlement.status}</span>
+          </span>
+          <span className="accounting-inline-actions accounting-bank-settlement-row__actions">
+            {settlement.status === 'imported' && (
+              <button type="button" className="btn-secondary" onClick={() => void handleReconcile(settlement.id)}>
+                Conciliar
+              </button>
+            )}
+            {settlement.status === 'reconciled' && (
+              <button type="button" className="btn-primary" onClick={() => void handleReconcile(settlement.id, true)}>
+                Cerrar
+              </button>
+            )}
+          </span>
+        </article>
+      ))}
     </div>
   );
 }

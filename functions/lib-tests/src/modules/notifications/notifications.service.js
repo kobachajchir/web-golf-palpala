@@ -10,7 +10,7 @@ export const NOTIFICATIONS_COLLECTIONS = {
     notificationActionLogs: 'notification_action_logs',
     contactInquiries: 'contact_inquiries',
 };
-export const NOTIFICATION_ROLE_IDS = ['directivo', 'administrativo', 'empleado', 'socio'];
+export const NOTIFICATION_ROLE_IDS = ['directivo', 'administrativo', 'empleado', 'socio', 'comision_directiva'];
 function getOrInitializeApp() {
     return getApps().length > 0 ? getApp() : initializeApp();
 }
@@ -254,23 +254,60 @@ export async function emitMemberPaymentNotification(params) {
     if (!member.linkedUserId) {
         return null;
     }
+    const movementSnapshot = await db.collection('financial_movements').doc(params.movementId).get();
+    const movement = movementSnapshot.exists ? movementSnapshot.data() : null;
+    const movementMetadata = movement?.metadata && typeof movement.metadata === 'object'
+        ? movement.metadata
+        : {};
+    const conceptLabel = typeof movementMetadata.description === 'string' && movementMetadata.description.trim()
+        ? movementMetadata.description.trim()
+        : typeof movementMetadata.tournamentName === 'string' && movementMetadata.tournamentName.trim()
+            ? movementMetadata.tournamentName.trim()
+            : typeof movement?.categoryCodeSnapshot === 'string' && movement.categoryCodeSnapshot.trim()
+                ? movement.categoryCodeSnapshot.replaceAll('_', ' ')
+                : 'Pago al club';
+    const receiptSnapshot = {
+        receiptNumber: params.receiptNumber ?? null,
+        conceptLabel,
+        movementId: params.movementId,
+        memberId: params.memberId,
+        memberNumber: member.memberNumber,
+        memberName: `${member.lastName}, ${member.firstName}`.trim(),
+        amountMinor: params.amountMinor,
+        grossAmountMinor: typeof movement?.grossAmountMinor === 'number' ? movement.grossAmountMinor : params.amountMinor,
+        netAmountMinor: typeof movement?.netAmountMinor === 'number' ? movement.netAmountMinor : params.amountMinor,
+        categoryId: typeof movement?.categoryId === 'string' ? movement.categoryId : 'cuota_societaria',
+        paymentMethodId: typeof movement?.paymentMethodId === 'string' ? movement.paymentMethodId : null,
+        operationDate: movement?.operationDate ?? null,
+        accountingPeriod: typeof movement?.accountingPeriod === 'string' ? movement.accountingPeriod : null,
+        status: typeof movement?.status === 'string' ? movement.status : 'posted',
+        reference: typeof movementMetadata.paymentReference === 'string' ? movementMetadata.paymentReference : null,
+        notes: typeof movement?.notes === 'string' ? movement.notes : null,
+    };
     return emitUserNotification({
         type: 'member_payment_receipt',
         sourceModule: 'accounting',
         sourceCollection: 'financial_movements',
         sourceId: params.movementId,
         title: params.receiptNumber ? `Recibo ${params.receiptNumber} disponible` : 'Recibo disponible',
-        body: `Se registró un pago en tu cuenta de socio por ${formatAmountMinor(params.amountMinor)}.`,
+        body: `Se registró un pago al club por ${formatAmountMinor(params.amountMinor)}.`,
         severity: 'success',
         userIds: [member.linkedUserId],
         deliveryScope: 'per_user',
-        route: '/mi-membresia',
-        attachments: [],
+        route: '/mis-recibos',
+        attachments: [
+            {
+                id: 'receipt',
+                label: params.receiptNumber ? `Recibo ${params.receiptNumber}` : 'Recibo de pago',
+                contentType: 'application/x-internal-receipt',
+            },
+        ],
         metadata: {
             memberId: params.memberId,
             movementId: params.movementId,
             amountMinor: params.amountMinor,
             receiptNumber: params.receiptNumber ?? null,
+            receipt: receiptSnapshot,
         },
         actorUid: params.actorUid,
     });

@@ -353,6 +353,13 @@
   font-size: 17px;
 }
 
+.accounting-chart-card__heading {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
 .accounting-pie-chart {
   width: min(210px, 64vw);
   aspect-ratio: 1;
@@ -672,6 +679,16 @@
     justify-content: center;
   }
 
+  .accounting-aag-pending-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .accounting-aag-pending-card__amount {
+    justify-items: stretch;
+    text-align: left;
+  }
+
   .accounting-module-nav__item {
     flex-basis: 100%;
   }
@@ -896,6 +913,385 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
+.accounting-module-nav {
+  gap: 1.25rem;
+}
+
+.accounting-operations-bar {
+  padding: 1.05rem 1.15rem;
+  align-items: center;
+}
+
+.accounting-operations-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.accounting-module-nav__item {
+  min-height: 96px;
+  flex: initial;
+  align-content: center;
+  padding: 1rem;
+}
+
+.accounting-module-nav__item span {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.accounting-module-nav__actions .ui-action-button--positive .accounting-section-icon {
+  color: #fff;
+  stroke: #fff;
+}
+
+.accounting-month-picker__year button:disabled,
+.accounting-month-picker__month:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.accounting-movements-panel {
+  width: 100%;
+  display: grid;
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-overview-movements {
+  margin-top: 18px;
+}
+
+.accounting-collapsible-card__body > *,
+.accounting-collapsible-card__body > .accounting-full-width-section,
+.accounting-full-width-section > .accounting-entry-form,
+.accounting-full-width-section > .accounting-list,
+.accounting-full-width-section > .accounting-commission-workbench,
+.accounting-full-width-section > .accounting-table-wrap,
+.accounting-commission-workbench,
+.accounting-commission-card,
+.accounting-payment-methods-section,
+.accounting-settlement-breakdown {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+}
+
+.accounting-server-expense-card__meta {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  text-align: right;
+}
+
+.accounting-server-expense-card__meta span,
+.accounting-server-expense-card__meta small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accounting-server-expense-card__meta strong {
+  color: var(--primary-dark);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.accounting-balances-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.accounting-balances-panel .accounting-section-header {
+  align-items: center;
+}
+
+.accounting-account-balances-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.accounting-account-balance-card {
+  min-width: 0;
+  border-color: rgba(47, 128, 83, 0.18);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(238, 248, 241, 0.88)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.06);
+}
+
+.accounting-account-balance-card strong {
+  overflow-wrap: anywhere;
+}
+
+.accounting-negative-amount {
+  color: #b42318 !important;
+}
+
+.accounting-balance-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(180, 83, 9, 0.2);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  color: #7a3f08;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.accounting-internal-transfers-section {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid rgba(47, 128, 83, 0.14);
+  border-bottom: 1px solid rgba(47, 128, 83, 0.14);
+}
+
+.accounting-internal-transfers-section .accounting-section-header {
+  margin-bottom: 0;
+}
+
+.accounting-unassigned-movements {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(180, 83, 9, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 251, 235, 0.72);
+}
+
+.accounting-row--warning td {
+  background: rgba(245, 158, 11, 0.055);
+}
+
+.accounting-transfer-search-collapse {
+  margin-bottom: 0;
+}
+
+.accounting-balance-trend-mode {
+  width: min(260px, 100%);
+}
+
+.accounting-balance-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.accounting-balance-series-controls {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.accounting-balance-series-controls .check-field {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.accounting-balance-analytics,
+.accounting-balance-distribution-section,
+.accounting-balance-statistics-section {
+  width: 100%;
+  display: grid;
+  gap: 16px;
+}
+
+.accounting-balance-analytics {
+  padding-top: 4px;
+  border-top: 1px solid rgba(47, 128, 83, 0.14);
+}
+
+.accounting-balance-distribution-section .accounting-section-header {
+  margin-bottom: 0;
+}
+
+.accounting-balance-distribution-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.accounting-balance-distribution-grid .accounting-chart-card {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  grid-template-rows: minmax(58px, auto) auto auto 1fr;
+  align-content: start;
+}
+
+.accounting-balance-distribution-grid .accounting-chart-card__heading {
+  min-height: 58px;
+}
+
+.accounting-balance-distribution-grid .accounting-pie-chart {
+  align-self: start;
+}
+
+.accounting-balance-statistics-section .accounting-vertical-trend-card {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-balance-filters-collapse {
+  margin-bottom: 0;
+}
+
+.accounting-balance-filter-row .accounting-balance-trend-mode {
+  flex: 1 1 190px;
+}
+
+.accounting-balance-filter-row .accounting-balance-series-controls {
+  flex: 1 1 260px;
+}
+
+.accounting-vertical-trend-card {
+  grid-column: 1 / -1;
+}
+
+.accounting-vertical-trend-chart {
+  width: 100%;
+  min-height: 300px;
+  padding: 18px 12px 10px;
+  display: flex;
+  align-items: stretch;
+  gap: clamp(10px, 1.8vw, 18px);
+  overflow-x: auto;
+}
+
+.accounting-vertical-trend-chart__bucket {
+  min-width: 72px;
+  flex: 1 0 72px;
+  display: grid;
+  grid-template-rows: minmax(180px, 1fr) auto auto;
+  gap: 7px;
+  justify-items: center;
+  text-align: center;
+}
+
+.accounting-vertical-trend-chart__bars {
+  width: 100%;
+  min-height: 180px;
+  padding-inline: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.2);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 7px;
+}
+
+.accounting-vertical-trend-chart__bar {
+  width: min(24px, 40%);
+  min-height: 0;
+  border-radius: 7px 7px 0 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.accounting-vertical-trend-chart__bar--income {
+  background: linear-gradient(180deg, #28a875, #0f7a5a);
+}
+
+.accounting-vertical-trend-chart__bar--expense {
+  background: linear-gradient(180deg, #d94b42, #b42318);
+}
+
+.accounting-vertical-trend-chart__bucket strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.accounting-vertical-trend-chart__bucket small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.accounting-vertical-trend-chart__empty {
+  width: 100%;
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+@media (max-width: 1180px) {
+  .accounting-operations-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .accounting-operations-grid,
+  .accounting-account-balances-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accounting-balance-distribution-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .accounting-operations-grid,
+  .accounting-account-balances-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-internal-transfers-section .accounting-section-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .accounting-internal-transfers-section .ui-action-button {
+    width: 100%;
+  }
+
+  .accounting-module-nav__item {
+    min-height: 82px;
+  }
+
+  .accounting-server-expense-card__meta {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .accounting-balance-controls {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .accounting-balance-trend-mode,
+  .accounting-balance-series-controls {
+    width: 100%;
+  }
+
+  .accounting-balance-series-controls .check-field {
+    flex: 1 1 130px;
+  }
+
+  .accounting-blocked-cash-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .accounting-blocked-cash-header .ui-action-button {
+    width: 100%;
+  }
+}
+
 .accounting-module-content .accounting-shell,
 .accounting-shell,
 .accounting-collapse-stack,
@@ -928,6 +1324,47 @@
 .accounting-collapsible-section,
 .accounting-open-cash-close {
   gap: 12px;
+}
+
+.accounting-open-cash-close--blocked {
+  padding: 14px;
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(180, 35, 24, 0.08), rgba(255, 255, 255, 0.92)),
+    var(--field-bg);
+}
+
+.accounting-blocked-cash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.accounting-blocked-cash-header > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.accounting-blocked-cash-header h3 {
+  margin: 0;
+  color: #7a241c;
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+.accounting-blocked-cash-header p:not(.eyebrow) {
+  margin: 0;
+  color: rgba(122, 36, 28, 0.82);
+  font-weight: 750;
+}
+
+.accounting-inline-summary--blocked {
+  border-color: rgba(180, 35, 24, 0.16);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .accounting-collapsible-trigger.ui-action-button {
@@ -1034,6 +1471,15 @@
   width: 100%;
 }
 
+.accounting-employees-list {
+  justify-items: stretch;
+}
+
+.accounting-employees-list .accounting-row {
+  width: 100%;
+  max-width: none;
+}
+
 .accounting-cycle-liquidation,
 .accounting-settlement-breakdown {
   width: 100%;
@@ -1044,6 +1490,18 @@
   display: grid;
   gap: 14px;
   text-align: left;
+}
+
+.accounting-employee-cycle-summary .accounting-cycle-liquidation {
+  max-width: 980px;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.accounting-employee-cycle-summary .accounting-cycle-liquidation > div:first-child {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
 }
 
 .accounting-cycle-liquidation h3,
@@ -1066,6 +1524,11 @@
   background: var(--field-bg);
   display: grid;
   gap: 4px;
+}
+
+.accounting-employee-cycle-summary .accounting-cycle-liquidation__grid > div {
+  justify-items: center;
+  text-align: center;
 }
 
 .accounting-cycle-liquidation__grid span,
@@ -1999,7 +2462,7 @@
   .tournament-row__actions > a,
   .member-actions > button:not(.icon-button),
   .member-actions > a {
-    width: fit-content !important;
+    width: fit-content;
     max-width: 100%;
     margin-inline: auto;
   }
@@ -3250,6 +3713,12 @@
   justify-content: center;
 }
 
+.modal-close-button .button-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
 .quick-actions-modal__header {
   align-items: flex-start;
   gap: 14px;
@@ -3512,26 +3981,61 @@
   gap: 12px;
 }
 
+.tournament-result-list {
+  width: 100%;
+  max-height: min(440px, 68svh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+
+.tournament-result-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.tournament-result-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(15, 122, 90, 0.34);
+  background-clip: content-box;
+}
+
 .tournament-result-card {
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 14px 34px rgba(20, 63, 73, 0.08);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .tournament-result-card__header {
   width: 100%;
-  border: 0;
-  background: transparent;
-  padding: 16px;
-  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
   text-align: left;
   color: var(--text);
   cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.tournament-result-card__header:hover,
+.tournament-result-card__header:focus-visible {
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+.tournament-result-card--open .tournament-result-card__header {
+  border-color: rgba(47, 128, 83, 0.28);
+  background: rgba(47, 128, 83, 0.07);
 }
 
 .tournament-result-card__header > span:first-child {
@@ -4734,19 +5238,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, transparent 22%),
-    linear-gradient(115deg, var(--page-wash-1) 0%, transparent 36%, transparent 68%, var(--page-wash-2) 100%),
-    repeating-linear-gradient(135deg, transparent 0 20px, var(--page-line-1) 20px 21px, transparent 21px 42px),
-    repeating-linear-gradient(180deg, transparent 0 72px, var(--page-line-2) 72px 73px),
-    linear-gradient(
-      180deg,
-      var(--page-base-top) 0%,
-      var(--page-base-mid) 52%,
-      var(--page-base-bottom) 100%
-    );
-  background-size: 100% 100%, 100% 100%, 320px 320px, 100% 100%, 100% 100%;
-  background-attachment: fixed;
+  background: var(--page-base-mid);
 }
 
 .login-page {
@@ -5144,6 +5636,63 @@
   white-space: nowrap;
 }
 
+.home-summary-card--button {
+  appearance: none;
+  border: 1px solid var(--line);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.home-summary-card--button:hover,
+.home-summary-card--button:focus-visible,
+.home-summary-card--active {
+  border-color: var(--primary);
+  background: rgba(15, 122, 90, 0.06);
+  box-shadow: var(--focus-ring);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.home-tournaments-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.home-tournament-table {
+  max-height: min(430px, 62svh);
+  overflow-y: auto;
+}
+
+.home-tournament-list {
+  gap: 0;
+}
+
+.home-tournament-row {
+  width: 100%;
+  grid-template-columns: minmax(0, 1.35fr) minmax(120px, 0.55fr) auto;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.home-tournament-row:last-child {
+  border-bottom: 0;
+}
+
+.home-tournament-row .status-chip {
+  justify-self: end;
+}
+
 .home-flex {
   display: flex;
   align-items: stretch;
@@ -5274,6 +5823,21 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.public-profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.public-profile-name-row {
+  display: flex;
+  gap: 14px;
+}
+
+.public-profile-name-row > .public-profile-field {
+  flex: 1 1 0;
 }
 
 .public-profile-field {
@@ -5733,6 +6297,30 @@
     minmax(96px, 96px);
 }
 
+.member-table--member-admin .member-table__head,
+.member-table--member-admin .member-row {
+  min-width: 780px;
+}
+
+.member-table--with-status .member-table__head,
+.member-table--with-status .member-row {
+  grid-template-columns:
+    minmax(110px, 0.75fr)
+    minmax(220px, 1.45fr)
+    minmax(170px, 1fr)
+    minmax(140px, 0.8fr)
+    minmax(96px, 96px);
+}
+
+.member-table--without-status .member-table__head,
+.member-table--without-status .member-row {
+  grid-template-columns:
+    minmax(110px, 0.75fr)
+    minmax(220px, 1.5fr)
+    minmax(170px, 1fr)
+    minmax(96px, 96px);
+}
+
 .member-table__head {
   padding: 14px 18px;
   background: linear-gradient(180deg, var(--surface-soft), rgba(255, 255, 255, 0.3));
@@ -5819,6 +6407,33 @@
   text-align: center;
 }
 
+.employee-access-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  margin-top: 6px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.employee-access-pill--active {
+  border-color: rgba(15, 122, 90, 0.28);
+  background: rgba(15, 122, 90, 0.12);
+  color: var(--primary-strong);
+}
+
+.employee-access-pill--inactive {
+  border-color: rgba(100, 116, 139, 0.22);
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+}
+
 .member-actions {
   display: flex;
   align-items: center;
@@ -5871,8 +6486,33 @@
   color: var(--primary);
 }
 
+.member-actions-menu__item--disabled,
+.member-actions-menu__item--disabled:hover {
+  color: var(--muted);
+  background: transparent;
+  cursor: default;
+}
+
 .member-actions-menu__item--danger {
   color: #b42318;
+}
+
+.member-actions-menu__item--accent {
+  color: #175cd3;
+}
+
+.member-actions-menu__item--warning {
+  color: #b54708;
+}
+
+.member-actions-menu__item--warning:hover {
+  background: rgba(245, 158, 11, 0.12);
+  color: #93370d;
+}
+
+.member-actions-menu__item--accent:hover {
+  background: rgba(23, 92, 211, 0.08);
+  color: #175cd3;
 }
 
 .member-actions-menu__item--danger:hover {
@@ -6150,6 +6790,36 @@
   gap: 10px;
 }
 
+.accounting-row--excluded-balance td {
+  background: rgba(245, 158, 11, 0.13) !important;
+  border-color: rgba(180, 83, 9, 0.2);
+}
+
+.accounting-row--excluded-balance td:first-child {
+  box-shadow: inset 4px 0 0 #f59e0b;
+}
+
+.accounting-row--excluded-balance:hover td {
+  background: rgba(245, 158, 11, 0.18) !important;
+}
+
+.accounting-balance-exclusion-note {
+  border-color: rgba(180, 83, 9, 0.24) !important;
+  background: rgba(245, 158, 11, 0.1) !important;
+  color: #7a3f08 !important;
+}
+
+.ui-action-button.accounting-balance-exclusion-button {
+  border-color: #d97706;
+  background: #d97706;
+  color: #fff;
+}
+
+.ui-action-button.accounting-balance-exclusion-button:hover:not(:disabled) {
+  border-color: #b45309;
+  background: #b45309;
+}
+
 .member-modal__header {
   display: flex;
   align-items: flex-start;
@@ -6302,6 +6972,15 @@
   margin: 0;
 }
 
+.description-list > div {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .description-list__item {
   padding: 12px 14px;
   border-radius: 8px;
@@ -6322,6 +7001,203 @@
   color: var(--text);
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.accounting-movement-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.accounting-movement-detail__hero {
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.08);
+  display: grid;
+  gap: 8px;
+}
+
+.accounting-movement-detail__hero > span {
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.accounting-movement-detail__hero > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.accounting-movement-detail__hero strong {
+  color: var(--primary-dark);
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.accounting-movement-detail__hero--expense {
+  border-color: rgba(176, 42, 42, 0.18);
+  background: rgba(176, 42, 42, 0.08);
+}
+
+.accounting-movement-detail__hero--expense > span,
+.accounting-movement-detail__hero--expense strong {
+  color: var(--danger-text);
+}
+
+.accounting-movement-detail__pills {
+  justify-content: flex-start !important;
+}
+
+.status-chip--installments {
+  border-color: rgba(74, 77, 156, 0.28);
+  background: rgba(74, 77, 156, 0.12);
+  color: #454994;
+}
+
+.status-chip--charge {
+  border-color: rgba(183, 118, 17, 0.28);
+  background: rgba(235, 171, 44, 0.16);
+  color: #86580d;
+}
+
+.accounting-commission-summary,
+.accounting-installment-fields,
+.accounting-installment-detail {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.accounting-commission-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.accounting-commission-summary__line,
+.accounting-commission-summary__detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accounting-commission-summary__detail {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.accounting-commission-summary__line--total {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--primary-dark);
+  font-size: 16px;
+}
+
+.accounting-installment-fields,
+.accounting-installment-detail,
+.accounting-installment-fields__body,
+.accounting-installment-payment-form {
+  display: grid;
+  gap: 14px;
+}
+
+.accounting-installment-fields__body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.accounting-installment-preview {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accounting-installment-preview > span {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.accounting-installment-preview strong {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.accounting-installment-progress {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.accounting-installment-progress__labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.accounting-installment-progress__track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(120, 129, 145, 0.18);
+}
+
+.accounting-installment-progress__track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+  transition: width 180ms ease;
+}
+
+.accounting-installment-progress--compact .accounting-installment-progress__track {
+  height: 6px;
+}
+
+.accounting-installment-summary {
+  margin: 0;
+}
+
+.accounting-installment-table .btn-secondary,
+.my-receipts-table .btn-secondary {
+  min-height: 32px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.accounting-installment-payment-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.my-receipts-page {
+  padding-bottom: 32px;
+}
+
+.my-receipt-detail .description-list {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .accounting-installment-fields__body,
+  .accounting-installment-preview,
+  .accounting-installment-payment-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .compact-details-toggle {
@@ -7114,7 +7990,7 @@ button.accounting-hub-card:hover {
 }
 
 .accounting-employee-row {
-  grid-template-columns: minmax(0, 1.45fr) minmax(150px, 0.65fr) auto;
+  grid-template-columns: minmax(0, 1.8fr) minmax(190px, 0.75fr) minmax(220px, auto);
   align-items: center;
   gap: 16px;
   padding: 16px;
@@ -7281,6 +8157,31 @@ button.accounting-hub-card:hover {
   text-decoration: none;
 }
 
+.accounting-action-tile--expense {
+  border-color: rgba(180, 35, 24, 0.2);
+  background: rgba(180, 35, 24, 0.07);
+}
+
+.accounting-action-tile--expense .action-icon {
+  background: rgba(180, 35, 24, 0.11);
+  color: #b42318;
+}
+
+.accounting-action-tile--expense:hover {
+  border-color: rgba(180, 35, 24, 0.34);
+  box-shadow: 0 12px 24px rgba(180, 35, 24, 0.1);
+}
+
+.accounting-action-tile--transfer {
+  border-color: rgba(15, 122, 90, 0.18);
+  background: rgba(15, 122, 90, 0.06);
+}
+
+.accounting-action-tile--transfer .action-icon {
+  background: rgba(15, 122, 90, 0.1);
+  color: var(--primary-dark);
+}
+
 .accounting-action-tile:disabled {
   opacity: 0.58;
   cursor: not-allowed;
@@ -7293,10 +8194,106 @@ button.accounting-hub-card:hover {
   transform: none;
 }
 
+.accounting-aag-pending-card {
+  width: 100%;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(15, 122, 90, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.accounting-aag-pending-card h3,
+.accounting-aag-pending-card p {
+  margin: 0;
+}
+
+.accounting-aag-pending-card h3 {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.accounting-aag-pending-card p {
+  color: var(--muted);
+}
+
+.accounting-aag-pending-card__amount {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  text-align: right;
+}
+
+.accounting-aag-pending-card__amount small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.accounting-aag-pending-card__amount strong {
+  color: #b42318;
+  font-size: 22px;
+}
+
+.accounting-aag-payment-method {
+  width: min(260px, 100%);
+  text-align: left;
+}
+
+.accounting-aag-payment-method span {
+  text-align: left;
+}
+
 .accounting-operation-modal {
   width: min(100%, 760px);
   display: grid;
   gap: 18px;
+}
+
+.accounting-operation-modal__title-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.accounting-operation-modal__title {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding-bottom: 8px;
+  color: var(--primary-dark);
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.05;
+  text-transform: uppercase;
+  position: relative;
+}
+
+.accounting-operation-modal__title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: min(92px, 100%);
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+}
+
+.accounting-operation-modal__meta {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 11px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .accounting-operation-modal > .floating-card {
@@ -7333,6 +8330,333 @@ button.accounting-hub-card:hover {
 .accounting-dialog-form > .accounting-money-field {
   width: min(190px, 100%);
   flex: 0 1 190px;
+}
+
+.accounting-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.accounting-payment-account-selector {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.accounting-payment-account-selector .accounting-payment-account-selector__item {
+  width: 100%;
+  min-height: 74px;
+  padding: 13px 14px;
+  border: 1px solid rgba(30, 41, 59, 0.12);
+  border-radius: 8px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(20, 63, 73, 0.05);
+}
+
+.accounting-payment-account-selector__item--cash {
+  background: rgba(47, 128, 83, 0.08);
+}
+
+.accounting-payment-account-selector__item--macro {
+  background: rgba(42, 108, 176, 0.08);
+}
+
+.accounting-payment-account-selector__item--debitMacro {
+  background: rgba(42, 108, 176, 0.13);
+}
+
+.accounting-payment-account-selector__item--galicia {
+  background: rgba(230, 189, 93, 0.13);
+}
+
+.accounting-payment-account-selector .accounting-payment-account-selector__item.accounting-segmented__item--active {
+  border-color: rgba(15, 122, 90, 0.42);
+  background: rgba(15, 122, 90, 0.14);
+  color: var(--primary-dark);
+  box-shadow: var(--focus-ring), 0 10px 22px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-payment-account-selector__item strong {
+  font-size: 15px;
+}
+
+.accounting-payment-account-selector__item small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.accounting-module-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.accounting-module-nav__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.accounting-module-nav__actions .accounting-section-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.accounting-operations-panel {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-section-header h2,
+.directory-panel-header h2 {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding-bottom: 7px;
+  color: var(--primary-dark);
+  font-weight: 950;
+  letter-spacing: 0;
+  line-height: 1.08;
+  text-transform: uppercase;
+  position: relative;
+}
+
+.accounting-section-header h2::after,
+.directory-panel-header h2::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: min(76px, 100%);
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+}
+
+.accounting-renewals-list,
+.accounting-renewals-list .accounting-row,
+.accounting-renewal-row {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-renewal-row {
+  grid-template-columns: minmax(0, 1.6fr) minmax(180px, 0.55fr) auto;
+}
+
+.accounting-danger-icon-button {
+  color: #b42318;
+  border-color: rgba(180, 35, 24, 0.26);
+  background: rgba(180, 35, 24, 0.08);
+}
+
+.accounting-danger-icon-button:hover,
+.accounting-danger-icon-button:focus-visible {
+  color: #8f1d14;
+  border-color: rgba(180, 35, 24, 0.46);
+  background: rgba(180, 35, 24, 0.13);
+}
+
+.renewal-payment-selection-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.renewal-payment-line--selected {
+  border-color: rgba(15, 122, 90, 0.32);
+  background: rgba(15, 122, 90, 0.06);
+}
+
+.renewal-payment-line__selector {
+  width: fit-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.renewal-payment-line__selector input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+}
+
+.manual-income-fee-detail {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  display: grid;
+  gap: 10px;
+}
+
+.manual-income-fee-detail__header,
+.manual-income-fee-detail__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manual-income-fee-detail__header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(47, 128, 83, 0.12);
+}
+
+.manual-income-fee-detail__header > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.manual-income-fee-detail__header small,
+.manual-income-fee-detail__line span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.manual-income-fee-detail__header strong,
+.manual-income-fee-detail__line strong {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.manual-income-fee-detail__line--total {
+  padding-top: 10px;
+  border-top: 1px solid rgba(47, 128, 83, 0.12);
+}
+
+.manual-income-fee-detail__line--total strong {
+  color: var(--primary-dark);
+  font-size: 18px;
+}
+
+.manual-income-discount-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary-dark);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.manual-income-discount-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.manual-income-period-detail {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.05);
+  display: grid;
+  gap: 12px;
+}
+
+.manual-income-period-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(47, 128, 83, 0.12);
+}
+
+.manual-income-period-detail__header strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.manual-income-period-detail__header small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.manual-income-period-mode {
+  width: 100%;
+}
+
+.manual-income-period-range {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.manual-income-period-price-toggle {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.form-actions--right {
+  justify-content: flex-end;
+}
+
+@media (max-width: 767px) {
+  .accounting-header-actions {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .accounting-module-nav__actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .accounting-module-nav__actions .ui-action-button {
+    flex: 1 1 150px;
+    justify-content: center;
+  }
+
+  .accounting-payment-account-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-renewal-row {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-income-fee-detail__header,
+  .manual-income-fee-detail__line,
+  .manual-income-period-detail__header,
+  .accounting-movement-detail__hero > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .manual-income-period-range {
+    grid-template-columns: 1fr;
+  }
 }
 
 .accounting-money-field input {
@@ -7490,6 +8814,49 @@ button.accounting-hub-card:hover {
 
 .accounting-row-menu-actions .member-actions-menu__item {
   text-decoration: none;
+}
+
+.accounting-movement-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  position: relative;
+}
+
+.accounting-movement-row-actions .member-actions {
+  flex: 0 0 auto;
+}
+
+.accounting-movement-row-actions .member-actions-menu {
+  min-width: 210px;
+}
+
+.accounting-movements-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(47, 128, 83, 0.14);
+}
+
+.accounting-movements-pagination span {
+  color: var(--muted-text);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+@media (max-width: 640px) {
+  .accounting-movements-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .accounting-movements-pagination .btn-secondary {
+    width: 100%;
+  }
 }
 
 @media (max-width: 767px) {
@@ -7845,63 +9212,6 @@ button.accounting-hub-card:hover {
   font-size: 16px;
 }
 
-.mercado-pago-admin-checkout {
-  width: min(980px, 100%);
-  margin-inline: auto;
-  padding: 18px;
-  border-color: rgba(0, 113, 188, 0.22);
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.mercado-pago-admin-checkout__copy {
-  min-width: 0;
-  display: flex;
-  flex: 1 1 320px;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mercado-pago-admin-checkout__copy h2 {
-  margin: 0;
-}
-
-.mercado-pago-admin-checkout__copy p {
-  margin: 0;
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.mercado-pago-admin-checkout__payment {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-}
-
-.mercado-pago-admin-checkout__payment img {
-  width: min(260px, 100%);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #fff;
-  padding: 12px;
-  box-shadow: var(--shadow-soft);
-}
-
-@media (min-width: 768px) {
-  .mercado-pago-admin-checkout {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .mercado-pago-admin-checkout__payment {
-    flex: 0 0 300px;
-  }
-}
-
 .accounting-entry-modal {
   width: min(720px, 100%);
   max-height: calc(100svh - 64px);
@@ -8005,41 +9315,92 @@ button.accounting-hub-card:hover {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .tournament-tab {
-  min-height: 44px;
-  padding: 10px 14px;
+  min-width: 46px;
+  min-height: 46px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--field-bg);
   color: var(--text);
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: nowrap;
   font-weight: 800;
   cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    gap 180ms ease;
+}
+
+.tournament-tab .button-icon {
+  flex: 0 0 auto;
+}
+
+.tournament-tab__label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-width 180ms ease,
+    opacity 140ms ease;
 }
 
 .tournament-tab:hover,
+.tournament-tab:focus-visible,
+.tournament-tab--active {
+  gap: 10px;
+}
+
+.tournament-tab:hover .tournament-tab__label,
+.tournament-tab:focus-visible .tournament-tab__label,
+.tournament-tab--active .tournament-tab__label {
+  max-width: 190px;
+  opacity: 1;
+}
+
+.tournament-tab:hover:not(.tournament-tab--active),
+.tournament-tab:focus-visible:not(.tournament-tab--active) {
+  border-color: var(--line);
+  background: var(--field-bg);
+  color: var(--text);
+  box-shadow: none;
+}
+
 .tournament-tab--active {
   border-color: var(--primary);
-  color: var(--primary-dark);
-  box-shadow: var(--focus-ring);
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(0, 122, 86, 0.2);
 }
 
 .tournament-tab--info {
-  border-color: rgba(42, 108, 176, 0.26);
-  background: rgba(42, 108, 176, 0.1);
-  color: #1f5f9d;
+  border-color: var(--line);
+  background: var(--field-bg);
+  color: var(--text);
 }
 
 .tournament-tab--info:hover,
-.tournament-tab--info:focus-visible,
+.tournament-tab--info:focus-visible {
+  border-color: var(--line);
+  background: var(--field-bg);
+  color: var(--text);
+}
+
 .tournament-tab--info.tournament-tab--active {
-  border-color: rgba(42, 108, 176, 0.44);
-  background: rgba(42, 108, 176, 0.16);
-  color: #184f84;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
 }
 
 .tournament-toolbar__row {
@@ -8151,6 +9512,11 @@ button.accounting-hub-card:hover {
   color: var(--warm-text);
 }
 
+.status-pill--results_review {
+  background: rgba(42, 108, 176, 0.12);
+  color: #184f84;
+}
+
 .status-pill--finished {
   background: var(--surface-soft);
   color: var(--muted);
@@ -8170,7 +9536,7 @@ button.accounting-hub-card:hover {
 }
 
 .tournament-leaderboard {
-  width: min(760px, 100%);
+  width: 100%;
   display: grid;
   gap: 18px;
 }
@@ -8184,7 +9550,7 @@ button.accounting-hub-card:hover {
 .tournament-score-table__head,
 .tournament-score-row {
   display: grid;
-  grid-template-columns: 64px minmax(180px, 1.4fr) minmax(120px, 0.8fr) 80px 80px 80px;
+  grid-template-columns: 64px minmax(180px, 1.4fr) 86px 80px 80px 80px minmax(96px, 0.7fr);
   gap: 12px;
   align-items: center;
   text-align: left;
@@ -8208,6 +9574,13 @@ button.accounting-hub-card:hover {
 
 .tournament-score-row span {
   color: var(--muted);
+}
+
+.tournament-score-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .tournament-settings-grid {
@@ -8322,7 +9695,7 @@ button.accounting-hub-card:hover {
   height: 100%;
   display: block;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--primary), var(--accent));
+  background: var(--primary);
 }
 
 .tournament-side-section {
@@ -8864,8 +10237,30 @@ button.accounting-hub-card:hover {
   }
 
   .tournament-tabs {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tournament-tab {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 11px;
+  }
+
+  .tournament-tab:hover .tournament-tab__label,
+  .tournament-tab:focus-visible .tournament-tab__label,
+  .tournament-tab--active .tournament-tab__label {
+    max-width: 160px;
+  }
+
+  .tournament-result-list {
+    max-height: min(390px, 64svh);
+    padding-right: 4px;
+  }
+
+  .tournament-result-card__header {
+    padding: 12px;
   }
 
   .tournament-table {
@@ -9592,7 +10987,100 @@ body,
 
 .tournament-leaderboard-group .tournament-score-table__head,
 .tournament-leaderboard-group .tournament-score-row {
-  grid-template-columns: 58px minmax(140px, 1fr) 74px 74px 74px;
+  grid-template-columns: 58px minmax(150px, 1fr) 76px 70px 70px 70px minmax(92px, 0.7fr);
+}
+
+.tournament-scorecard-review {
+  width: 100%;
+}
+
+.tournament-scorecard-summary,
+.tournament-scorecard-modal__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.tournament-scorecard-summary > div,
+.tournament-scorecard-modal__summary > div {
+  padding: 12px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(47, 128, 83, 0.07);
+  display: grid;
+  gap: 4px;
+}
+
+.tournament-scorecard-summary span,
+.tournament-scorecard-modal__summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tournament-scorecard-summary strong,
+.tournament-scorecard-modal__summary strong {
+  color: var(--primary-dark);
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.tournament-score-table--review .tournament-score-table__head,
+.tournament-score-table--review .tournament-score-row {
+  grid-template-columns: 64px minmax(180px, 1.1fr) minmax(180px, 1.2fr) 80px minmax(100px, 0.8fr);
+}
+
+.tournament-score-row--loaded {
+  background: rgba(47, 128, 83, 0.045);
+}
+
+.scorecard-status-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.scorecard-status-pill {
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.scorecard-status-pill--loaded {
+  border: 1px solid rgba(47, 128, 83, 0.24);
+  background: rgba(47, 128, 83, 0.12);
+  color: var(--primary-dark);
+}
+
+.scorecard-status-pill--missing {
+  border: 1px solid rgba(130, 145, 141, 0.28);
+  background: rgba(245, 247, 246, 0.9);
+  color: var(--muted);
+}
+
+.tournament-scorecard-modal {
+  width: min(760px, 100%);
+}
+
+.tournament-scorecard-modal__form {
+  align-items: stretch;
+}
+
+.tournament-scorecard-modal__score-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tournament-scorecard-modal__score-row .form-field {
+  min-width: 0;
 }
 
 .tournament-cost-form {
@@ -10043,13 +11531,19 @@ body,
 }
 
 @media (max-width: 767px) {
-  .tournament-leaderboard-group .tournament-score-table {
+  .tournament-leaderboard-group .tournament-score-table,
+  .tournament-score-table--review {
     overflow-x: auto;
   }
 
   .tournament-leaderboard-group .tournament-score-table__head,
   .tournament-leaderboard-group .tournament-score-row {
-    min-width: 560px;
+    min-width: 760px;
+  }
+
+  .tournament-score-table--review .tournament-score-table__head,
+  .tournament-score-table--review .tournament-score-row {
+    min-width: 680px;
   }
 
   .tournament-cost-form__row,
@@ -10188,6 +11682,19 @@ body,
 .tournament-row__button {
   max-width: 100%;
   white-space: normal;
+}
+
+.tournament-row__status-note {
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 999px;
+  background: rgba(47, 128, 83, 0.08);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 @media (max-width: 767px) {
@@ -10723,4 +12230,324 @@ body,
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+/* Final overrides for membership/accounting modal controls. */
+.squared-circle-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(47, 128, 83, 0.2);
+  border-radius: 12px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.squared-circle-button:hover,
+.squared-circle-button:focus-visible,
+.squared-circle-button[aria-expanded='true'] {
+  outline: none;
+  border-color: rgba(13, 92, 67, 0.36);
+  background: rgba(15, 122, 90, 0.12);
+  box-shadow: var(--focus-ring);
+  transform: translateY(-1px);
+}
+
+.squared-circle-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.squared-circle-button--secondary {
+  background: rgba(47, 128, 83, 0.06);
+  color: var(--primary-dark);
+}
+
+.squared-circle-button--danger {
+  border-color: rgba(180, 35, 24, 0.22);
+  background: rgba(180, 35, 24, 0.08);
+  color: var(--danger-text);
+}
+
+.squared-circle-button--danger:hover,
+.squared-circle-button--danger:focus-visible {
+  border-color: rgba(180, 35, 24, 0.36);
+  background: rgba(180, 35, 24, 0.12);
+}
+
+.squared-circle-button--positive {
+  background: var(--primary);
+  color: #fff;
+}
+
+.squared-circle-button .button-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.membership-profile-subtitle {
+  margin: 0;
+  color: var(--primary-dark);
+}
+
+.membership-back-button.ui-action-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  justify-content: flex-start;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    width 0.22s ease,
+    padding 0.22s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.membership-back-button.ui-action-button > span {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.16s ease;
+}
+
+.membership-back-button.ui-action-button:hover,
+.membership-back-button.ui-action-button:focus-visible {
+  width: 190px;
+  padding-inline: 12px 16px;
+}
+
+.membership-back-button.ui-action-button:hover > span,
+.membership-back-button.ui-action-button:focus-visible > span {
+  max-width: 140px;
+  opacity: 1;
+}
+
+.membership-sensitive-actions,
+.membership-household-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.membership-context-pill {
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid rgba(47, 128, 83, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.membership-context-pill--holder {
+  border-color: rgba(13, 92, 67, 0.32);
+  background: rgba(15, 122, 90, 0.12);
+}
+
+.household-list__item > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.modal-overlay {
+  overflow-y: auto;
+}
+
+.member-modal-card,
+.confirm-dialog-card,
+.credentials-dialog-card,
+.info-dialog-card {
+  max-height: calc(100svh - 40px);
+  overflow: auto;
+}
+
+@media (max-width: 768px) {
+  .membership-profile-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .person-profile-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .person-profile-header__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+
+  .member-modal-card,
+  .confirm-dialog-card,
+  .credentials-dialog-card,
+  .info-dialog-card {
+    width: 100%;
+    max-height: calc(100svh - 20px);
+    padding: 16px;
+  }
+
+  .confirm-dialog-card__actions,
+  .quick-actions-modal .form-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .confirm-dialog-card__actions > *,
+  .quick-actions-modal .form-actions > *,
+  .quick-actions-modal .form-actions .ui-action-button {
+    width: 100%;
+  }
+}
+
+.cash-close-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.cash-close-summary > div {
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cash-close-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cash-close-summary strong {
+  color: var(--text);
+}
+
+.cash-close-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.accounting-server-expense-card--alert,
+.accounting-server-config-card--alert {
+  border-color: rgba(180, 35, 24, 0.26);
+  background:
+    linear-gradient(135deg, rgba(180, 35, 24, 0.08), rgba(255, 255, 255, 0.9)),
+    var(--field-bg);
+}
+
+.accounting-server-expense-card--alert h2,
+.accounting-server-config-card--alert strong {
+  color: #7a241c;
+}
+
+.accounting-server-expense-card--alert small,
+.accounting-server-config-card--alert small,
+.accounting-server-expense-card--alert .accounting-server-expense-card__meta span {
+  color: rgba(122, 36, 28, 0.82);
+}
+
+.accounting-balance-range-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.accounting-closure-stats-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1fr) minmax(240px, 1.2fr);
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.accounting-closure-stats-control {
+  width: 100%;
+}
+
+.accounting-closure-stats-control small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.accounting-closure-stats-range {
+  width: 100%;
+}
+
+.accounting-closure-stats-summary {
+  min-height: 100%;
+}
+
+@media (max-width: 768px) {
+  .accounting-closure-stats-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-balance-range-controls {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}
+
+.accounting-module-nav__current-section.eyebrow,
+.accounting-module-nav__button-label.eyebrow,
+.accounting-module-nav__item-label.eyebrow,
+.accounting-collapsible-trigger__copy .eyebrow {
+  margin: 0;
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.accounting-module-nav__actions .ui-action-button--positive .accounting-module-nav__button-label.eyebrow,
+.accounting-collapsible-trigger.ui-action-button--positive .accounting-collapsible-trigger__copy .eyebrow {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.accounting-module-nav__item--active .accounting-module-nav__item-label.eyebrow {
+  color: var(--primary-dark);
+}
+
+@media (max-width: 767px) {
+  .public-profile-name-row {
+    flex-direction: column;
+  }
+
+  .home-tournament-row {
+    grid-template-columns: 1fr;
+  }
+
+  .home-tournament-row .status-chip {
+    justify-self: start;
+  }
 }

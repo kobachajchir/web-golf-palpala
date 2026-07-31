@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { DEFAULT_MEMBER_TYPES, DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_ROLES, SYSTEM_ACTOR_UID, USERS_COLLECTIONS, } from '../modules/users/domain/constants.js';
 import { buildCustomClaims, pickPrimaryRoleId } from '../modules/users/application/shared.js';
+import { setCustomClaimsPreservingInternalRoles } from '../modules/users/infrastructure/firestore/auth-gateway.js';
 import { buildSyntheticAuthEmail, normalizeMemberNumber } from '../modules/auth/member-number-auth.js';
 const DEFAULT_PROJECT_ID = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? 'demo-web-golf-palpala';
 const TERM_ID = process.env.EXECUTIVE_BOARD_TERM_ID ?? 'comision-ejecutiva-2026';
@@ -278,7 +279,7 @@ async function run() {
                 updatedBy: SYSTEM_ACTOR_UID,
             }, { merge: true });
         });
-        await getAuth().setCustomUserClaims(authUserResult.user.uid, buildCustomClaims(roleIds, claimsVersion, true));
+        await setCustomClaimsPreservingInternalRoles(authUserResult.user.uid, buildCustomClaims(roleIds, claimsVersion, true));
         linked.push({
             positionCode: target.positionCode,
             fullNameSnapshot: target.fullNameSnapshot,

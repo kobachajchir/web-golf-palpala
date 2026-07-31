@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "mode": "execute",
+  "projectId": "webgolfclub",
+  "alreadyMigrated": false,
+  "financialAmountsWritten": false,
+  "linkedMovementsWritten": false,
+  "before": {
+    "id": "3w7OOgwcQ41ysCWFEoUf",
+    "movementType": "income",
+    "categoryId": "cuota_societaria",
+    "accountingPeriod": "2026-07",
+    "status": "pending",
+    "originType": "installment_charge",
+    "partialPaymentMode": null,
+    "installmentCount": 2,
+    "totalAmountMinor": 6000000,
+    "paidAmountMinor": 0,
+    "linkedMovementCount": 0
+  },
+  "after": {
+    "id": "3w7OOgwcQ41ysCWFEoUf",
+    "movementType": "income",
+    "categoryId": "cuota_societaria",
+    "accountingPeriod": "2026-07",
+    "status": "pending",
+    "originType": "partial_payment_plan",
+    "partialPaymentMode": "flexible",
+    "installmentCount": null,
+    "totalAmountMinor": 6000000,
+    "paidAmountMinor": 0,
+    "linkedMovementCount": 0
+  },
+  "reportPath": "D:\\WebGolfPalpala\\web-golf-palpala\\migration-reports\\installment-to-partial-payments-1784672589459.json"
+}

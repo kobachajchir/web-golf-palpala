@@ -6,6 +6,7 @@ import { onCall } from 'firebase-functions/v2/https';
 import { assertIsRecord, buildCustomClaims, ensureAuthenticatedActor, ensureDirectivo, parseOptionalBoolean, parseOptionalIsoDate, parseOptionalNullableIsoDate, parseOptionalNullableString, parseOptionalString, parseRequiredString, pickPrimaryRoleId, resolveActor, toHttpsError, } from '../users/application/shared.js';
 import { USERS_COLLECTIONS } from '../users/domain/constants.js';
 import { assertCondition } from '../users/domain/errors.js';
+import { setCustomClaimsPreservingInternalRoles } from '../users/infrastructure/firestore/auth-gateway.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../users/infrastructure/firestore/repositories.js';
 const EXECUTIVE_BOARD_TERMS_COLLECTION = 'executive_board_terms';
 const EXECUTIVE_BOARD_MEMBERS_COLLECTION = 'executive_board_members';
@@ -108,7 +109,7 @@ async function syncClaims(targets) {
     }
     const auth = getAuth(getOrInitializeApp());
     for (const target of uniqueTargets.values()) {
-        await auth.setCustomUserClaims(target.uid, buildCustomClaims(target.roleIds, target.claimsVersion, target.active));
+        await setCustomClaimsPreservingInternalRoles(target.uid, buildCustomClaims(target.roleIds, target.claimsVersion, target.active), auth);
     }
 }
 export const executiveBoardUpsertTerm = onCall(async (request) => {

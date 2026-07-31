@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AccountingPeriod } from '../../../modules/accounting/domain/models';
-import { formatPeriod, normalizeAccountingPeriod } from '../utils/accountingFormatters';
+import { formatPeriod, getCurrentAccountingPeriod, normalizeAccountingPeriod } from '../utils/accountingFormatters';
 
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
 
@@ -20,18 +20,26 @@ export function AccountingMonthPicker({
   period,
   onChange,
   label = 'Periodo',
+  maxPeriod = getCurrentAccountingPeriod(),
 }: {
   period: AccountingPeriod;
   onChange: (period: AccountingPeriod) => void;
   label?: string;
+  maxPeriod?: AccountingPeriod;
 }) {
   const { year, month } = splitPeriod(period);
+  const normalizedMaxPeriod = normalizeAccountingPeriod(maxPeriod);
+  const { year: maxYear, month: maxMonth } = splitPeriod(normalizedMaxPeriod);
   const [open, setOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(year);
   const triggerLabel = useMemo(() => formatPeriod(period), [period]);
 
   const selectMonth = (nextMonth: number) => {
-    onChange(normalizeAccountingPeriod(`${visibleYear}-${String(nextMonth).padStart(2, '0')}`));
+    const nextPeriod = normalizeAccountingPeriod(`${visibleYear}-${String(nextMonth).padStart(2, '0')}`);
+    if (nextPeriod > normalizedMaxPeriod) {
+      return;
+    }
+    onChange(nextPeriod);
     setOpen(false);
   };
 
@@ -55,18 +63,20 @@ export function AccountingMonthPicker({
       {open && (
         <div className="accounting-month-picker__panel">
           <div className="accounting-month-picker__year">
-            <button type="button" aria-label="Anio anterior" onClick={() => setVisibleYear((current) => current - 1)}>-</button>
+            <button type="button" aria-label="Año anterior" onClick={() => setVisibleYear((current) => current - 1)}>-</button>
             <strong>{visibleYear}</strong>
-            <button type="button" aria-label="Anio siguiente" onClick={() => setVisibleYear((current) => current + 1)}>+</button>
+            <button type="button" aria-label="Año siguiente" disabled={visibleYear >= maxYear} onClick={() => setVisibleYear((current) => current + 1)}>+</button>
           </div>
           <div className="accounting-month-picker__grid">
             {MONTHS.map((entry) => {
               const selected = visibleYear === year && entry === month;
+              const disabled = visibleYear > maxYear || (visibleYear === maxYear && entry > maxMonth);
               return (
                 <button
                   key={entry}
                   type="button"
                   className={selected ? 'accounting-month-picker__month accounting-month-picker__month--selected' : 'accounting-month-picker__month'}
+                  disabled={disabled}
                   onClick={() => selectMonth(entry)}
                 >
                   {monthLabel(visibleYear, entry)}

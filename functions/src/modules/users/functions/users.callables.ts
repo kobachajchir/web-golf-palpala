@@ -29,14 +29,17 @@ import {
   parseEndLicenseInput,
   parseStartLicenseInput,
   parseUpdateMemberInput,
+  parseUpdateOwnMemberDniInput,
   startLicenseUseCase,
   updateMemberUseCase,
+  updateOwnMemberDniUseCase,
 } from '../application/use-cases/member.use-cases.js';
 import { assignRoleUseCase, parseAssignRoleInput } from '../application/use-cases/role.use-cases.js';
 import {
   assertIsRecord,
   buildCustomClaims,
   ensureStaff,
+  parseOptionalBoolean,
   parseOptionalString,
   parseRequiredString,
   pickPrimaryRoleId,
@@ -120,15 +123,22 @@ function normalizeEmail(email: string): string {
 
 function parseLinkEmployeeAuthUserInput(payload: unknown): {
   employeeId: string;
-  email: string;
+  email?: string;
   displayName?: string | undefined;
+  administrativeAccess: boolean;
 } {
   const data = assertIsRecord(payload);
+  const email = parseOptionalString(data, 'email');
   return {
     employeeId: parseRequiredString(data, 'employeeId'),
-    email: normalizeEmail(parseRequiredString(data, 'email')),
+    ...(email ? { email: normalizeEmail(email) } : {}),
     displayName: parseOptionalString(data, 'displayName'),
+    administrativeAccess: parseOptionalBoolean(data, 'administrativeAccess') ?? false,
   };
+}
+
+function buildEmployeeCodeFromId(employeeId: string): string {
+  return `E${employeeId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase()}`;
 }
 
 function parseInviteEmployeeUserInput(payload: unknown): { employeeId: string } {
@@ -141,6 +151,7 @@ function parseInviteEmployeeUserInput(payload: unknown): { employeeId: string } 
 async function getOrCreateEmployeeAuthUser(params: {
   email: string;
   displayName: string;
+  password: string;
 }) {
   const auth = getAuth(getOrInitializeApp());
 
@@ -149,6 +160,7 @@ async function getOrCreateEmployeeAuthUser(params: {
     return {
       userRecord: await auth.updateUser(existingUser.uid, {
         displayName: params.displayName,
+        password: params.password,
         disabled: false,
       }),
       created: false,
@@ -163,20 +175,25 @@ async function getOrCreateEmployeeAuthUser(params: {
     userRecord: await auth.createUser({
       email: params.email,
       displayName: params.displayName,
+      password: params.password,
       disabled: false,
     }),
     created: true,
   };
 }
 
+function buildEmployeeLoginPath(employeeCode: string): string {
+  return `/login?usuario=${encodeURIComponent(employeeCode)}`;
+}
+
 async function linkEmployeeAuthUser(params: {
   actorUid: string;
   employeeId: string;
-  email: string;
+  email?: string | undefined;
   displayName?: string | undefined;
+  administrativeAccess?: boolean | undefined;
 }) {
   const db = getFirestore(getOrInitializeApp());
-  const auth = getAuth(getOrInitializeApp());
   const employeeRef = db.collection(USERS_COLLECTIONS.employees).doc(params.employeeId);
   const employeeSnapshot = await employeeRef.get();
 
@@ -185,14 +202,18 @@ async function linkEmployeeAuthUser(params: {
   }
 
   const employee = employeeSnapshot.data() as EmployeeDocument;
+  const employeeCode = employee.employeeCode?.trim() || buildEmployeeCodeFromId(params.employeeId);
+  const email = buildSyntheticAuthEmail(employeeCode);
   const displayName = params.displayName?.trim()
     || `${employee.firstName} ${employee.lastName}`.trim()
-    || params.email;
+    || employeeCode;
+  const generatedPassword = generateMemberTemporaryPassword(employeeCode);
   const { userRecord, created } = await getOrCreateEmployeeAuthUser({
-    email: params.email,
+    email,
     displayName,
+    password: generatedPassword.temporaryPassword,
   });
-  const roleIds = ['empleado'];
+  const roleIds = params.administrativeAccess ? ['empleado', 'administrativo'] : ['empleado'];
   let claimRoleIds = roleIds;
   let claimsVersion = 1;
 
@@ -228,13 +249,17 @@ async function linkEmployeeAuthUser(params: {
     transaction.set(
       userRef,
       {
-        email: params.email,
+        email,
         displayName,
-        primaryRoleId: 'empleado',
+        primaryRoleId: pickPrimaryRoleId(mergedRoleIds),
         roleIds: mergedRoleIds,
         profileType: 'employee',
         profileId: params.employeeId,
+        memberNumber: employeeCode,
+        authProviderMode: 'member_number_password',
         active: true,
+        mustChangePassword: true,
+        passwordResetRequiredReason: 'initial_default',
         claimsVersion,
         createdAt: FieldValue.serverTimestamp(),
         createdBy: params.actorUid,
@@ -245,20 +270,23 @@ async function linkEmployeeAuthUser(params: {
     );
 
     transaction.update(employeeRef, {
+      ...(freshEmployee.employeeCode ? {} : { employeeCode }),
       linkedUserId: userRecord.uid,
       updatedAt: FieldValue.serverTimestamp(),
       updatedBy: params.actorUid,
     });
   });
 
-  await auth.setCustomUserClaims(userRecord.uid, buildCustomClaims(claimRoleIds, claimsVersion, true));
-  const inviteLink = await auth.generatePasswordResetLink(params.email);
+  await authGateway.setCustomClaims(userRecord.uid, buildCustomClaims(claimRoleIds, claimsVersion, true));
 
   return {
     uid: userRecord.uid,
     employeeId: params.employeeId,
-    email: params.email,
-    inviteLink,
+    employeeCode,
+    email,
+    loginPath: buildEmployeeLoginPath(employeeCode),
+    temporaryPassword: generatedPassword.temporaryPassword,
+    passwordGeneratedAt: generatedPassword.passwordGeneratedAt,
     createdAuthUser: created,
     claimsVersion,
   };
@@ -268,7 +296,6 @@ async function inviteEmployeeUser(params: {
   actorUid: string;
   employeeId: string;
 }) {
-  void params.actorUid;
   const db = getFirestore(getOrInitializeApp());
   const auth = getAuth(getOrInitializeApp());
   const employeeSnapshot = await db.collection(USERS_COLLECTIONS.employees).doc(params.employeeId).get();
@@ -281,24 +308,59 @@ async function inviteEmployeeUser(params: {
   if (!employee.linkedUserId) {
     throw new Error('El empleado todavia no tiene usuario Auth vinculado.');
   }
+  const employeeCode = employee.employeeCode?.trim() || buildEmployeeCodeFromId(params.employeeId);
+  const displayName = `${employee.firstName} ${employee.lastName}`.trim() || employeeCode;
 
-  const [authUser, userSnapshot] = await Promise.all([
+  const [, userSnapshot] = await Promise.all([
     auth.getUser(employee.linkedUserId),
     db.collection(USERS_COLLECTIONS.users).doc(employee.linkedUserId).get(),
   ]);
   const userDocument = userSnapshot.exists ? (userSnapshot.data() as UserDocument) : null;
-  const email = normalizeEmail(authUser.email ?? userDocument?.email ?? '');
-  if (!email) {
-    throw new Error('El usuario vinculado no tiene email para enviar invitacion.');
-  }
+  const email = buildSyntheticAuthEmail(employeeCode);
+  const roleIds = userDocument?.roleIds?.length
+    ? userDocument.roleIds
+    : (employeeCode === 'E001' ? ['empleado', 'administrativo'] : ['empleado']);
+  const claimsVersion = (userDocument?.claimsVersion ?? 0) + 1;
+  const generatedPassword = generateMemberTemporaryPassword(employeeCode);
 
-  const inviteLink = await auth.generatePasswordResetLink(email);
+  await auth.updateUser(employee.linkedUserId, {
+    email,
+    displayName,
+    password: generatedPassword.temporaryPassword,
+    disabled: false,
+  });
+
+  await db.collection(USERS_COLLECTIONS.users).doc(employee.linkedUserId).set(
+    {
+      email,
+      displayName,
+      primaryRoleId: pickPrimaryRoleId(roleIds),
+      roleIds,
+      profileType: 'employee',
+      profileId: params.employeeId,
+      memberNumber: employeeCode,
+      authProviderMode: 'member_number_password',
+      active: true,
+      mustChangePassword: true,
+      passwordResetRequiredReason: 'staff_reset',
+      claimsVersion,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: params.actorUid,
+    },
+    { merge: true },
+  );
+
+  await authGateway.setCustomClaims(employee.linkedUserId, buildCustomClaims(roleIds, claimsVersion, true));
 
   return {
     uid: employee.linkedUserId,
     employeeId: params.employeeId,
+    employeeCode,
     email,
-    inviteLink,
+    loginPath: buildEmployeeLoginPath(employeeCode),
+    temporaryPassword: generatedPassword.temporaryPassword,
+    passwordGeneratedAt: generatedPassword.passwordGeneratedAt,
+    claimsVersion,
   };
 }
 
@@ -404,7 +466,7 @@ async function createDefaultAccessForMember(params: {
     });
   });
 
-  await getAuth(getOrInitializeApp()).setCustomUserClaims(
+  await authGateway.setCustomClaims(
     authUser.uid,
     buildCustomClaims(claimRoleIds, claimsVersion, true),
   );
@@ -496,6 +558,19 @@ export const usersUpdateMember = onCall(async (request) => {
     });
   } catch (error) {
     withCallableLogging('usersUpdateMember', error);
+  }
+});
+
+export const usersUpdateOwnMemberDni = onCall(async (request) => {
+  try {
+    const actor = await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined);
+    return updateOwnMemberDniUseCase({
+      actor,
+      input: parseUpdateOwnMemberDniInput(request.data),
+      transactions,
+    });
+  } catch (error) {
+    withCallableLogging('usersUpdateOwnMemberDni', error);
   }
 });
 
@@ -602,6 +677,7 @@ export const usersLinkEmployeeAuthUser = onCall(async (request) => {
       employeeId: input.employeeId,
       email: input.email,
       displayName: input.displayName,
+      administrativeAccess: input.administrativeAccess,
     });
   } catch (error) {
     withCallableLogging('usersLinkEmployeeAuthUser', error);
@@ -672,6 +748,7 @@ export const users = {
   getNextMemberNumber: usersGetNextMemberNumber,
   createMember: usersCreateMember,
   updateMember: usersUpdateMember,
+  updateOwnMemberDni: usersUpdateOwnMemberDni,
   createFamilyGroup: usersCreateFamilyGroup,
   addMemberToFamilyGroup: usersAddMemberToFamilyGroup,
   removeMemberFromFamilyGroup: usersRemoveMemberFromFamilyGroup,

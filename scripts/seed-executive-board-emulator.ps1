@@ -20,10 +20,6 @@ try {
   $env:GCLOUD_PROJECT = 'demo-web-golf-palpala'
   $env:GOOGLE_CLOUD_PROJECT = 'demo-web-golf-palpala'
 
-  if (-not $env:EXECUTIVE_BOARD_DEFAULT_PASSWORD) {
-    $env:EXECUTIVE_BOARD_DEFAULT_PASSWORD = 'Club-Dev-2026'
-  }
-
   & node .\lib\scripts\seed-executive-board.js
   if ($LASTEXITCODE -ne 0) {
     throw 'Fallo el seed de la comision directiva en emuladores.'

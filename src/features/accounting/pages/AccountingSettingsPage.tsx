@@ -123,7 +123,7 @@ export function AccountingSettingsPage() {
   const [pendingPayload, setPendingPayload] = useState<UpsertFinancialConfigPayload | null>(null);
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [saving, setSaving] = useState(false);
-  const canConfigure = interfaceMode === ROLES.DIRECTIVO;
+  const canConfigure = interfaceMode === ROLES.DIRECTIVO || interfaceMode === ROLES.ADMINISTRATIVO;
   const commissionWillChange = useMemo(
     () => Boolean(activeConfig && pendingPayload && pendingPayload.creditCommissionPctBps !== activeConfig.creditCommissionPctBps),
     [activeConfig, pendingPayload],
@@ -192,9 +192,7 @@ export function AccountingSettingsPage() {
     <div className="accounting-shell">
       <section className="floating-card accounting-hero">
         <div className="accounting-hero__copy">
-          <p className="eyebrow">Configuracion</p>
           <h1>Valores y reglas financieras</h1>
-          <p>Los cambios se versionan desde la fecha efectiva y no recalculan movimientos historicos posteados.</p>
         </div>
         <div className="accounting-hero__actions">
           <UiActionButton to="/accounting/payment-methods" variant="secondary">
@@ -207,7 +205,6 @@ export function AccountingSettingsPage() {
 
       {activeConfig ? (
         <AccountingCollapsibleSections
-          initialOpenId="active"
           sections={[
             {
               id: 'active',

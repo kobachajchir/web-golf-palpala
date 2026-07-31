@@ -7,6 +7,7 @@ import { EXECUTIVE_ACCESS_ROLE_IDS, USERS_COLLECTIONS } from '../users/domain/co
 import { assertCondition } from '../users/domain/errors.js';
 import { assertIsRecord, buildCustomClaims, ensureDirectivo, ensureStaff, parseOptionalBoolean, parseRequiredString, parseRequiredStringArray, pickPrimaryRoleId, resolveActor, toHttpsError, } from '../users/application/shared.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../users/infrastructure/firestore/repositories.js';
+import { setCustomClaimsPreservingInternalRoles } from '../users/infrastructure/firestore/auth-gateway.js';
 import { buildSyntheticAuthEmail, generateMemberTemporaryPassword, normalizeMemberNumber, } from './member-number-auth.js';
 import { emitRoleNotification } from '../notifications/notifications.service.js';
 const transactions = new FirestoreUsersTransactionManager(new SystemClock());
@@ -162,7 +163,7 @@ export const authOnboardingCreateMemberAuthUser = onCall(async (request) => {
         if (!claims) {
             throw new HttpsError('internal', 'No se pudieron construir los custom claims.');
         }
-        await getAuth(getOrInitializeApp()).setCustomUserClaims(authUser.uid, claims);
+        await setCustomClaimsPreservingInternalRoles(authUser.uid, claims, getAuth(getOrInitializeApp()));
         return {
             uid: authUser.uid,
             memberId: input.memberId,
@@ -419,7 +420,7 @@ export const authOnboardingSetMemberAuthAccessActive = onCall(async (request) =>
             }, { merge: true });
         });
         await getAuth(getOrInitializeApp()).updateUser(member.linkedUserId, { disabled: !active });
-        await getAuth(getOrInitializeApp()).setCustomUserClaims(member.linkedUserId, claims);
+        await setCustomClaimsPreservingInternalRoles(member.linkedUserId, claims, getAuth(getOrInitializeApp()));
         return {
             uid: member.linkedUserId,
             memberId,

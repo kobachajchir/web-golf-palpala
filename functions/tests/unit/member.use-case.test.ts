@@ -4,6 +4,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { AppError } from '../../src/modules/users/domain/errors.js';
 import {
   createMemberUseCase,
+  updateOwnMemberDniUseCase,
   updateMemberUseCase,
 } from '../../src/modules/users/application/use-cases/member.use-cases.js';
 import {
@@ -111,5 +112,51 @@ test('updateMember impide cambiar memberNumber aunque no tenga acceso app', asyn
         },
       }),
     (error: unknown) => error instanceof AppError && error.code === 'failed-precondition',
+  );
+});
+
+test('updateOwnMemberDni permite al socio modificar unicamente el DNI de su ficha vinculada', async () => {
+  const manager = new InMemoryUsersTransactionManager();
+  seedMember(manager, 'member-1', { linkedUserId: 'member-user', dni: '11111111' });
+  const actor = createActor(
+    seedUser(manager, 'member-user', {
+      profileType: 'member',
+      profileId: 'member-1',
+      roleIds: ['socio'],
+      primaryRoleId: 'socio',
+    }),
+  );
+
+  const result = await updateOwnMemberDniUseCase({
+    actor,
+    transactions: manager,
+    input: { dni: '22.222.222' },
+  });
+
+  assert.deepEqual(result, { memberId: 'member-1', dni: '22222222' });
+  assert.equal(manager.members.get('member-1')?.dni, '22222222');
+  assert.equal(manager.members.get('member-1')?.firstName, 'Nombre');
+});
+
+test('updateOwnMemberDni rechaza una ficha que pertenece a otro usuario', async () => {
+  const manager = new InMemoryUsersTransactionManager();
+  seedMember(manager, 'member-1', { linkedUserId: 'other-user' });
+  const actor = createActor(
+    seedUser(manager, 'member-user', {
+      profileType: 'member',
+      profileId: 'member-1',
+      roleIds: ['socio'],
+      primaryRoleId: 'socio',
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      updateOwnMemberDniUseCase({
+        actor,
+        transactions: manager,
+        input: { dni: '22222222' },
+      }),
+    (error: unknown) => error instanceof AppError && error.code === 'permission-denied',
   );
 });

@@ -2,9 +2,9 @@ import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import clubLogo from '../assets/ClubLogo.png';
 import { createNotificationsCallables } from '../modules/notifications/functions/notifications.callables';
 
-const CLUB_ADDRESS = 'Avda. El Inti 598, Loma Golf, Palpala';
-const CLUB_PHONE = '388 - 4111111';
-const MAP_SRC = 'https://www.google.com/maps?q=Avda.%20El%20Inti%20598%2C%20Loma%20Golf%2C%20Palpala&z=16&output=embed';
+const CLUB_ADDRESS = 'Avda. El Inti 589, Loma Golf, Palpala';
+const CLUB_PHONE = '388-466-2008 (WhatsApp)';
+const MAP_SRC = 'https://www.google.com/maps?q=Avda.%20El%20Inti%20589%2C%20Loma%20Golf%2C%20Palpala&z=16&output=embed';
 
 type ClubContactFormProps = {
   compact?: boolean;

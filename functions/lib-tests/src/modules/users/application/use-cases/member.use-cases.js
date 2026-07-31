@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { normalizeMemberNumber } from '../../../auth/member-number-auth.js';
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureFamilyHolderEligibility, ensureStaff, parseOptionalBoolean, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalNullableIsoDate, parseOptionalString, parseRequiredIsoDate, parseRequiredString, syncProfileLink, validateLicenseRange, } from '../shared.js';
+import { assertIsRecord, ensureAuthenticatedActor, ensureFamilyHolderEligibility, ensureStaff, parseOptionalBoolean, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalNullableIsoDate, parseOptionalString, parseRequiredIsoDate, parseRequiredString, syncProfileLink, validateLicenseRange, } from '../shared.js';
 async function reserveMemberNumber(params) {
     const normalizedMemberNumber = normalizeMemberNumber(params.memberNumber);
     const existingIdentifier = await params.dataAccess.memberLoginIdentifiers.getById(normalizedMemberNumber);
@@ -168,6 +168,20 @@ export async function updateMemberUseCase(params) {
         return { memberId: params.input.memberId };
     });
 }
+export async function updateOwnMemberDniUseCase(params) {
+    const actor = ensureAuthenticatedActor(params.actor);
+    assertCondition(actor.user.profileType === 'member' && Boolean(actor.user.profileId), 'permission-denied', 'El usuario autenticado no tiene una ficha de socio propia.');
+    const dni = params.input.dni.replace(/\D/g, '');
+    assertCondition(dni.length >= 7 && dni.length <= 9, 'invalid-argument', 'El DNI debe tener entre 7 y 9 digitos.');
+    return params.transactions.runInTransaction(async (dataAccess) => {
+        const memberId = actor.user.profileId;
+        const member = await dataAccess.members.getById(memberId);
+        assertCondition(member, 'not-found', `No existe members/${memberId}.`);
+        assertCondition(!member.linkedUserId || member.linkedUserId === actor.uid, 'permission-denied', 'La ficha de socio no pertenece al usuario autenticado.');
+        await dataAccess.members.update(memberId, { dni }, actor.uid);
+        return { memberId, dni };
+    });
+}
 export async function startLicenseUseCase(params) {
     const actor = ensureStaff(params.actor);
     if (params.input.endAt) {
@@ -234,6 +248,10 @@ export function parseUpdateMemberInput(payload) {
         familyGroupId: parseOptionalNullableString(data, 'familyGroupId'),
         isFamilyHolder: parseOptionalBoolean(data, 'isFamilyHolder'),
     };
+}
+export function parseUpdateOwnMemberDniInput(payload) {
+    const data = assertIsRecord(payload);
+    return { dni: parseRequiredString(data, 'dni') };
 }
 export function parseStartLicenseInput(payload) {
     const data = assertIsRecord(payload);

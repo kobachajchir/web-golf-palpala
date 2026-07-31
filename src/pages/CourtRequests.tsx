@@ -14,7 +14,6 @@ export function CourtRequests() {
         <div className="public-profile-card__header">
           <div className="public-profile-avatar">C</div>
           <div className="public-profile-card__copy">
-            <p className="eyebrow">Canchas</p>
             <h1>Solicitar cancha</h1>
           </div>
         </div>

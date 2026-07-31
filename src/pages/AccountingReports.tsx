@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ModalCloseIcon } from '../components/ModalCloseIcon';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import type {
@@ -376,7 +377,7 @@ export function AccountingReports() {
                 <h2>Generar reporte</h2>
               </div>
               <button type="button" className="modal-close-button" aria-label="Cerrar" onClick={() => setIsModalOpen(false)}>
-                ×
+                <ModalCloseIcon />
               </button>
             </div>
 

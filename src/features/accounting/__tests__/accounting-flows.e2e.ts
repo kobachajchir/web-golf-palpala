@@ -23,7 +23,7 @@ test('accounting critical flow contract keeps canonical routes discoverable on m
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=expense-queue'),
-    '/accounting/caja?tab=rendiciones',
+    '/accounting/caja?tab=movimientos',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=cuotas&subsection=membership-pricing'),

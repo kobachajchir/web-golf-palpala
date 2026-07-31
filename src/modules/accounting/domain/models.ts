@@ -20,6 +20,7 @@ export type EntityWithId<T extends object> = T & { id: DocId };
 
 export type FinancialMovementType = 'income' | 'expense';
 export type FinancialMovementStatus = 'draft' | 'pending' | 'posted' | 'voided' | 'reversed';
+export type InstallmentMovementRole = 'charge' | 'payment';
 export type ThirdPartyType = 'member' | 'employee' | 'vendor' | 'association' | 'tenant' | 'advertiser' | 'external';
 export type BillingMode = 'per_member' | 'single_group_charge';
 export type MemberFeeChargeStatus = 'pending' | 'paid' | 'exempt' | 'cancelled' | 'overdue';
@@ -35,25 +36,6 @@ export type MacroDebitSettlementStatus = 'imported' | 'reconciled' | 'closed';
 export type ExternalReferenceType = 'F931' | 'OBRA_SOCIAL' | 'ART' | 'OTHER';
 export type ExternalReferenceStatus = 'recorded' | 'linked' | 'paid';
 export type HandicapChargeStatus = 'pending_collection' | 'collected' | 'transferred' | 'closed';
-export type MercadoPagoCheckoutSourceType =
-  | 'member_fee_charge'
-  | 'tournament_registration'
-  | 'green_fee'
-  | 'handicap_charge'
-  | 'concession_charge'
-  | 'advertising_charge'
-  | 'manual_income';
-export type MercadoPagoCheckoutSessionStatus =
-  | 'creating'
-  | 'ready'
-  | 'pending'
-  | 'approved'
-  | 'rejected'
-  | 'cancelled'
-  | 'expired'
-  | 'refunded'
-  | 'failed';
-
 export interface FinancialConfigDocument extends AuditFields {
   version: number;
   isActive: boolean;
@@ -73,11 +55,18 @@ export interface FinancialConfigDocument extends AuditFields {
   allowStandaloneMinor: boolean;
   membershipChargePersistenceMode: 'member_fee_charges';
   greenFeeAppliesToMembers: boolean;
+  memberGreenFeeWeekdayMinor?: AmountMinor | null;
+  memberGreenFeeSaturdayHolidayMinor?: AmountMinor | null;
+  guestGreenFeeWeekdayMinor?: AmountMinor | null;
+  guestGreenFeeSaturdayHolidayMinor?: AmountMinor | null;
+  minorGreenFeeSaturdayHolidayPctBps?: Bps | null;
+  nationalHolidayDates?: string[];
   cantineroContractMode: 'fixed_monthly' | 'fixed_plus_variable';
   advertisingDefaultPeriodicity: 'monthly' | 'one_time';
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
   serverMonthlyExpenseMinor?: AmountMinor | null;
+  serverMonthlyExpenseDueDay?: number | null;
   notes?: string | null;
 }
 
@@ -87,6 +76,8 @@ export interface PaymentMethodDocument extends AuditFields {
   specialReportingType?: 'macro_debit' | null;
   active: boolean;
   sortOrder: number;
+  activeCommissionPctBps?: Bps | null;
+  activeCommissionBreakdown?: PaymentCommissionBreakdownItem[];
 }
 
 export interface PaymentCommissionBreakdownItem {
@@ -124,54 +115,6 @@ export interface FinancialExpenseCategoryDocument extends AuditFields {
   sortOrder: number;
 }
 
-export interface MercadoPagoCheckoutSessionItem {
-  sourceType: MercadoPagoCheckoutSourceType;
-  sourceId?: DocId | null;
-  memberId?: DocId | null;
-  thirdPartyType?: ThirdPartyType | null;
-  thirdPartyId?: DocId | null;
-  categoryId: DocId;
-  description: string;
-  amountMinor: AmountMinor;
-  originCollection?: string | null;
-  originId?: DocId | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface MercadoPagoCheckoutSessionDocument extends AuditFields {
-  items: MercadoPagoCheckoutSessionItem[];
-  memberIds: DocId[];
-  grossAmountMinor: AmountMinor;
-  currency: 'ARS';
-  status: MercadoPagoCheckoutSessionStatus;
-  preferenceId?: string | null;
-  checkoutUrl?: string | null;
-  paymentId?: string | null;
-  merchantOrderId?: string | null;
-  externalReference: string;
-  providerStatus?: string | null;
-  providerStatusDetail?: string | null;
-  financialMovementIds: DocId[];
-  idempotencyKey: string;
-  createdByUid: UID;
-  notes?: string | null;
-}
-
-export interface MercadoPagoEventDocument extends AuditFields {
-  eventId: string;
-  type: string;
-  action: string;
-  dataId: string;
-  paymentId?: string | null;
-  merchantOrderId?: string | null;
-  externalReference?: string | null;
-  payloadSnapshot: Record<string, unknown>;
-  headersSnapshot: Record<string, string>;
-  processed: boolean;
-  processedAt?: Timestamp | null;
-  processingError?: string | null;
-}
-
 export interface FinancialMovementDocument extends AuditFields {
   movementType: FinancialMovementType;
   categoryId: DocId;
@@ -191,6 +134,17 @@ export interface FinancialMovementDocument extends AuditFields {
   appliedCommissionPctBps?: Bps | null;
   appliedCommissionAmountMinor?: AmountMinor | null;
   netAmountMinor: AmountMinor;
+  installmentPlanId?: DocId | null;
+  installmentRole?: InstallmentMovementRole | null;
+  installmentNumber?: number | null;
+  installmentCount?: number | null;
+  installmentBaseAmountMinor?: AmountMinor | null;
+  installmentInterestPctBps?: Bps | null;
+  installmentInterestAmountMinor?: AmountMinor | null;
+  installmentTotalAmountMinor?: AmountMinor | null;
+  installmentScheduledAmountMinor?: AmountMinor | null;
+  installmentPaidAmountMinor?: AmountMinor | null;
+  installmentPaidCount?: number | null;
   bancarizado: boolean;
   imputableImpositivo: boolean;
   settlementId?: DocId | null;
@@ -199,6 +153,10 @@ export interface FinancialMovementDocument extends AuditFields {
   approvedAt?: Timestamp | null;
   reversalOfMovementId?: DocId | null;
   voidReason?: string | null;
+  excludeFromBalance?: boolean;
+  balanceExclusionReason?: string | null;
+  balanceExcludedAt?: Timestamp | null;
+  balanceExcludedByUid?: UID | null;
   metadata?: Record<string, unknown>;
   notes?: string | null;
 }
@@ -246,10 +204,15 @@ export interface MemberFeeChargeDocument extends AuditFields {
   dueDate?: Timestamp | null;
   generatedByUid: UID;
   paidMovementId?: DocId | null;
+  paymentMovementIds?: DocId[];
   paidAt?: Timestamp | null;
   paidAmountMinor?: AmountMinor | null;
+  settlementAmountMinor?: AmountMinor | null;
+  paidClubAmountMinor?: AmountMinor | null;
+  remainingAmountMinor?: AmountMinor | null;
   paymentDiscountPctBps?: Bps | null;
   paymentDiscountAmountMinor?: AmountMinor | null;
+  paymentDiscountMode?: 'automatic' | 'manual' | 'none' | null;
   notes?: string | null;
 }
 
@@ -437,43 +400,146 @@ export interface RegisterPaymentPayload {
 
 export interface RegisterPaymentResult {
   movementId: DocId;
+  grossAmountMinor: AmountMinor;
   netAmountMinor: AmountMinor;
+  appliedCommissionPctBps?: Bps | null;
+  appliedCommissionAmountMinor?: AmountMinor | null;
   duplicate: boolean;
   receiptNumber?: string | null;
 }
 
-export interface CreateMercadoPagoCheckoutItemPayload {
-  sourceType: MercadoPagoCheckoutSourceType;
-  sourceId?: DocId | null;
-  memberId?: DocId | null;
+export interface RegisterMemberFeeBatchPaymentPayload {
+  allocations: Array<{
+    chargeId?: DocId;
+    memberId?: DocId;
+    period?: AccountingPeriod;
+    amountMinor?: AmountMinor;
+    settlementAmountMinor?: AmountMinor;
+    applyEarlyPaymentDiscount?: boolean;
+  }>;
+  paymentMethodId: DocId;
+  operationDate: string;
+  paymentReference?: string | null;
+  notes?: string | null;
+  idempotencyKey?: string;
+}
+
+export interface RegisterMemberFeeBatchPaymentResult {
+  memberId: DocId;
+  movementId: DocId;
+  grossAmountMinor: AmountMinor;
+  netAmountMinor: AmountMinor;
+  appliedCommissionPctBps?: Bps | null;
+  appliedCommissionAmountMinor?: AmountMinor | null;
+  receiptNumber: string;
+  completedChargeIds: DocId[];
+  remainingChargeIds: DocId[];
+}
+
+export interface ReconcileMemberFeeRenewalsPayload {
+  period: AccountingPeriod;
+  execute?: boolean;
+}
+
+export interface ReconcileMemberFeeRenewalsResult {
+  period: AccountingPeriod;
+  mode: 'dry-run' | 'execute';
+  scannedMovementCount: number;
+  feeMovementCount: number;
+  scannedPeriodChargeCount: number;
+  matchedAllocationCount: number;
+  alreadySynchronizedCount: number;
+  repairedChargeCount: number;
+  repairedMemberCount: number;
+  ambiguousCount: number;
+  skipped: Array<{
+    movementId: DocId;
+    memberId: DocId | null;
+    memberName: string | null;
+    memberNumber: string | null;
+    reason: string;
+  }>;
+  repairs: Array<{
+    movementId: DocId;
+    chargeId: DocId;
+    memberId: DocId;
+    memberName: string | null;
+    memberNumber: string | null;
+    chargePeriod: AccountingPeriod;
+    source: 'payment_allocation' | 'origin_charge' | 'period_member';
+    appliedAmountMinor: AmountMinor;
+    remainingAmountMinor: AmountMinor;
+    completed: boolean;
+  }>;
+}
+
+export interface CreateInstallmentPlanPayload {
+  movementType: FinancialMovementType;
+  categoryId: DocId;
+  baseAmountMinor: AmountMinor;
+  installmentCount?: number;
+  interestPctBps: Bps;
+  operationDate: string;
   thirdPartyType?: ThirdPartyType | null;
   thirdPartyId?: DocId | null;
-  categoryId?: DocId | null;
-  description?: string | null;
-  amountMinor?: AmountMinor | null;
+  paymentReference?: string | null;
+  notes?: string | null;
   metadata?: Record<string, unknown>;
 }
 
-export interface CreateMercadoPagoCheckoutPayload {
-  items: CreateMercadoPagoCheckoutItemPayload[];
+export interface CreateInstallmentPlanResult {
+  movementId: DocId;
+  installmentPlanId: DocId;
+  installmentCount: number | null;
+  interestAmountMinor: AmountMinor;
+  totalAmountMinor: AmountMinor;
+  monthlyInterestAmountsMinor: AmountMinor[];
+  installmentAmountsMinor: AmountMinor[];
+}
+
+export interface RegisterInstallmentPaymentPayload {
+  installmentPlanId: DocId;
+  paymentMethodId: DocId;
+  operationDate: string;
+  amountMinor?: AmountMinor;
+  paymentReference?: string | null;
   notes?: string | null;
 }
 
-export interface CreateMercadoPagoCheckoutResult {
-  sessionId: DocId;
-  preferenceId: string | null;
-  checkoutUrl: string | null;
-  status: MercadoPagoCheckoutSessionStatus;
-  reused: boolean;
+export interface RegisterInstallmentPaymentResult {
+  movementId: DocId;
+  installmentPlanId: DocId;
+  installmentNumber: number;
+  installmentCount: number | null;
+  scheduledAmountMinor: AmountMinor;
+  grossAmountMinor: AmountMinor;
+  netAmountMinor: AmountMinor;
+  paidAmountMinor: AmountMinor;
+  totalAmountMinor: AmountMinor;
+  completed: boolean;
+  receiptNumber?: string | null;
 }
 
-export interface GetMercadoPagoCheckoutStatusPayload {
-  sessionId: DocId;
+export interface MyReceiptRecord {
+  id: DocId;
+  receiptNumber: string;
+  movementId: DocId;
+  categoryId: DocId;
+  concept: string;
+  operationDate: string;
+  accountingPeriod: string;
+  paymentMethodId: DocId | null;
+  grossAmountMinor: AmountMinor;
+  netAmountMinor: AmountMinor;
+  appliedCommissionPctBps: Bps | null;
+  appliedCommissionAmountMinor: AmountMinor | null;
+  paymentReference: string | null;
+  notes: string | null;
+  status: FinancialMovementStatus;
 }
 
-export interface GetMercadoPagoCheckoutStatusResult {
-  session: EntityWithId<MercadoPagoCheckoutSessionDocument>;
-  message: string;
+export interface ListMyReceiptsResult {
+  receipts: MyReceiptRecord[];
 }
 
 export interface UpsertFinancialConfigPayload {
@@ -491,11 +557,18 @@ export interface UpsertFinancialConfigPayload {
   allowStandaloneMinor: boolean;
   membershipChargePersistenceMode: 'member_fee_charges';
   greenFeeAppliesToMembers: boolean;
+  memberGreenFeeWeekdayMinor?: AmountMinor | null;
+  memberGreenFeeSaturdayHolidayMinor?: AmountMinor | null;
+  guestGreenFeeWeekdayMinor?: AmountMinor | null;
+  guestGreenFeeSaturdayHolidayMinor?: AmountMinor | null;
+  minorGreenFeeSaturdayHolidayPctBps?: Bps | null;
+  nationalHolidayDates?: string[];
   cantineroContractMode: 'fixed_monthly' | 'fixed_plus_variable';
   advertisingDefaultPeriodicity: 'monthly' | 'one_time';
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
   serverMonthlyExpenseMinor?: AmountMinor | null;
+  serverMonthlyExpenseDueDay?: number | null;
   notes?: string | null;
 }
 
@@ -561,6 +634,102 @@ export interface SubmitExpensePayload {
 
 export interface SubmitExpenseResult {
   expenseSubmissionId: DocId;
+}
+
+export interface RegisterExpenseMovementPayload {
+  categoryId: DocId;
+  employeeId?: DocId | null;
+  description?: string | null;
+  amountMinor: AmountMinor;
+  vendorName?: string | null;
+  paymentMethodId: DocId;
+  metadata?: Record<string, unknown>;
+  notes?: string | null;
+}
+
+export interface RegisterExpenseMovementResult {
+  movementId: DocId;
+  netAmountMinor: AmountMinor;
+}
+
+export interface TransferFundsPayload {
+  sourcePaymentMethodId: DocId;
+  destinationPaymentMethodId: DocId;
+  amountMinor: AmountMinor;
+  operationDate: string;
+  reference?: string | null;
+  notes?: string | null;
+}
+
+export interface TransferFundsResult {
+  outgoingMovementId: DocId;
+  incomingMovementId: DocId;
+  amountMinor: AmountMinor;
+  reference: string;
+}
+
+export interface EditInternalTransferPayload {
+  movementId: DocId;
+  sourcePaymentMethodId: DocId;
+  destinationPaymentMethodId: DocId;
+  reference?: string | null;
+  notes?: string | null;
+  reason: string;
+}
+
+export interface EditInternalTransferResult {
+  outgoingMovementId: DocId;
+  incomingMovementId: DocId;
+  reference: string;
+}
+
+export interface CreateHandicapChargePayload {
+  memberId: DocId;
+  handicapId?: DocId | null;
+  period: AccountingPeriod;
+  collectionAmountMinor: AmountMinor;
+  transferAmountMinor: AmountMinor;
+  associationName: string;
+  transferDueDate?: string | null;
+  notes?: string | null;
+  collectNow?: boolean;
+  paymentMethodId?: DocId | null;
+  operationDate?: string;
+}
+
+export interface CreateHandicapChargeResult {
+  handicapChargeId: DocId;
+  incomeMovementId?: DocId;
+  receiptNumber?: string | null;
+  grossAmountMinor?: AmountMinor;
+  duplicate: boolean;
+}
+
+export interface TransferHandicapToAssociationPayload {
+  handicapChargeId: DocId;
+  paymentMethodId?: DocId | null;
+  operationDate?: string;
+  notes?: string | null;
+}
+
+export interface TransferHandicapToAssociationResult {
+  handicapChargeId: DocId;
+  expenseMovementId: DocId;
+  duplicate: boolean;
+}
+
+export interface TransferPendingHandicapToAssociationPayload {
+  associationName?: string | null;
+  paymentMethodId?: DocId | null;
+  operationDate?: string;
+  notes?: string | null;
+}
+
+export interface TransferPendingHandicapToAssociationResult {
+  expenseMovementId: DocId;
+  handicapChargeIds: DocId[];
+  amountMinor: AmountMinor;
+  duplicate: boolean;
 }
 
 export interface ReviewExpenseResult {
@@ -635,6 +804,36 @@ export interface VoidFinancialMovementResult {
   duplicate: boolean;
 }
 
+export interface EditFinancialMovementPayload {
+  movementId: DocId;
+  categoryId: DocId;
+  paymentMethodId?: DocId | null;
+  grossAmountMinor: AmountMinor;
+  operationDate: string;
+  description?: string | null;
+  paymentReference?: string | null;
+  thirdPartyLabel?: string | null;
+  notes?: string | null;
+  reason: string;
+}
+
+export interface EditFinancialMovementResult {
+  movementId: DocId;
+  status: 'posted';
+}
+
+export interface SetFinancialMovementBalanceInclusionPayload {
+  movementId: DocId;
+  excluded: boolean;
+  reason: string;
+}
+
+export interface SetFinancialMovementBalanceInclusionResult {
+  movementId: DocId;
+  excluded: boolean;
+  affectedMovementIds: DocId[];
+}
+
 export interface CreateOvertimeEntryPayload {
   employeeId: DocId;
   period: AccountingPeriod;
@@ -661,6 +860,24 @@ export interface ReviewOvertimeEntryResult {
   status: OvertimeEntryStatus;
 }
 
+export type AnnualBonusReferenceSource = 'salary_payment' | 'payroll_cycle' | 'active_salary_configuration';
+
+export interface AnnualBonusPreview {
+  period: AccountingPeriod;
+  year: number;
+  semester: 1 | 2;
+  semesterPeriods: AccountingPeriod[];
+  referenceAmountMinor: AmountMinor;
+  referencePeriod: AccountingPeriod | null;
+  referenceSource: AnnualBonusReferenceSource | null;
+  defaultAmountMinor: AmountMinor;
+  alreadyPosted: boolean;
+  existingMovementId: DocId | null;
+  existingAmountMinor: AmountMinor | null;
+  postedAnnualBonusCount: number;
+  remainingAnnualSlots: number;
+}
+
 export interface ListEmployeePayrollCyclePayload {
   employeeId: DocId;
   period: AccountingPeriod;
@@ -672,6 +889,7 @@ export interface ListEmployeePayrollCycleResult {
   overtimeEntries: Array<EntityWithId<OvertimeEntryDocument>>;
   accountingLinks: Array<EntityWithId<EmployeeAccountingLinkDocument>>;
   certificates: Array<EntityWithId<EmployeeCertificateDocument>>;
+  annualBonusPreview: AnnualBonusPreview;
 }
 
 export interface PostEmployeePayrollCyclePayload {
@@ -693,6 +911,27 @@ export interface PostEmployeePayrollCycleResult {
   duplicate: boolean;
 }
 
+export interface PostAnnualBonusPaymentPayload {
+  employeeId: DocId;
+  amountMinor?: AmountMinor;
+  period?: AccountingPeriod;
+  paymentMethodId?: DocId | null;
+  operationDate: string;
+  notes?: string | null;
+}
+
+export interface PostAnnualBonusPaymentResult {
+  movementId: DocId;
+  amountMinor: AmountMinor;
+  defaultAmountMinor: AmountMinor;
+  bonusNumber: number;
+  remainingAnnualSlots: number;
+  period: AccountingPeriod;
+  year: number;
+  semester: 1 | 2;
+  referenceAmountMinor: AmountMinor;
+  referencePeriod: AccountingPeriod | null;
+}
 export interface RecordEmployeeCertificatePayload {
   employeeId: DocId;
   period: AccountingPeriod;

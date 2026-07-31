@@ -15,6 +15,18 @@ dist-ssr
 .env.*
 !.env.example
 
+# Local Firebase credentials, exports and generated seed/reset reports
+*adminsdk*.json
+*service-account*.json
+*serviceAccount*.json
+*.pem
+*.p12
+*.pfx
+firebase-export-*/
+functions/firebase-export-*/
+seed-reports/
+functions/seed-reports/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

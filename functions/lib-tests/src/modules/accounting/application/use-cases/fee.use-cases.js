@@ -13,6 +13,22 @@ async function validateLicenseIfNeeded(member, config) {
 async function buildPreviewForSingleMember(params) {
     const config = await params.dataAccess.financialConfigs.getActive();
     assertCondition(config, 'failed-precondition', 'No existe una configuración financiera activa.');
+    if (params.member.membershipBillingExempt) {
+        const preview = buildFeePreview({
+            member: params.member,
+            config,
+            period: params.period,
+        });
+        return {
+            ...preview,
+            finalAmountMinor: 0,
+            appliedPctBps: 0,
+            explanation: [
+                ...preview.explanation,
+                `Exento de facturacion societaria${params.member.membershipBillingExemptReason ? `: ${params.member.membershipBillingExemptReason}` : '.'}`,
+            ],
+        };
+    }
     ensureMemberCanBeBilled({
         member: params.member,
         config,
@@ -25,7 +41,7 @@ async function buildPreviewForSingleMember(params) {
         period: params.period,
     });
 }
-async function computeFeePreviewInternal(params) {
+export async function computeFeePreviewInternal(params) {
     const member = await params.dataAccess.members.getById(params.memberId);
     assertCondition(member, 'not-found', `No existe members/${params.memberId}.`);
     const preview = await buildPreviewForSingleMember({
@@ -66,6 +82,37 @@ async function computeFeePreviewInternal(params) {
 function resolveChargeStatus(preview) {
     return preview.finalAmountMinor === 0 ? 'exempt' : 'pending';
 }
+export function buildMemberFeeChargeCreateData(params) {
+    const status = resolveChargeStatus(params.preview);
+    return {
+        memberId: params.preview.billingMode === 'single_group_charge'
+            ? params.preview.holderMemberId ?? params.preview.memberId
+            : params.preview.memberId,
+        familyGroupId: params.preview.familyGroupId ?? null,
+        holderMemberId: params.preview.holderMemberId ?? null,
+        period: params.preview.period,
+        configVersion: params.preview.configVersion,
+        memberTypeCodeSnapshot: params.preview.memberTypeCodeSnapshot,
+        billingMode: params.preview.billingMode,
+        baseAmountMinor: params.preview.baseAmountMinor,
+        appliedPctBps: params.preview.appliedPctBps,
+        finalAmountMinor: params.preview.finalAmountMinor,
+        status,
+        dueDate: params.dueDate ? Timestamp.fromDate(params.dueDate) : null,
+        generatedByUid: params.actorUid,
+        paidMovementId: null,
+        paymentMovementIds: [],
+        paidAt: null,
+        paidAmountMinor: 0,
+        settlementAmountMinor: params.preview.finalAmountMinor,
+        paidClubAmountMinor: 0,
+        remainingAmountMinor: params.preview.finalAmountMinor,
+        paymentDiscountPctBps: 0,
+        paymentDiscountAmountMinor: 0,
+        paymentDiscountMode: 'none',
+        notes: params.notes ?? null,
+    };
+}
 export async function generateFeePreviewUseCase(params) {
     ensureStaff(params.actor);
     return computeFeePreviewInternal({
@@ -97,27 +144,16 @@ export async function generateCuotaUseCase(params) {
                 duplicate: true,
             };
         }
-        const status = resolveChargeStatus(preview);
-        const memberFeeChargeId = await dataAccess.memberFeeCharges.create({
-            memberId: preview.billingMode === 'single_group_charge' ? preview.holderMemberId ?? preview.memberId : preview.memberId,
-            familyGroupId: preview.familyGroupId ?? null,
-            holderMemberId: preview.holderMemberId ?? null,
-            period: preview.period,
-            configVersion: preview.configVersion,
-            memberTypeCodeSnapshot: preview.memberTypeCodeSnapshot,
-            billingMode: preview.billingMode,
-            baseAmountMinor: preview.baseAmountMinor,
-            appliedPctBps: preview.appliedPctBps,
-            finalAmountMinor: preview.finalAmountMinor,
-            status,
-            dueDate: params.input.dueDate ? Timestamp.fromDate(params.input.dueDate) : null,
-            generatedByUid: actor.uid,
-            paidMovementId: null,
-            notes: params.input.notes ?? null,
-        }, actor.uid);
+        const chargeData = buildMemberFeeChargeCreateData({
+            preview,
+            actorUid: actor.uid,
+            dueDate: params.input.dueDate,
+            notes: params.input.notes,
+        });
+        const memberFeeChargeId = await dataAccess.memberFeeCharges.create(chargeData, actor.uid);
         return {
             memberFeeChargeId,
-            status,
+            status: chargeData.status,
             duplicate: false,
         };
     });

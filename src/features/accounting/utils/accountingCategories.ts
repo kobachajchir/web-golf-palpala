@@ -25,6 +25,7 @@ const INCOME_CATEGORY_LABELS: Record<string, string> = {
   [ACCOUNTING_INCOME_CATEGORY_IDS.handicap]: 'Handicap',
   [ACCOUNTING_INCOME_CATEGORY_IDS.rentalHall]: 'Alquiler salon',
   [ACCOUNTING_INCOME_CATEGORY_IDS.rentalGreenSpace]: 'Alquiler espacio verde',
+  [ACCOUNTING_INCOME_CATEGORY_IDS.internalTransfer]: 'Transferencia interna recibida',
 };
 
 const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
@@ -44,6 +45,8 @@ const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   [ACCOUNTING_EXPENSE_CATEGORY_IDS.limpieza]: 'Limpieza',
   [ACCOUNTING_EXPENSE_CATEGORY_IDS.insumos]: 'Insumos',
   [ACCOUNTING_EXPENSE_CATEGORY_IDS.servidor]: 'SERVIDOR',
+  [ACCOUNTING_EXPENSE_CATEGORY_IDS.varios]: 'Varios',
+  [ACCOUNTING_EXPENSE_CATEGORY_IDS.internalTransfer]: 'Transferencia interna enviada',
 };
 
 function auditFallback() {
@@ -99,6 +102,19 @@ export function getFallbackExpenseCategories(): ExpenseCategoryOption[] {
     sortOrder: (index + 1) * 10,
     ...auditFallback(),
   }));
+}
+
+export function includeRequiredExpenseCategories(categories: ExpenseCategoryOption[]): ExpenseCategoryOption[] {
+  const categoryIds = new Set(categories.map((category) => category.id));
+  const requiredCategoryIds = new Set<string>([
+    ACCOUNTING_EXPENSE_CATEGORY_IDS.servidor,
+    ACCOUNTING_EXPENSE_CATEGORY_IDS.varios,
+  ]);
+  const requiredFallbacks = getFallbackExpenseCategories().filter(
+    (category) => requiredCategoryIds.has(category.id) && !categoryIds.has(category.id),
+  );
+
+  return [...categories, ...requiredFallbacks].sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 export function formatExpenseCategoryName(name: string): string {

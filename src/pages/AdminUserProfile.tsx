@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { getVisibleRoleIds, normalizeRoleIds } from '../constants/roles';
 import type { EntityWithId, MemberDocument, UserDocument } from '../modules/users/domain/models';
 import {
   createMembersRepository,
@@ -100,23 +101,21 @@ export function AdminUserProfile() {
   const displayName = profile.member
     ? `${profile.member.firstName} ${profile.member.lastName}`
     : getUserDisplayName(profile.user);
+  const rawMemberNumber = profile.member?.memberNumber ?? profile.user.memberNumber ?? null;
+  const memberNumber = rawMemberNumber && !rawMemberNumber.startsWith('legacy-') ? rawMemberNumber : null;
+  const visibleRoleIds = getVisibleRoleIds(normalizeRoleIds(profile.user.roleIds));
 
   return (
     <div className="page-container profile-page">
       <section className="floating-card profile-card">
         <div className="profile-header">
           <div>
-            <p className="eyebrow">Ficha administrativa</p>
             <h1>{displayName}</h1>
           </div>
           <span className={`status-pill ${profile.user.active ? '' : 'status-pill--bloqueado'}`}>
             {profile.user.active ? 'Activo' : 'Inactivo'}
           </span>
         </div>
-
-        <p className="profile-note">
-          Esta vista muestra el documento users, roles reales y vinculo de perfil usados por Firebase Auth y reglas.
-        </p>
 
         <div className="profile-actions">
           <Link className="btn-secondary" to={`/users/${profile.user.id}`}>
@@ -135,7 +134,7 @@ export function AdminUserProfile() {
           </div>
           <div className="public-profile-field">
             <span>Numero de socio</span>
-            <strong>{profile.member?.memberNumber ?? profile.user.memberNumber ?? 'Sin vincular'}</strong>
+            <strong>{memberNumber ?? 'Sin vincular'}</strong>
           </div>
           <div className="public-profile-field">
             <span>Rol principal</span>
@@ -143,7 +142,7 @@ export function AdminUserProfile() {
           </div>
           <div className="public-profile-field">
             <span>Roles</span>
-            <strong>{profile.user.roleIds.map(getRoleLabel).join(', ')}</strong>
+            <strong>{visibleRoleIds.map(getRoleLabel).join(', ') || 'Sin roles visibles'}</strong>
           </div>
           <div className="public-profile-field">
             <span>Tipo de perfil</span>

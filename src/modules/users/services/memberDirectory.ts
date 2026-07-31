@@ -40,6 +40,11 @@ export interface ClubMemberListResult {
   hasMore: boolean;
 }
 
+export interface ClubMemberProfile {
+  member: ClubMemberRecord | null;
+  memberDocument: EntityWithId<MemberDocument> | null;
+}
+
 export type ClubMemberSaveResult = ClubMemberRecord & {
   temporaryAccessCredentials?: TemporaryMemberCredentials;
 };
@@ -356,6 +361,10 @@ async function listFirestoreMembers(params: ClubMemberListParams): Promise<ClubM
 }
 
 async function getFirestoreMemberById(memberId: string): Promise<ClubMemberRecord | null> {
+  return (await getFirestoreMemberProfileById(memberId)).member;
+}
+
+async function getFirestoreMemberProfileById(memberId: string): Promise<ClubMemberProfile> {
   const membersRepository = createMembersRepository();
   const [member, memberTypes] = await Promise.all([
     membersRepository.getMember(memberId),
@@ -363,15 +372,21 @@ async function getFirestoreMemberById(memberId: string): Promise<ClubMemberRecor
   ]);
 
   if (!member) {
-    return null;
+    return {
+      member: null,
+      memberDocument: null,
+    };
   }
 
-  return mapFirestoreMember({
-    member,
-    members: [member],
-    memberTypes: new Map(memberTypes.map((memberType) => [memberType.id, memberType])),
-    familyGroups: new Map(),
-  });
+  return {
+    member: mapFirestoreMember({
+      member,
+      members: [member],
+      memberTypes: new Map(memberTypes.map((memberType) => [memberType.id, memberType])),
+      familyGroups: new Map(),
+    }),
+    memberDocument: member,
+  };
 }
 
 async function applyFamilyGroupSelection(params: {
@@ -544,12 +559,15 @@ export async function listClubMembers(params: ClubMemberListParams = {}): Promis
   return listFirestoreMembers(params);
 }
 
-export async function getClubMemberById(memberId: string): Promise<ClubMemberRecord | null> {
+export async function getClubMemberProfile(memberId: string): Promise<ClubMemberProfile> {
   if (shouldUseLocalDirectory()) {
-    return localDirectory.getClubMemberById(memberId);
+    return {
+      member: await localDirectory.getClubMemberById(memberId),
+      memberDocument: null,
+    };
   }
 
-  return getFirestoreMemberById(memberId);
+  return getFirestoreMemberProfileById(memberId);
 }
 
 export async function isClubMemberNumberInUse(
@@ -577,14 +595,17 @@ export async function isClubMemberNumberInUse(
   return Boolean(existingMember && existingMember.id !== excludingMemberId);
 }
 
-export async function getClubMemberHousehold(memberId: string): Promise<ClubMemberRecord[]> {
+export async function getClubMemberHousehold(
+  memberId: string,
+  knownMemberDocument?: EntityWithId<MemberDocument> | null,
+): Promise<ClubMemberRecord[]> {
   if (shouldUseLocalDirectory()) {
     return localDirectory.getClubMemberHousehold(memberId);
   }
 
   const membersRepository = createMembersRepository();
   const familyGroupsRepository = createFamilyGroupsRepository();
-  const member = await membersRepository.getMember(memberId);
+  const member = knownMemberDocument ?? await membersRepository.getMember(memberId);
   if (!member) {
     return [];
   }

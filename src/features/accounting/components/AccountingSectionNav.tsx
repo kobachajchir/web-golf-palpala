@@ -11,12 +11,12 @@ export const ACCOUNTING_NAV_ITEMS: Array<{
   icon: string;
 }> = [
   { id: 'overview', label: 'Inicio', helper: 'KPIs, alertas y pendientes', to: '/accounting/overview', icon: 'home' },
-  { id: 'cash-closures', label: 'Caja', helper: 'Movimientos, cobros, egresos y cierre', to: '/accounting/caja', icon: 'cash' },
+  { id: 'cash-closures', label: 'Caja', helper: 'Movimientos, cobros, egresos, abrir y cerrar caja', to: '/accounting/caja', icon: 'cash' },
   { id: 'member-dues', label: 'Cuotas societarias', helper: 'Renovaciones y valores', to: '/accounting/member-dues', icon: 'dues' },
   { id: 'employees', label: 'Empleados y sueldos', helper: 'Ciclos mensuales y liquidacion', to: '/accounting/employees', icon: 'employees' },
   { id: 'external-docs', label: 'Comprobantes externos', helper: 'F931, ART, obra social y asignaciones', to: '/accounting/external-docs', icon: 'docs' },
   { id: 'payment-methods', label: 'Medios de pago', helper: 'Activos, bancarizados y comisiones', to: '/accounting/payment-methods', icon: 'cards' },
-  { id: 'bank-settlements', label: 'Liquidaciones bancarias', helper: 'Mercado Pago, Macro y diferencias', to: '/accounting/bank-settlements', icon: 'bank' },
+  { id: 'bank-settlements', label: 'Liquidaciones bancarias', helper: 'Macro, Galicia y diferencias', to: '/accounting/bank-settlements', icon: 'bank' },
   { id: 'reports', label: 'Reportes', helper: 'Filtros, historial y auditoria', to: '/accounting/reports', icon: 'reports' },
 ];
 
@@ -74,29 +74,37 @@ export function AccountingSectionNav() {
   );
 
   return (
-    <nav className="accounting-module-nav" aria-label="Navegacion contable" style={{display: "flex", flexDirection: "column", gap: "1rem"}}>
+    <nav className="accounting-module-nav" aria-label="Navegacion contable">
       <div className="accounting-operations-bar">
         <div className="accounting-module-nav__title">
           <span className="eyebrow">ACCOUNTING</span>
-          <strong>{activeItem.label}</strong>
-          <small>{activeItem.helper}</small>
+          <strong className="eyebrow accounting-module-nav__current-section">{activeItem.label}</strong>
         </div>
-        <UiActionButton
-          type="button"
-          aria-expanded={open}
-          aria-controls="accounting-operations-panel"
-          onClick={() => setOpen((current) => !current)}
-          icon={<ChevronIcon open={open} />}
-          iconPosition="right"
-        >
-          Secciones
-        </UiActionButton>
+        <div className="accounting-module-nav__actions">
+          <UiActionButton
+            to="/accounting/overview"
+            variant={location.pathname === '/accounting/overview' || location.pathname === '/accounting' ? 'positive' : 'secondary'}
+            icon={<AccountingSectionIcon icon="home" />}
+          >
+            <span className="eyebrow accounting-module-nav__button-label">Inicio</span>
+          </UiActionButton>
+          <UiActionButton
+            type="button"
+            aria-expanded={open}
+            aria-controls="accounting-operations-panel"
+            onClick={() => setOpen((current) => !current)}
+            icon={<ChevronIcon open={open} />}
+            iconPosition="right"
+          >
+            <span className="eyebrow accounting-module-nav__button-label">Secciones</span>
+          </UiActionButton>
+        </div>
       </div>
       {open && (
         <section id="accounting-operations-panel" className="floating-card accounting-operations-panel">
           <div className="accounting-section-header accounting-operations-panel__header">
             <div>
-              <p className="eyebrow">Operaciones</p>
+              <p className="eyebrow">Secciones</p>
               <h2>Elegir seccion</h2>
             </div>
             <UiActionButton
@@ -120,11 +128,10 @@ export function AccountingSectionNav() {
                 className={({ isActive }) =>
                   `accounting-module-nav__item ${isActive || location.pathname === item.to ? 'accounting-module-nav__item--active' : ''}`
                 }
-              >
-                <AccountingSectionIcon icon={item.icon} />
-                <span>{item.label}</span>
-                <small>{item.helper}</small>
-              </NavLink>
+                >
+                  <AccountingSectionIcon icon={item.icon} />
+                  <span className="eyebrow accounting-module-nav__item-label">{item.label}</span>
+                </NavLink>
             ))}
           </div>
         </section>

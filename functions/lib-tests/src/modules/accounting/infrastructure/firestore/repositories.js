@@ -310,6 +310,9 @@ class FirestoreFinancialMovementsStore extends FirestoreCollectionStore {
         if (filters.status) {
             query = query.where('status', '==', filters.status);
         }
+        if (filters.installmentPlanId) {
+            query = query.where('installmentPlanId', '==', filters.installmentPlanId);
+        }
         if (filters.settlementId) {
             query = query.where('settlementId', '==', filters.settlementId).orderBy('operationDate', 'asc');
         }
@@ -327,6 +330,10 @@ class FirestoreFinancialMovementsStore extends FirestoreCollectionStore {
     }
     async listBySettlementId(settlementId) {
         const query = this.collection.where('settlementId', '==', settlementId).orderBy('operationDate', 'asc');
+        return this.listFromQuery(query);
+    }
+    async listByInstallmentPlanId(installmentPlanId) {
+        const query = this.collection.where('installmentPlanId', '==', installmentPlanId).orderBy('operationDate', 'asc');
         return this.listFromQuery(query);
     }
 }
@@ -606,6 +613,9 @@ class FirestoreCashClosuresStore extends FirestoreCollectionStore {
         query = await this.applyCursor(query, filters.cursorId);
         return this.listPageFromQuery(query, filters.limit);
     }
+    listOpen() {
+        return this.listFromQuery(this.collection.where('status', '==', 'open'));
+    }
 }
 class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStore {
     constructor(db, transaction) {
@@ -758,54 +768,6 @@ class FirestoreMemberFeeChargesStore extends FirestoreCollectionStore {
         return this.listPageFromQuery(query, filters.limit);
     }
 }
-class FirestoreMercadoPagoCheckoutSessionsStore extends FirestoreCollectionStore {
-    constructor(db, transaction) {
-        super(getCollection(db, ACCOUNTING_COLLECTIONS.mercadoPagoCheckoutSessions), transaction);
-    }
-    getById(sessionId) {
-        return this.getByIdInternal(sessionId);
-    }
-    async getByExternalReference(externalReference) {
-        const snapshot = await getQuerySnapshot(this.collection.where('externalReference', '==', externalReference).limit(1), this.transaction);
-        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
-    }
-    async getByPaymentId(paymentId) {
-        const snapshot = await getQuerySnapshot(this.collection.where('paymentId', '==', paymentId).limit(1), this.transaction);
-        return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
-    }
-    set(sessionId, data, actorUid) {
-        return this.setInternal(sessionId, data, actorUid);
-    }
-    update(sessionId, patch, actorUid) {
-        return this.updateInternal(sessionId, patch, actorUid);
-    }
-    async listPage(filters) {
-        let query = this.collection;
-        if (filters.status) {
-            query = query.where('status', '==', filters.status);
-        }
-        if (filters.createdByUid) {
-            query = query.where('createdByUid', '==', filters.createdByUid);
-        }
-        query = query.orderBy('updatedAt', 'desc');
-        query = await this.applyCursor(query, filters.cursorId);
-        return this.listPageFromQuery(query, filters.limit);
-    }
-}
-class FirestoreMercadoPagoEventsStore extends FirestoreCollectionStore {
-    constructor(db, transaction) {
-        super(getCollection(db, ACCOUNTING_COLLECTIONS.mercadoPagoEvents), transaction);
-    }
-    getById(eventId) {
-        return this.getByIdInternal(eventId);
-    }
-    set(eventId, data, actorUid) {
-        return this.setInternal(eventId, data, actorUid);
-    }
-    update(eventId, patch, actorUid) {
-        return this.updateInternal(eventId, patch, actorUid);
-    }
-}
 export function createFirestoreAccountingDataAccess(db, clock, transaction) {
     void clock;
     return {
@@ -836,8 +798,6 @@ export function createFirestoreAccountingDataAccess(db, clock, transaction) {
         advertisingContracts: new FirestoreAdvertisingContractsStore(db, transaction),
         handicapCharges: new FirestoreHandicapChargesStore(db, transaction),
         memberFeeCharges: new FirestoreMemberFeeChargesStore(db, transaction),
-        mercadoPagoCheckoutSessions: new FirestoreMercadoPagoCheckoutSessionsStore(db, transaction),
-        mercadoPagoEvents: new FirestoreMercadoPagoEventsStore(db, transaction),
     };
 }
 export class FirestoreAccountingTransactionManager {

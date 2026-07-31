@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 type ConfirmDialogTone = 'default' | 'danger';
 
@@ -25,18 +25,32 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !loading) {
+        onCancel();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [loading, onCancel, open]);
+
   if (!open) {
     return null;
   }
 
-  const handleOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget && !loading) {
-      onCancel();
-    }
-  };
-
   return (
-    <div className="modal-overlay" onClick={handleOverlayClick}>
+    <div className="modal-overlay">
       <section className="floating-card confirm-dialog-card" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
         <div className="confirm-dialog-card__copy">
           <p className="eyebrow">Confirmacion</p>

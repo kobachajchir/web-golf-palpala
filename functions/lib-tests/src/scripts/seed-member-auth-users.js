@@ -5,6 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { buildSyntheticAuthEmail, generateMemberTemporaryPassword, normalizeMemberNumber, } from '../modules/auth/member-number-auth.js';
 import { buildCustomClaims, pickPrimaryRoleId } from '../modules/users/application/shared.js';
+import { setCustomClaimsPreservingInternalRoles } from '../modules/users/infrastructure/firestore/auth-gateway.js';
 import { DEFAULT_MEMBER_TYPES, DEFAULT_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_ROLES, SYSTEM_ACTOR_UID, USERS_COLLECTIONS, } from '../modules/users/domain/constants.js';
 const DEFAULT_PROJECT_ID = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? 'demo-web-golf-palpala';
 const DRY_RUN = process.env.MEMBER_USERS_DRY_RUN === 'true' || process.argv.includes('--dry-run');
@@ -188,7 +189,7 @@ async function run() {
                 updatedBy: SYSTEM_ACTOR_UID,
             }, { merge: true });
         });
-        await getAuth().setCustomUserClaims(authUser.uid, buildCustomClaims(mergedRoleIds, claimsVersion, true));
+        await setCustomClaimsPreservingInternalRoles(authUser.uid, buildCustomClaims(mergedRoleIds, claimsVersion, true));
         report.processed += 1;
         report.createdAuthUsers += authUser.created ? 1 : 0;
         report.updatedUsers += 1;

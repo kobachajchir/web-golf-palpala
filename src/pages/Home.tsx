@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
+import { ModalCloseIcon } from '../components/ModalCloseIcon';
 import { ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import { firestore } from '../lib/firebase';
 import { subscribeTournamentRegistrations } from '../modules/tournaments/repositories';
+import { getMemberOpenItems } from '../features/accounting/api/memberBillingApi';
 import type { EntityWithId, TournamentRegistrationDocument } from '../modules/tournaments/domain/models';
-import { getRoleLabel, getUserDisplayName } from '../utils/user';
 
 type ActionIconType =
   | 'calendar'
@@ -19,7 +20,7 @@ type ActionIconType =
   | 'flag'
   | 'pencil';
 
-type QuickActionCategory = 'Socios' | 'Caja' | 'Empleados' | 'Torneos' | 'Reportes' | 'Perfil' | 'Club';
+type QuickActionCategory = 'Socios' | 'Caja' | 'Empleados' | 'Torneos' | 'Reportes' | 'Perfil';
 
 type RoleAction = {
   id: string;
@@ -41,26 +42,21 @@ const STAFF_ROLES = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
 const QUICK_ACTION_LIBRARY: RoleAction[] = [
   { id: 'profile', category: 'Perfil', label: 'Mi perfil', helper: 'Datos personales', icon: 'badge', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO], route: '/perfil' },
   { id: 'change-password', category: 'Perfil', label: 'Cambiar contrasena', helper: 'Seguridad de acceso', icon: 'shield', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO], route: '/perfil?panel=password' },
+  { id: 'developer-panel', category: 'Perfil', label: 'Desarrollador', helper: 'Area interna del software', icon: 'shield', roles: [ROLES.DESARROLLADOR], route: '/desarrollador' },
   { id: 'membership', category: 'Socios', label: 'Mi membresia', helper: 'Estado de socio', icon: 'wallet', roles: MEMBER_ROLES, route: '/mi-membresia' },
   { id: 'member-payments', category: 'Socios', label: 'Mis pagos', helper: 'Cuota y estado de pago', icon: 'wallet', roles: [ROLES.SOCIO], route: '/mi-membresia?focus=payments' },
   { id: 'family-group', category: 'Socios', label: 'Grupo familiar', helper: 'Vinculos y titulares', icon: 'people', roles: MEMBER_ROLES, route: '/mi-membresia?focus=family' },
-  { id: 'courts', category: 'Club', label: 'Solicitar cancha', helper: 'Fechas y horarios', icon: 'calendar', roles: MEMBER_ROLES, route: '/canchas' },
-  { id: 'club-contact', category: 'Club', label: 'Contacto del club', helper: 'Direccion y consulta', icon: 'people', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO, ROLES.ADMINISTRATIVO], route: '/club#contacto' },
-  { id: 'club-board', category: 'Club', label: 'Comision Directiva', helper: 'Cargos institucionales', icon: 'people', roles: [ROLES.COMISION_DIRECTIVA, ROLES.DIRECTIVO], route: '/directiva' },
   { id: 'tournaments', category: 'Torneos', label: 'Torneos abiertos', helper: 'Inscripciones disponibles', icon: 'flag', roles: [ROLES.SOCIO, ROLES.COMISION_DIRECTIVA, ROLES.EMPLEADO, ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO], route: '/torneos?status=registration_open&open=search' },
   { id: 'tournament-results', category: 'Torneos', label: 'Resultados', helper: 'Tarjetas y posiciones', icon: 'flag', roles: MEMBER_ROLES, route: '/torneos?tab=leaderboard&open=results' },
-  { id: 'report-expense', category: 'Empleados', label: 'Cargar gasto', helper: 'Tickets y rendiciones', icon: 'clipboard', roles: [ROLES.EMPLEADO], notice: 'La carga propia de gastos queda preparada para conectarse al portal del empleado.' },
-  { id: 'my-expenses', category: 'Empleados', label: 'Mis rendiciones', helper: 'Estado de cargas', icon: 'wallet', roles: [ROLES.EMPLEADO], notice: 'El seguimiento propio de rendiciones queda preparado para conectarse al portal del empleado.' },
-  { id: 'expense-status', category: 'Empleados', label: 'Estado de comprobantes', helper: 'Revision administrativa', icon: 'clipboard', roles: [ROLES.EMPLEADO], notice: 'El estado de comprobantes propios queda preparado para el portal del empleado.' },
   { id: 'employee-certificate', category: 'Empleados', label: 'Comprobante laboral', helper: 'Documentacion propia', icon: 'badge', roles: [ROLES.EMPLEADO], notice: 'La carga de documentacion laboral propia queda preparada para el portal del empleado.' },
-  { id: 'register-payment', category: 'Caja', label: 'Registrar cobro', helper: 'Cuotas e ingresos', icon: 'wallet', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=cobros' },
+  { id: 'green-fee-payment', category: 'Caja', label: 'Green Fee y cuotas', helper: 'Cobro directo', icon: 'wallet', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=cobros&modal=income-priority' },
+  { id: 'register-payment', category: 'Caja', label: 'Registrar cobro', helper: 'Cuotas e ingresos', icon: 'wallet', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=cobros&modal=income-other' },
   { id: 'renewals', category: 'Socios', label: 'Renovaciones', helper: 'Socios por renovar', icon: 'calendar', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/member-dues?tab=renewals' },
-  { id: 'cash-closures', category: 'Caja', label: 'Caja operativa', helper: 'Cobros, egresos y cierre', icon: 'chart', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja' },
-  { id: 'expense-review', category: 'Caja', label: 'Rendiciones', helper: 'Revision y aprobacion', icon: 'clipboard', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=rendiciones' },
+  { id: 'cash-closures', category: 'Caja', label: 'Caja operativa', helper: 'Abrir y cerrar caja', icon: 'chart', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=caja' },
   { id: 'manage-members', category: 'Socios', label: 'Socios', helper: 'Padron y membresias', icon: 'people', roles: [ROLES.ADMINISTRATIVO], route: '/admin/members' },
   { id: 'manage-employees', category: 'Empleados', label: 'Empleados', helper: 'Legajos y accesos', icon: 'people', roles: STAFF_ROLES, route: '/admin/employees' },
   { id: 'employee-documents', category: 'Empleados', label: 'Comprobantes laborales', helper: 'F931, ART y obra social', icon: 'badge', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/external-docs' },
-  { id: 'manual-expense', category: 'Caja', label: 'Registrar egreso', helper: 'Gastos operativos', icon: 'clipboard', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=egresos' },
+  { id: 'manual-expense', category: 'Caja', label: 'Registrar egreso', helper: 'Gastos operativos', icon: 'clipboard', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=egresos&modal=expense' },
   { id: 'daily-movements', category: 'Caja', label: 'Movimientos del dia', helper: 'Caja operativa', icon: 'chart', roles: [ROLES.ADMINISTRATIVO], route: '/accounting/caja?tab=movimientos' },
   { id: 'cash-flow', category: 'Reportes', label: 'Flujo de caja', helper: 'Entradas y salidas', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/reports?tab=stats' },
   { id: 'reports', category: 'Reportes', label: 'Reportes', helper: 'Balances y resumen', icon: 'flag', roles: [ROLES.DIRECTIVO], route: '/accounting/reports' },
@@ -68,24 +64,32 @@ const QUICK_ACTION_LIBRARY: RoleAction[] = [
   { id: 'salary-overtime', category: 'Empleados', label: 'Sueldos y horas extra', helper: 'Configuracion y control', icon: 'wallet', roles: [ROLES.DIRECTIVO], route: '/accounting/employees?focus=salary' },
   { id: 'bank-movements', category: 'Caja', label: 'Movimientos bancarios', helper: 'Bancos y saldos', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/bank-settlements' },
   { id: 'void-movement', category: 'Caja', label: 'Movimientos', helper: 'Filtros y reversos controlados', icon: 'shield', roles: [ROLES.DIRECTIVO], route: '/accounting/caja?tab=movimientos' },
-  { id: 'membership-pricing', category: 'Socios', label: 'Configurar cuota', helper: 'Precio societario', icon: 'wallet', roles: [ROLES.DIRECTIVO], route: '/accounting/member-dues?tab=config' },
+  { id: 'membership-pricing', category: 'Socios', label: 'Configurar cuota', helper: 'Cuota y green fees', icon: 'wallet', roles: [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO], route: '/accounting/member-dues?tab=config' },
   { id: 'macro-settlements', category: 'Caja', label: 'Macro y conciliaciones', helper: 'Debito y liquidaciones', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/bank-settlements' },
   { id: 'external-references', category: 'Empleados', label: 'F931 / ART / Obra social', helper: 'Referencias externas', icon: 'badge', roles: [ROLES.DIRECTIVO], route: '/accounting/external-docs' },
   { id: 'stats', category: 'Reportes', label: 'Estadisticas', helper: 'Indicadores completos', icon: 'chart', roles: [ROLES.DIRECTIVO], route: '/accounting/reports?tab=stats' },
 ];
 
 const DEFAULT_QUICK_ACTION_IDS: Record<RoleType, string[]> = {
-  [ROLES.SOCIO]: ['membership', 'tournaments', 'courts', 'member-payments', 'family-group', 'club-contact'],
-  [ROLES.COMISION_DIRECTIVA]: ['profile', 'membership', 'tournaments', 'club-board', 'club-contact', 'courts'],
-  [ROLES.EMPLEADO]: ['report-expense', 'my-expenses', 'profile', 'change-password', 'club-contact'],
-  [ROLES.ADMINISTRATIVO]: ['cash-closures', 'register-payment', 'expense-review', 'renewals', 'manage-members'],
+  [ROLES.SOCIO]: ['membership', 'tournaments', 'member-payments', 'family-group'],
+  [ROLES.COMISION_DIRECTIVA]: ['profile', 'membership', 'tournaments'],
+  [ROLES.EMPLEADO]: ['employee-certificate', 'profile', 'change-password', 'tournaments'],
+  [ROLES.ADMINISTRATIVO]: ['green-fee-payment', 'register-payment', 'cash-closures', 'renewals', 'manage-members'],
   [ROLES.DIRECTIVO]: ['cash-flow', 'reports', 'payroll', 'salary-overtime', 'bank-movements', 'void-movement'],
+  [ROLES.DESARROLLADOR]: ['developer-panel'],
 };
 
-const QUICK_ACTION_CATEGORY_ORDER: QuickActionCategory[] = ['Socios', 'Caja', 'Empleados', 'Torneos', 'Reportes', 'Perfil', 'Club'];
+const QUICK_ACTION_CATEGORY_ORDER: QuickActionCategory[] = ['Socios', 'Caja', 'Empleados', 'Torneos', 'Reportes', 'Perfil'];
 
 function formatAmountMinor(amountMinor: number) {
   return `$${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(amountMinor / 100)}`;
+}
+
+function formatTournamentDate(value: string) {
+  const date = new Date(value.includes('T') ? value : `${value}T12:00:00`);
+  return Number.isNaN(date.getTime())
+    ? 'Sin fecha'
+    : new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 }
 
 function getRegistrationStatusLabel(registration: TournamentRegistrationRecord) {
@@ -175,11 +179,11 @@ export function Home() {
   const navigate = useNavigate();
   const [notice, setNotice] = useState('');
   const [isQuickActionsEditorOpen, setIsQuickActionsEditorOpen] = useState(false);
+  const [isTournamentsPanelOpen, setIsTournamentsPanelOpen] = useState(false);
   const [isSavingQuickActions, setIsSavingQuickActions] = useState(false);
   const [selectedQuickActionIds, setSelectedQuickActionIds] = useState<string[]>([]);
   const [tournamentRegistrations, setTournamentRegistrations] = useState<TournamentRegistrationRecord[]>([]);
-  const displayName = getUserDisplayName(user);
-  const reservationSummary = 'Sin reservas';
+  const [memberDebt, setMemberDebt] = useState({ amountMinor: 0, count: 0 });
   const availableActions = useMemo(
     () => QUICK_ACTION_LIBRARY.filter((action) => action.roles.includes(interfaceMode)),
     [interfaceMode],
@@ -208,10 +212,28 @@ export function Home() {
     });
   }, [user?.id]);
 
-  const visibleTournamentRegistrations = useMemo(
-    () => tournamentRegistrations.slice(0, 3),
-    [tournamentRegistrations],
-  );
+  useEffect(() => {
+    if (interfaceMode !== ROLES.SOCIO || user?.profileType !== 'member' || !user.profileId) {
+      setMemberDebt({ amountMinor: 0, count: 0 });
+      return;
+    }
+    let active = true;
+    void getMemberOpenItems(user.profileId)
+      .then((items) => {
+        if (active) {
+          setMemberDebt({
+            amountMinor: items.reduce((total, item) => total + item.amountMinor, 0),
+            count: items.length,
+          });
+        }
+      })
+      .catch(() => {
+        if (active) setMemberDebt({ amountMinor: 0, count: 0 });
+      });
+    return () => { active = false; };
+  }, [interfaceMode, user?.profileId, user?.profileType]);
+
+  const visibleTournamentRegistrations = tournamentRegistrations;
 
   const quickActions = useMemo(() => {
     const selectedSet = new Set(selectedQuickActionIds);
@@ -291,55 +313,19 @@ export function Home() {
   };
 
   return (
-    <div className="page-container home-page">
-      <div className="home-dashboard">
-        <section className="floating-card home-card">
-          <p className="eyebrow">Bienvenido</p>
-          <h1>Hola {displayName}</h1>
-          <div className="reservation-status">
-            <span>Reservas</span>
-            <strong>{reservationSummary}</strong>
+    <div className="page-container accounting-page home-page home-accounting-page">
+      <div className="accounting-shell home-accounting-shell">
+        <section className="floating-card accounting-hero home-hero">
+          <div className="accounting-hero__copy">
+            <h1>Inicio</h1>
           </div>
-
-          {visibleTournamentRegistrations.length > 0 && (
-            <div className="home-tournament-summary">
-              <div className="home-tournament-summary__header">
-                <span>Torneos</span>
-                <button
-                  type="button"
-                  className="ui-action-button ui-action-button--compact ui-action-button--secondary home-tournament-summary__action"
-                  onClick={() => navigate('/torneos?open=registrations')}
-                >
-                  Ver
-                </button>
-              </div>
-              {visibleTournamentRegistrations.map((registration) => (
-                <button
-                  key={registration.id}
-                  type="button"
-                  className="home-tournament-summary__item"
-                  onClick={() => navigate('/torneos?open=registrations')}
-                >
-                  <span>
-                    <strong>{registration.tournamentNameSnapshot}</strong>
-                    <small>{formatAmountMinor(registration.amountMinor)}</small>
-                  </span>
-                  <span className={`status-chip home-tournament-summary__status ${getRegistrationStatusClass(registration)}`}>
-                    {getRegistrationStatusLabel(registration)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {notice && <div className="accounting-success">{notice}</div>}
         </section>
 
-        <section className="floating-card role-card">
-          <div className="role-card__header">
-            <div>
-              <p className="eyebrow">Acciones rapidas - {getRoleLabel(interfaceMode)}</p>
-            </div>
+        {notice && <div className="accounting-success">{notice}</div>}
+
+        <section className="floating-card accounting-primary-panel role-card home-actions-panel">
+          <div className="accounting-section-header accounting-section-header--plain role-card__header">
+            <h2>Acciones rapidas</h2>
             <button
               type="button"
               className="ui-action-button ui-action-button--compact quick-actions-edit-button"
@@ -350,12 +336,12 @@ export function Home() {
             </button>
           </div>
 
-          <div className="action-grid">
+          <div className="action-grid accounting-action-grid home-action-grid">
             {quickActions.map((action) => (
               <button
                 key={action.id}
                 type="button"
-                className="action-tile"
+                className="action-tile accounting-action-tile home-action-tile"
                 onClick={() => handleRoleAction(action)}
               >
                 <span className="action-icon">
@@ -367,11 +353,83 @@ export function Home() {
             ))}
           </div>
         </section>
+
+        {memberDebt.amountMinor > 0 && (
+          <section className="accounting-summary-grid home-summary-grid" aria-label="Deuda societaria">
+            <button
+              type="button"
+              className="summary-card home-summary-card home-summary-card--button"
+              onClick={() => navigate('/mi-membresia?focus=payments')}
+            >
+              <span>Deuda societaria</span>
+              <strong>{formatAmountMinor(memberDebt.amountMinor)}</strong>
+              <small>{memberDebt.count} {memberDebt.count === 1 ? 'cuota pendiente' : 'cuotas pendientes'}</small>
+            </button>
+          </section>
+        )}
+
+        {tournamentRegistrations.length > 0 && (
+          <section className="accounting-summary-grid home-summary-grid" aria-label="Resumen de inicio">
+            <button
+              type="button"
+              className={`summary-card home-summary-card home-summary-card--button ${isTournamentsPanelOpen ? 'home-summary-card--active' : ''}`}
+              aria-expanded={isTournamentsPanelOpen}
+              onClick={() => setIsTournamentsPanelOpen((current) => !current)}
+            >
+              <span>Torneos</span>
+              <strong>{tournamentRegistrations.length}</strong>
+              <small>Inscripciones registradas</small>
+            </button>
+          </section>
+        )}
+
+        {tournamentRegistrations.length > 0 && isTournamentsPanelOpen && (
+          <section className="floating-card accounting-primary-panel home-tournaments-panel">
+            <div className="accounting-section-header accounting-section-header--plain">
+              <h2>Torneos</h2>
+              <button
+                type="button"
+                className="ui-action-button ui-action-button--compact ui-action-button--secondary home-tournament-summary__action"
+                onClick={() => navigate('/torneos?open=registrations')}
+              >
+                Ver todos
+              </button>
+            </div>
+            <div className="tournament-table home-tournament-table">
+              <div className="tournament-table__body home-tournament-list">
+                {visibleTournamentRegistrations.length === 0 ? (
+                  <div className="empty-state empty-state--inline">No tenes torneos registrados.</div>
+                ) : (
+                  visibleTournamentRegistrations.map((registration) => (
+                    <button
+                      key={registration.id}
+                      type="button"
+                      className="tournament-row home-tournament-row"
+                      onClick={() => navigate('/torneos?open=registrations')}
+                    >
+                      <span className="member-cell">
+                        <strong>{registration.tournamentNameSnapshot}</strong>
+                        <small>{formatTournamentDate(registration.tournamentDate)}</small>
+                      </span>
+                      <span className="member-cell">
+                        <strong>{formatAmountMinor(registration.amountMinor)}</strong>
+                        <small>Inscripcion</small>
+                      </span>
+                      <span className={`status-chip home-tournament-summary__status ${getRegistrationStatusClass(registration)}`}>
+                        {getRegistrationStatusLabel(registration)}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
+        )}
       </div>
 
       {isQuickActionsEditorOpen && (
         <div className="modal-overlay quick-actions-modal-overlay" role="presentation">
-          <section className="member-modal-card quick-actions-modal" role="dialog" aria-modal="true" aria-labelledby="quickActionsTitle">
+          <section className="member-modal-card quick-actions-modal home-quick-actions-modal" role="dialog" aria-modal="true" aria-labelledby="quickActionsTitle">
             <div className="member-modal__header quick-actions-modal__header">
               <div>
                 <p className="eyebrow-light">Acciones rapidas</p>
@@ -388,7 +446,7 @@ export function Home() {
                 aria-label="Cerrar"
                 onClick={() => setIsQuickActionsEditorOpen(false)}
               >
-                x
+                <ModalCloseIcon />
               </button>
             </div>
 
@@ -401,7 +459,7 @@ export function Home() {
               </div>
               {availableActionsByCategory.map((group) => (
                 <div key={group.category} className="quick-actions-category">
-                  <p className='eyebrow-dark'>{group.category}</p>
+                  <p className="eyebrow-dark">{group.category}</p>
                   <div className="quick-actions-category__list">
                     {group.actions.map((action) => {
                       const selected = selectedQuickActionIds.includes(action.id);

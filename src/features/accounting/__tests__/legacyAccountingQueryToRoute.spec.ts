@@ -17,11 +17,7 @@ test('quick action legacy routes redirect to canonical accounting tasks', () => 
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=expense-queue'),
-    '/accounting/caja?tab=rendiciones',
-  );
-  assert.equal(
-    legacyAccountingQueryToRoute('section=movimientos&subsection=mercado-pago'),
-    '/accounting/caja?tab=cobros&mode=mercadopago',
+    '/accounting/caja?tab=movimientos',
   );
   assert.equal(
     legacyAccountingQueryToRoute('section=movimientos&subsection=payment-methods'),

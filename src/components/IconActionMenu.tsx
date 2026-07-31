@@ -4,6 +4,8 @@ export type IconActionMenuItem = {
   id: string;
   label: string;
   danger?: boolean;
+  accent?: boolean;
+  warning?: boolean;
   disabled?: boolean;
   onSelect: () => void;
 };
@@ -41,7 +43,12 @@ export function IconActionMenu({
             <button
               key={item.id}
               type="button"
-              className={item.danger ? 'member-actions-menu__item member-actions-menu__item--danger' : 'member-actions-menu__item'}
+              className={[
+                'member-actions-menu__item',
+                item.accent ? 'member-actions-menu__item--accent' : '',
+                item.warning ? 'member-actions-menu__item--warning' : '',
+                item.danger ? 'member-actions-menu__item--danger' : '',
+              ].filter(Boolean).join(' ')}
               role="menuitem"
               disabled={item.disabled}
               onClick={item.onSelect}

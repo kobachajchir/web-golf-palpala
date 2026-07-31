@@ -20,10 +20,22 @@ export type MembershipChargePersistenceMode = 'member_fee_charges';
 export type CantineroContractMode = 'fixed_monthly' | 'fixed_plus_variable';
 export type AdvertisingDefaultPeriodicity = 'monthly' | 'one_time';
 
-export type PaymentMethodId = 'debit_macro' | 'debit' | 'transfer' | 'credit' | 'cash' | 'mercado_pago';
+export type PaymentMethodId =
+  | 'cash'
+  | 'transfer_macro'
+  | 'qr_macro'
+  | 'transfer_galicia'
+  | 'qr_galicia'
+  | 'debit_galicia'
+  | 'credit_galicia'
+  | 'debit_macro'
+  | 'debit'
+  | 'transfer'
+  | 'credit';
 export type PaymentMethodSpecialReportingType = 'macro_debit';
 export type FinancialMovementType = 'income' | 'expense';
 export type FinancialMovementStatus = 'draft' | 'pending' | 'posted' | 'voided' | 'reversed';
+export type InstallmentMovementRole = 'charge' | 'payment';
 export type ExpenseSubmissionStatus = 'submitted' | 'approved' | 'rejected' | 'posted';
 export type SalaryPeriodicity = 'monthly' | 'daily' | 'hourly' | 'seasonal' | 'honorarios';
 export type SalaryPaymentStatus = 'draft' | 'ready_to_liquidate' | 'liquidated' | 'paid' | 'posted' | 'voided';
@@ -40,25 +52,6 @@ export type AdvertisingKind = 'board' | 'antenna';
 export type HandicapChargeStatus = 'pending_collection' | 'collected' | 'transferred' | 'closed';
 export type MemberFeeChargeStatus = 'pending' | 'paid' | 'exempt' | 'cancelled' | 'overdue';
 export type ThirdPartyType = 'member' | 'employee' | 'vendor' | 'association' | 'tenant' | 'advertiser' | 'external';
-export type MercadoPagoCheckoutSourceType =
-  | 'member_fee_charge'
-  | 'tournament_registration'
-  | 'green_fee'
-  | 'handicap_charge'
-  | 'concession_charge'
-  | 'advertising_charge'
-  | 'manual_income';
-export type MercadoPagoCheckoutSessionStatus =
-  | 'creating'
-  | 'ready'
-  | 'pending'
-  | 'approved'
-  | 'rejected'
-  | 'cancelled'
-  | 'expired'
-  | 'refunded'
-  | 'failed';
-
 export interface AuditFields {
   createdAt: Timestamp;
   createdBy: UID;
@@ -88,11 +81,18 @@ export interface FinancialConfigDocument extends AuditFields {
   allowStandaloneMinor: boolean;
   membershipChargePersistenceMode: MembershipChargePersistenceMode;
   greenFeeAppliesToMembers: boolean;
+  memberGreenFeeWeekdayMinor?: AmountMinor | null;
+  memberGreenFeeSaturdayHolidayMinor?: AmountMinor | null;
+  guestGreenFeeWeekdayMinor?: AmountMinor | null;
+  guestGreenFeeSaturdayHolidayMinor?: AmountMinor | null;
+  minorGreenFeeSaturdayHolidayPctBps?: Bps | null;
+  nationalHolidayDates?: string[];
   cantineroContractMode: CantineroContractMode;
   advertisingDefaultPeriodicity: AdvertisingDefaultPeriodicity;
   requireApprovalForExpensePosting: boolean;
   requireApprovalForOvertimePosting: boolean;
   serverMonthlyExpenseMinor?: AmountMinor | null;
+  serverMonthlyExpenseDueDay?: number | null;
   notes?: string | null;
 }
 
@@ -111,6 +111,12 @@ export interface PaymentCommissionRuleDocument extends AuditFields {
   validFrom: Timestamp;
   validTo?: Timestamp | null;
   setByUid: UID;
+  breakdown?: Array<{
+    id: DocId;
+    label: string;
+    percentageBps: Bps;
+    isActive: boolean;
+  }>;
   notes?: string | null;
 }
 
@@ -150,6 +156,17 @@ export interface FinancialMovementDocument extends AuditFields {
   appliedCommissionPctBps?: Bps | null;
   appliedCommissionAmountMinor?: AmountMinor | null;
   netAmountMinor: AmountMinor;
+  installmentPlanId?: DocId | null;
+  installmentRole?: InstallmentMovementRole | null;
+  installmentNumber?: number | null;
+  installmentCount?: number | null;
+  installmentBaseAmountMinor?: AmountMinor | null;
+  installmentInterestPctBps?: Bps | null;
+  installmentInterestAmountMinor?: AmountMinor | null;
+  installmentTotalAmountMinor?: AmountMinor | null;
+  installmentScheduledAmountMinor?: AmountMinor | null;
+  installmentPaidAmountMinor?: AmountMinor | null;
+  installmentPaidCount?: number | null;
   bancarizado: boolean;
   imputableImpositivo: boolean;
   settlementId?: DocId | null;
@@ -158,6 +175,10 @@ export interface FinancialMovementDocument extends AuditFields {
   approvedAt?: Timestamp | null;
   reversalOfMovementId?: DocId | null;
   voidReason?: string | null;
+  excludeFromBalance?: boolean;
+  balanceExclusionReason?: string | null;
+  balanceExcludedAt?: Timestamp | null;
+  balanceExcludedByUid?: UID | null;
   metadata?: Record<string, unknown>;
   notes?: string | null;
 }
@@ -383,59 +404,16 @@ export interface MemberFeeChargeDocument extends AuditFields {
   dueDate?: Timestamp | null;
   generatedByUid: UID;
   paidMovementId?: DocId | null;
+  paymentMovementIds?: DocId[];
   paidAt?: Timestamp | null;
   paidAmountMinor?: AmountMinor | null;
+  settlementAmountMinor?: AmountMinor | null;
+  paidClubAmountMinor?: AmountMinor | null;
+  remainingAmountMinor?: AmountMinor | null;
   paymentDiscountPctBps?: Bps | null;
   paymentDiscountAmountMinor?: AmountMinor | null;
+  paymentDiscountMode?: 'automatic' | 'manual' | 'none' | null;
   notes?: string | null;
-}
-
-export interface MercadoPagoCheckoutSessionItem {
-  sourceType: MercadoPagoCheckoutSourceType;
-  sourceId?: DocId | null | undefined;
-  memberId?: DocId | null | undefined;
-  thirdPartyType?: ThirdPartyType | null | undefined;
-  thirdPartyId?: DocId | null | undefined;
-  categoryId: DocId;
-  description: string;
-  amountMinor: AmountMinor;
-  originCollection?: string | null | undefined;
-  originId?: DocId | null | undefined;
-  metadata?: Record<string, unknown> | undefined;
-}
-
-export interface MercadoPagoCheckoutSessionDocument extends AuditFields {
-  items: MercadoPagoCheckoutSessionItem[];
-  memberIds: DocId[];
-  grossAmountMinor: AmountMinor;
-  currency: CurrencyCode;
-  status: MercadoPagoCheckoutSessionStatus;
-  preferenceId?: string | null;
-  checkoutUrl?: string | null;
-  paymentId?: string | null;
-  merchantOrderId?: string | null;
-  externalReference: string;
-  providerStatus?: string | null;
-  providerStatusDetail?: string | null;
-  financialMovementIds: DocId[];
-  idempotencyKey: string;
-  createdByUid: UID;
-  notes?: string | null;
-}
-
-export interface MercadoPagoEventDocument extends AuditFields {
-  eventId: string;
-  type: string;
-  action: string;
-  dataId: string;
-  paymentId?: string | null;
-  merchantOrderId?: string | null;
-  externalReference?: string | null;
-  payloadSnapshot: Record<string, unknown>;
-  headersSnapshot: Record<string, string>;
-  processed: boolean;
-  processedAt?: Timestamp | null;
-  processingError?: string | null;
 }
 
 export type EntityWithId<T extends object> = UsersEntityWithId<T>;

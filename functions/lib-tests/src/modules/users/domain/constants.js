@@ -18,6 +18,8 @@ export const LEGACY_DIRECTIVO_ROLE_ID = 'directivo';
 export const BOARD_COMMISSION_ROLE_ID = 'comision_directiva';
 export const EXECUTIVE_ACCESS_ROLE_IDS = [EXECUTIVE_COMMITTEE_ROLE_ID, LEGACY_DIRECTIVO_ROLE_ID];
 export const STAFF_ROLE_IDS = [EXECUTIVE_COMMITTEE_ROLE_ID, LEGACY_DIRECTIVO_ROLE_ID, 'administrativo'];
+export const DEVELOPER_ROLE_ID = 'desarrollador';
+export const INTERNAL_ROLE_IDS = [DEVELOPER_ROLE_ID];
 export const CLAIM_ROLE_IDS = [
     EXECUTIVE_COMMITTEE_ROLE_ID,
     LEGACY_DIRECTIVO_ROLE_ID,
@@ -25,6 +27,7 @@ export const CLAIM_ROLE_IDS = [
     'empleado',
     BOARD_COMMISSION_ROLE_ID,
     'socio',
+    DEVELOPER_ROLE_ID,
 ];
 export const PRIMARY_ROLE_PRECEDENCE = [
     EXECUTIVE_COMMITTEE_ROLE_ID,
@@ -33,6 +36,7 @@ export const PRIMARY_ROLE_PRECEDENCE = [
     'empleado',
     BOARD_COMMISSION_ROLE_ID,
     'socio',
+    DEVELOPER_ROLE_ID,
 ];
 export const MAX_LICENSE_MONTHS = 6;
 export const MAX_FAMILY_GROUP_SIZE = 99;

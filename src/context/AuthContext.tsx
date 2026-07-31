@@ -115,13 +115,13 @@ async function loadUserDocument(firebaseUser: FirebaseAuthUser): Promise<User> {
     throw new Error('No existe el perfil de usuario en Firestore.');
   }
 
-  const user = normalizeUserDocument(firebaseUser.uid, snapshot.data() as UserDocument);
-  if (!user.active) {
+  const baseUser = normalizeUserDocument(firebaseUser.uid, snapshot.data() as UserDocument);
+  if (!baseUser.active) {
     throw new Error('El usuario esta inactivo.');
   }
 
-  if (user.profileType === 'member' && user.profileId) {
-    const memberSnapshot = await getDoc(doc(firestore, 'members', user.profileId));
+  if (baseUser.profileType === 'member' && baseUser.profileId) {
+    const memberSnapshot = await getDoc(doc(firestore, 'members', baseUser.profileId));
     if (memberSnapshot.exists()) {
       const member = memberSnapshot.data() as MemberDocument;
       if (member.status === 'license') {
@@ -130,15 +130,22 @@ async function loadUserDocument(firebaseUser: FirebaseAuthUser): Promise<User> {
     }
   }
 
-  const tokenResult = await firebaseUser.getIdTokenResult();
+  let tokenResult = await firebaseUser.getIdTokenResult();
   const tokenClaimsVersion =
     typeof tokenResult.claims.claimsVersion === 'number' ? tokenResult.claims.claimsVersion : 0;
 
-  if (tokenClaimsVersion < user.claimsVersion) {
-    await firebaseUser.getIdTokenResult(true);
+  if (tokenClaimsVersion < baseUser.claimsVersion) {
+    tokenResult = await firebaseUser.getIdTokenResult(true);
   }
 
-  return user;
+  if (tokenResult.claims.desarrollador === true && !baseUser.roleIds.includes(ROLES.DESARROLLADOR)) {
+    return {
+      ...baseUser,
+      roleIds: [...baseUser.roleIds, ROLES.DESARROLLADOR],
+    };
+  }
+
+  return baseUser;
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {

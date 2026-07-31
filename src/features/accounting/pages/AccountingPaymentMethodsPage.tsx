@@ -32,6 +32,7 @@ import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
 import { useAccountingSummary } from '../hooks/useAccountingSummary';
 import type { AccountingNotice } from '../types/accounting';
 import { buildArgentinaDateIso, formatTimestamp } from '../utils/accountingFormatters';
+import { getPaymentMethodDisplayName, isVisiblePaymentMethod } from '../utils/paymentMethods';
 
 const accountingCallables = createAccountingCallables();
 
@@ -157,6 +158,16 @@ function getTotalBpsFromBreakdown(breakdown: PaymentCommissionBreakdownItem[]) {
     .reduce((total, item) => total + item.percentageBps, 0);
 }
 
+function MoreActionsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </svg>
+  );
+}
+
 export function AccountingPaymentMethodsPage() {
   const { interfaceMode, user, firebaseUser } = useAuth();
   const { summary, reload: reloadSummary, error } = useAccountingSummary();
@@ -178,10 +189,11 @@ export function AccountingPaymentMethodsPage() {
     enabled: boolean;
     effectiveFrom: string;
   } | null>(null);
-  const [openSectionId, setOpenSectionId] = useState<string | null>('list');
+  const [openSectionId, setOpenSectionId] = useState<string | null>(null);
   const [openMethodActionsId, setOpenMethodActionsId] = useState<string | null>(null);
   const [openLineActionsId, setOpenLineActionsId] = useState<string | null>(null);
-  const canConfigure = interfaceMode === ROLES.DIRECTIVO;
+  const canManagePaymentMethods = interfaceMode === ROLES.DIRECTIVO || interfaceMode === ROLES.ADMINISTRATIVO;
+  const canManageCommissions = interfaceMode === ROLES.DIRECTIVO || interfaceMode === ROLES.ADMINISTRATIVO;
   const selectedMethod = useMemo(
     () => paymentMethods.find((method) => method.id === selectedCommissionMethodId) ?? null,
     [paymentMethods, selectedCommissionMethodId],
@@ -205,12 +217,24 @@ export function AccountingPaymentMethodsPage() {
   }, [commissionLines]);
   const commissionTotalBps = commissionEnabled && draftBreakdown ? getTotalBpsFromBreakdown(draftBreakdown) : 0;
   const activeCommissionLineCount = draftBreakdown?.filter((item) => item.isActive).length ?? 0;
+  const paymentMethodSummary = useMemo(() => {
+    const activeCount = paymentMethods.filter((method) => method.active).length;
+    const bankedCount = paymentMethods.filter((method) => method.bancarizado).length;
+    const commissionedCount = paymentMethods.filter((method) => activeRuleByMethodId.has(method.id)).length;
+
+    return {
+      totalCount: paymentMethods.length,
+      activeCount,
+      bankedCount,
+      commissionedCount,
+    };
+  }, [activeRuleByMethodId, paymentMethods]);
 
   const loadPaymentMethods = async () => {
     setLoading(true);
     setNotice(null);
     try {
-      setPaymentMethods(await createPaymentMethodsRepository().listAllSorted());
+      setPaymentMethods((await createPaymentMethodsRepository().listAllSorted()).filter(isVisiblePaymentMethod));
     } catch (loadError) {
       setNotice({ kind: 'error', message: loadError instanceof Error ? loadError.message : 'No pudimos cargar medios de pago.' });
     } finally {
@@ -265,7 +289,7 @@ export function AccountingPaymentMethodsPage() {
       });
       setNotice({
         kind: 'success',
-        message: `${pendingToggle.method.name} quedo ${pendingToggle.active ? 'activo' : 'inactivo'}.`,
+        message: `${getPaymentMethodDisplayName(pendingToggle.method)} quedo ${pendingToggle.active ? 'activo' : 'inactivo'}.`,
       });
       setPendingToggle(null);
       await reloadAll();
@@ -294,7 +318,7 @@ export function AccountingPaymentMethodsPage() {
 
   const handleCommissionSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canConfigure) {
+    if (!canManageCommissions) {
       setNotice({ kind: 'error', message: 'No tenes permisos para editar comisiones.' });
       return;
     }
@@ -373,7 +397,7 @@ export function AccountingPaymentMethodsPage() {
         });
       }
 
-      if (pendingCommissionSave.method.id === ACCOUNTING_PAYMENT_METHOD_IDS.credit && summary?.activeConfig) {
+      if (pendingCommissionSave.method.id === ACCOUNTING_PAYMENT_METHOD_IDS.creditGalicia && summary?.activeConfig) {
         await accountingCallables.upsertFinancialConfig(buildFinancialConfigPayload(summary.activeConfig, {
           effectiveFrom: pendingCommissionSave.effectiveFrom,
           creditCommissionPctBps: pendingCommissionSave.totalBps,
@@ -384,8 +408,8 @@ export function AccountingPaymentMethodsPage() {
       setNotice({
         kind: 'success',
         message: pendingCommissionSave.enabled
-          ? `Comision de ${pendingCommissionSave.method.name} actualizada a ${formatBps(pendingCommissionSave.totalBps)}.`
-          : `Comision de ${pendingCommissionSave.method.name} desactivada.`,
+          ? `Comision de ${getPaymentMethodDisplayName(pendingCommissionSave.method)} actualizada a ${formatBps(pendingCommissionSave.totalBps)}.`
+          : `Comision de ${getPaymentMethodDisplayName(pendingCommissionSave.method)} desactivada.`,
       });
       setPendingCommissionSave(null);
       await reloadAll();
@@ -397,152 +421,148 @@ export function AccountingPaymentMethodsPage() {
   };
 
   return (
-    <div className="accounting-shell">
+    <div className="accounting-shell accounting-payment-methods-page">
       <section className="floating-card accounting-hero">
         <div className="accounting-hero__copy">
-          <p className="eyebrow">Medios de pago</p>
-          <h1>Canales activos, bancarizacion y comisiones</h1>
-          <p>Activar o desactivar un medio queda como operacion controlada. Las comisiones se versionan por medio y fecha efectiva.</p>
+          <h1>Medios de pago</h1>
         </div>
       </section>
 
       <AccountingInlineNotice notice={notice ?? (error ? { kind: 'error', message: error } : null)} />
 
-      <AccountingCollapsibleSections
-        openId={openSectionId}
-        onOpenChange={setOpenSectionId}
-        sections={[
-          {
-            id: 'list',
-            title: 'Canales activos de pago',
-            eyebrow: 'Listado',
-            helper: 'Activacion, bancarizacion, estado y comision vigente',
-            content: (
-              <div className="accounting-full-width-section accounting-payment-methods-section">
-                <div className="accounting-section-header accounting-section-header--plain">
-                  <h3>Canales activos de pago</h3>
-                  <UiActionButton
-                    type="button"
-                    variant="secondary"
-                    disabled={!paymentMethods.length}
-                    onClick={() => setOpenSectionId('commissions')}
-                  >
-                    Agregar o modificar comision
-                  </UiActionButton>
-                </div>
-                <div className="accounting-table-wrap">
-                  <table className="accounting-data-table accounting-payment-methods-table">
-                    <thead>
-                      <tr>
-                        <th>Medio</th>
-                        <th>Bancarizacion</th>
-                        <th>Estado</th>
-                        <th>Comision vigente</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentMethods.map((method) => {
-                        const activeRule = activeRuleByMethodId.get(method.id) ?? null;
-                        return (
-                          <tr key={method.id}>
-                            <td>
-                              <strong>{method.name}</strong>
-                              <small>{method.specialReportingType ?? 'Operacion general'}</small>
-                            </td>
-                            <td>{method.bancarizado ? 'Bancarizado' : 'No bancarizado'}</td>
-                            <td><span className={`status-chip status-chip--${method.active ? 'paid' : 'voided'}`}>{method.active ? 'activo' : 'inactivo'}</span></td>
-                            <td>
-                              <strong>{activeRule ? formatBps(activeRule.percentageBps) : 'Sin comision'}</strong>
-                              <small>{activeRule ? `Desde ${formatTimestamp(activeRule.validFrom)}` : 'Sin regla activa'}</small>
-                            </td>
-                            <td>
-                              <div className="member-actions accounting-row-menu-actions">
+      <section className="summary-grid accounting-summary-grid accounting-payment-methods-summary" aria-label="Resumen de medios de pago">
+        <article className="summary-card"><span>Canales</span><strong>{paymentMethodSummary.totalCount}</strong><small>Configurados</small></article>
+        <article className="summary-card"><span>Activos</span><strong>{paymentMethodSummary.activeCount}</strong><small>Disponibles</small></article>
+        <article className="summary-card"><span>Bancarizados</span><strong>{paymentMethodSummary.bankedCount}</strong><small>Con cuenta asociada</small></article>
+        <article className="summary-card"><span>Con comision</span><strong>{paymentMethodSummary.commissionedCount}</strong><small>Regla vigente</small></article>
+      </section>
+
+      <div className="accounting-payment-methods-sections">
+        <AccountingCollapsibleSections
+          openId={openSectionId}
+          onOpenChange={setOpenSectionId}
+          sections={[
+            {
+              id: 'list',
+              title: 'Canales activos de pago',
+              eyebrow: 'Listado',
+              helper: 'Activacion, bancarizacion, estado y comision vigente',
+              content: (
+                <div className="accounting-full-width-section accounting-payment-methods-section">
+                  <div className="accounting-section-header accounting-section-header--plain">
+                    <h3>Canales activos de pago</h3>
+                    <UiActionButton
+                      type="button"
+                      variant="secondary"
+                      disabled={!paymentMethods.length}
+                      onClick={() => setOpenSectionId('commissions')}
+                    >
+                      Agregar o modificar comision
+                    </UiActionButton>
+                  </div>
+                  <div className="accounting-list accounting-payment-methods-list">
+                    {paymentMethods.map((method) => {
+                      const activeRule = activeRuleByMethodId.get(method.id) ?? null;
+                      return (
+                        <article
+                          key={method.id}
+                          className={`accounting-row accounting-payment-method-row ${method.active ? '' : 'accounting-payment-method-row--inactive'}`}
+                        >
+                          <span className="accounting-row__main">
+                            <strong>{getPaymentMethodDisplayName(method)}</strong>
+                            <small>{method.specialReportingType ?? 'Operacion general'}</small>
+                          </span>
+                          <span className="accounting-row__meta">
+                            <small>Bancarizacion</small>
+                            <strong>{method.bancarizado ? 'Bancarizado' : 'No bancarizado'}</strong>
+                          </span>
+                          <span className="accounting-row__meta">
+                            <small>Estado</small>
+                            <span className={`status-chip status-chip--${method.active ? 'paid' : 'voided'}`}>{method.active ? 'activo' : 'inactivo'}</span>
+                          </span>
+                          <span className="accounting-row__meta">
+                            <small>Comision vigente</small>
+                            <strong>{activeRule ? formatBps(activeRule.percentageBps) : 'Sin comision'}</strong>
+                            <small>{activeRule ? `Desde ${formatTimestamp(activeRule.validFrom)}` : 'Sin regla activa'}</small>
+                          </span>
+                          <div className="member-actions accounting-row-menu-actions">
+                            <button
+                              type="button"
+                              className={`icon-button member-icon-button ${openMethodActionsId === method.id ? 'icon-button--active' : ''}`}
+                              aria-label={`Mas acciones para ${getPaymentMethodDisplayName(method)}`}
+                              aria-expanded={openMethodActionsId === method.id}
+                              onClick={() => setOpenMethodActionsId((current) => current === method.id ? null : method.id)}
+                            >
+                              <MoreActionsIcon />
+                            </button>
+                            {openMethodActionsId === method.id && (
+                              <div className="member-actions-menu">
                                 <button
                                   type="button"
-                                  className={`icon-button member-icon-button ${openMethodActionsId === method.id ? 'icon-button--active' : ''}`}
-                                  aria-label={`Mas acciones para ${method.name}`}
-                                  aria-expanded={openMethodActionsId === method.id}
-                                  onClick={() => setOpenMethodActionsId((current) => current === method.id ? null : method.id)}
+                                  className="member-actions-menu__item"
+                                  onClick={() => {
+                                    setSelectedCommissionMethodId(method.id);
+                                    setOpenSectionId('commissions');
+                                    setOpenMethodActionsId(null);
+                                  }}
                                 >
-                                  ...
+                                  Configurar comision
                                 </button>
-                                {openMethodActionsId === method.id && (
-                                  <div className="member-actions-menu">
-                                    <button
-                                      type="button"
-                                      className="member-actions-menu__item"
-                                      onClick={() => {
-                                        setSelectedCommissionMethodId(method.id);
-                                        setOpenSectionId('commissions');
-                                        setOpenMethodActionsId(null);
-                                      }}
-                                    >
-                                      Configurar comision
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className={method.active ? 'member-actions-menu__item member-actions-menu__item--danger' : 'member-actions-menu__item'}
-                                      disabled={!canConfigure || saving}
-                                      onClick={() => {
-                                        setPendingToggle({ method, active: !method.active });
-                                        setOpenMethodActionsId(null);
-                                      }}
-                                    >
-                                      {method.active ? 'Desactivar medio' : 'Activar medio'}
-                                    </button>
-                                  </div>
-                                )}
+                                <button
+                                  type="button"
+                                  className={method.active ? 'member-actions-menu__item member-actions-menu__item--danger' : 'member-actions-menu__item'}
+                                  disabled={!canManagePaymentMethods || saving}
+                                  onClick={() => {
+                                    setPendingToggle({ method, active: !method.active });
+                                    setOpenMethodActionsId(null);
+                                  }}
+                                >
+                                  {method.active ? 'Desactivar medio' : 'Activar medio'}
+                                </button>
                               </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {!loading && paymentMethods.length === 0 && (
-                        <tr>
-                          <td colSpan={5}><AccountingEmptyState title="Sin medios configurados" /></td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                    {!loading && paymentMethods.length === 0 && <AccountingEmptyState title="Sin medios configurados" />}
+                  </div>
                 </div>
-              </div>
-            ),
-          },
-          {
-            id: 'commissions',
-            title: 'Comisiones por medio de pago',
-            eyebrow: 'Comisiones',
-            helper: 'Seleccion, desglose, total y fecha efectiva',
-            content: paymentMethods.length > 0 ? (
-              <form className="accounting-commission-workbench" onSubmit={handleCommissionSubmit}>
-                <div className="accounting-entry-form">
-                  <label className="form-field">
-                    <span>Medio de pago</span>
-                    <select
-                      value={selectedCommissionMethodId}
-                      disabled={!canConfigure || saving}
-                      onChange={(event) => setSelectedCommissionMethodId(event.target.value)}
-                    >
-                      {paymentMethods.map((method) => (
-                        <option key={method.id} value={method.id}>{method.name}</option>
-                      ))}
-                    </select>
-                    <small>El selector cambia el panel de comision renderizado abajo.</small>
-                  </label>
-                  <label className="form-field">
-                    <span>Vigente desde</span>
-                    <input type="date" value={validFrom} disabled={!canConfigure || saving} onChange={(event) => setValidFrom(event.target.value)} />
-                    <small>No altera movimientos historicos ya posteados.</small>
-                  </label>
-                </div>
+              ),
+            },
+            {
+              id: 'commissions',
+              title: 'Comisiones por medio de pago',
+              eyebrow: 'Comisiones',
+              helper: 'Seleccion, desglose, total y fecha efectiva',
+              content: paymentMethods.length > 0 ? (
+                <div className="accounting-full-width-section">
+                  <form className="accounting-commission-workbench" onSubmit={handleCommissionSubmit}>
+                    <div className="accounting-entry-form accounting-payment-methods-form">
+                      <label className="form-field">
+                        <span>Medio de pago</span>
+                        <select
+                          value={selectedCommissionMethodId}
+                          disabled={!canManageCommissions || saving}
+                          onChange={(event) => setSelectedCommissionMethodId(event.target.value)}
+                        >
+                          {paymentMethods.map((method) => (
+                            <option key={method.id} value={method.id}>{getPaymentMethodDisplayName(method)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="form-field">
+                        <span>Vigente desde</span>
+                        <input type="date" value={validFrom} disabled={!canManageCommissions || saving} onChange={(event) => setValidFrom(event.target.value)} />
+                      </label>
+                    </div>
 
-                {selectedMethod && (
-                  <section className="accounting-commission-card">
+                  {selectedMethod && (
+                    <section className="accounting-commission-card">
                     <div className="accounting-commission-card__header">
                       <div>
                         <p className="eyebrow">Medio seleccionado</p>
-                        <h3>{selectedMethod.name}</h3>
+                        <h3>{getPaymentMethodDisplayName(selectedMethod)}</h3>
                         <small>{selectedMethod.bancarizado ? 'Bancarizado' : 'No bancarizado'} - {selectedMethod.active ? 'activo' : 'inactivo'}</small>
                       </div>
                       <div className="accounting-commission-card__total">
@@ -556,7 +576,7 @@ export function AccountingPaymentMethodsPage() {
                       <input
                         type="checkbox"
                         checked={commissionEnabled}
-                        disabled={!canConfigure || saving}
+                        disabled={!canManageCommissions || saving}
                         onChange={(event) => setCommissionEnabled(event.target.checked)}
                       />
                       <span>Activar comision para este medio de pago</span>
@@ -577,7 +597,7 @@ export function AccountingPaymentMethodsPage() {
                             <p className="eyebrow">Desglose</p>
                             <h4>Componentes de comision</h4>
                           </div>
-                          <UiActionButton type="button" variant="secondary" disabled={!canConfigure || saving} onClick={addCommissionLine}>
+                          <UiActionButton type="button" variant="secondary" disabled={!canManageCommissions || saving} onClick={addCommissionLine}>
                             Agregar item
                           </UiActionButton>
                         </div>
@@ -585,11 +605,11 @@ export function AccountingPaymentMethodsPage() {
                           <article key={line.id} className={`accounting-commission-line ${line.active ? '' : 'accounting-commission-line--inactive'}`}>
                             <label className="form-field">
                               <span>Detalle</span>
-                              <input value={line.label} disabled={!canConfigure || saving} onChange={(event) => updateCommissionLine(line.id, { label: event.target.value })} />
+                              <input value={line.label} disabled={!canManageCommissions || saving} onChange={(event) => updateCommissionLine(line.id, { label: event.target.value })} />
                             </label>
                             <label className="form-field">
                               <span>Porcentaje</span>
-                              <input inputMode="decimal" value={line.percentage} disabled={!canConfigure || saving || !line.active} onChange={(event) => updateCommissionLine(line.id, { percentage: event.target.value })} />
+                              <input inputMode="decimal" value={line.percentage} disabled={!canManageCommissions || saving || !line.active} onChange={(event) => updateCommissionLine(line.id, { percentage: event.target.value })} />
                             </label>
                             <div className="accounting-row__meta">
                               <span className={`status-chip status-chip--${line.active ? 'paid' : 'voided'}`}>{line.active ? 'activo' : 'inactivo'}</span>
@@ -603,14 +623,14 @@ export function AccountingPaymentMethodsPage() {
                                 aria-expanded={openLineActionsId === line.id}
                                 onClick={() => setOpenLineActionsId((current) => current === line.id ? null : line.id)}
                               >
-                                ...
+                                <MoreActionsIcon />
                               </button>
                               {openLineActionsId === line.id && (
                                 <div className="member-actions-menu">
                                   <button
                                     type="button"
                                     className="member-actions-menu__item"
-                                    disabled={!canConfigure || saving}
+                                    disabled={!canManageCommissions || saving}
                                     onClick={() => {
                                       updateCommissionLine(line.id, { active: !line.active });
                                       setOpenLineActionsId(null);
@@ -621,7 +641,7 @@ export function AccountingPaymentMethodsPage() {
                                   <button
                                     type="button"
                                     className="member-actions-menu__item member-actions-menu__item--danger"
-                                    disabled={!canConfigure || saving || commissionLines.length <= 1}
+                                    disabled={!canManageCommissions || saving || commissionLines.length <= 1}
                                     onClick={() => removeCommissionLine(line.id)}
                                   >
                                     Eliminar item
@@ -638,25 +658,27 @@ export function AccountingPaymentMethodsPage() {
 
                     <label className="form-field accounting-commission-notes">
                       <span>Nota de auditoria</span>
-                      <textarea value={commissionNotes} disabled={!canConfigure || saving} onChange={(event) => setCommissionNotes(event.target.value)} />
+                      <textarea value={commissionNotes} disabled={!canManageCommissions || saving} onChange={(event) => setCommissionNotes(event.target.value)} />
                     </label>
                     <div className="form-actions">
-                      <UiActionButton type="submit" disabled={!canConfigure || saving}>
+                      <UiActionButton type="submit" disabled={!canManageCommissions || saving}>
                         {saving ? 'Guardando...' : 'Guardar comision'}
                       </UiActionButton>
                     </div>
-                  </section>
-                )}
-              </form>
-            ) : (
-              <AccountingEmptyState title="Sin medios configurados" />
-            ),
-          },
-        ]}
-      />
+                    </section>
+                  )}
+                  </form>
+                </div>
+              ) : (
+                <AccountingEmptyState title="Sin medios configurados" />
+              ),
+            },
+          ]}
+        />
+      </div>
 
-      {!canConfigure && (
-        <AccountingInlineNotice notice={{ kind: 'info', message: 'Tu rol puede consultar medios de pago, pero solo Directivo puede activarlos o cambiar comisiones.' }} />
+      {!canManageCommissions && (
+        <AccountingInlineNotice notice={{ kind: 'info', message: 'Tu rol puede consultar medios de pago, pero solo Administracion o Comite Ejecutivo pueden cambiar comisiones.' }} />
       )}
 
       <ConfirmDialog
@@ -664,7 +686,7 @@ export function AccountingPaymentMethodsPage() {
         title={pendingToggle?.active ? 'Activar medio de pago' : 'Desactivar medio de pago'}
         description={
           pendingToggle
-            ? `${pendingToggle.method.name} quedara ${pendingToggle.active ? 'disponible' : 'bloqueado'} para nuevas operaciones desde ahora.`
+            ? `${getPaymentMethodDisplayName(pendingToggle.method)} quedara ${pendingToggle.active ? 'disponible' : 'bloqueado'} para nuevas operaciones desde ahora.`
             : undefined
         }
         confirmLabel={pendingToggle?.active ? 'Activar' : 'Desactivar'}
@@ -679,7 +701,7 @@ export function AccountingPaymentMethodsPage() {
         title={pendingCommissionSave?.enabled ? 'Guardar comision' : 'Desactivar comision'}
         description={
           pendingCommissionSave
-            ? `${pendingCommissionSave.method.name}: quedara ${pendingCommissionSave.enabled ? `con comision total ${formatBps(pendingCommissionSave.totalBps)}` : 'sin comision activa'} desde ${validFrom}.`
+            ? `${getPaymentMethodDisplayName(pendingCommissionSave.method)}: quedara ${pendingCommissionSave.enabled ? `con comision total ${formatBps(pendingCommissionSave.totalBps)}` : 'sin comision activa'} desde ${validFrom}.`
             : undefined
         }
         confirmLabel={pendingCommissionSave?.enabled ? 'Guardar regla' : 'Desactivar comision'}

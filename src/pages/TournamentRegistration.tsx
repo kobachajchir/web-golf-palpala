@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ModalCloseIcon } from '../components/ModalCloseIcon';
 import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { UiActionButton } from '../components/UiActionButton';
 import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
+import { createMembersRepository } from '../modules/users/infrastructure/firestore/repositories';
+import type { MemberDocument } from '../modules/users/domain/models';
 import { createTournamentCallables } from '../modules/tournaments/functions/tournaments.callables';
 import {
   createTournamentRecord,
@@ -32,6 +35,7 @@ import type {
 type Tournament = EntityWithId<TournamentDocument>;
 type TournamentRegistrationRecord = EntityWithId<TournamentRegistrationDocument>;
 type TournamentReceiptRecord = EntityWithId<TournamentReceiptDocument>;
+type MemberRecord = import('../modules/users/domain/models').EntityWithId<MemberDocument>;
 type Flight = TournamentCategory['flights'][number];
 type TeeWindow = TournamentTeeWindow;
 type StartType = TournamentStartType;
@@ -47,6 +51,7 @@ const TOURNAMENT_STATUS_FILTERS: ReadonlyArray<'all' | TournamentStatus> = [
   'registration_open',
   'registration_closed',
   'in_progress',
+  'results_review',
   'finished',
 ];
 
@@ -77,7 +82,7 @@ type TournamentDraft = {
   afternoonFirstTeeTime: string;
   afternoonLastTeeTime: string;
   interval: string;
-  recurrencePeriod: 'weekly' | 'biweekly' | 'monthly';
+  recurrencePeriod: 'weekly' | 'biweekly' | 'monthly' | 'annual';
   categories: TournamentDraftCategory[];
 };
 
@@ -102,7 +107,7 @@ type TournamentCostDraft = {
 type PendingTournamentStatusAction = {
   tournamentId: string;
   tournamentName: string;
-  nextStatus: 'registration_open' | 'registration_closed';
+  nextStatus: TournamentStatus;
 };
 
 type PendingTournamentCostAction = {
@@ -124,8 +129,19 @@ type TournamentPaymentDraft = {
   notes: string;
 };
 
+type ExternalPlayerDraft = {
+  fullName: string;
+  email: string;
+  phone: string;
+  handicap: string;
+  aagLicense: string;
+  amount: string;
+  notes: string;
+};
+
 type TournamentScorecardDraft = {
   player: string;
+  registrationId: string;
   category: string;
   gross: string;
   handicap: string;
@@ -164,6 +180,7 @@ const STATUS_OPTIONS: Array<{ value: 'all' | TournamentStatus; label: string }> 
   { value: 'registration_closed', label: 'Inscripcion cerrada' },
   { value: 'scheduled', label: 'Programados' },
   { value: 'in_progress', label: 'En juego' },
+  { value: 'results_review', label: 'Revision de resultados' },
   { value: 'finished', label: 'Finalizados' },
   { value: 'draft', label: 'Borradores' },
 ];
@@ -185,10 +202,12 @@ const REGISTRATION_ORIGIN_OPTIONS: Array<{ value: RegistrationOriginFilter; labe
 
 const TOURNAMENT_PAYMENT_METHODS: Array<{ value: TournamentPaymentMethodId; label: string; requiresReference: boolean }> = [
   { value: 'cash', label: 'Efectivo', requiresReference: false },
-  { value: 'transfer', label: 'Transferencia', requiresReference: true },
-  { value: 'credit', label: 'Credito', requiresReference: true },
-  { value: 'debit', label: 'Debito', requiresReference: true },
-  { value: 'debit_macro', label: 'Debito Macro', requiresReference: true },
+  { value: 'transfer_macro', label: 'Transferencia Macro', requiresReference: true },
+  { value: 'qr_macro', label: 'QR Macro', requiresReference: true },
+  { value: 'transfer_galicia', label: 'Transferencia Galicia', requiresReference: true },
+  { value: 'qr_galicia', label: 'QR Galicia', requiresReference: true },
+  { value: 'credit_galicia', label: 'Tarjeta de credito', requiresReference: true },
+  { value: 'debit_galicia', label: 'Tarjeta de debito', requiresReference: true },
 ];
 
 const tournamentCallables = createTournamentCallables();
@@ -372,6 +391,10 @@ function getParticipantNumber(registration: TournamentRegistrationRecord) {
     return registration.memberId.replace(/^demo-socio-/i, 'Socio #');
   }
 
+  if (registration.externalAagLicense) {
+    return `AAG ${registration.externalAagLicense}`;
+  }
+
   return registration.origin === 'external' ? 'Externo' : 'Invitado';
 }
 
@@ -411,6 +434,10 @@ function getReducedFeeMinor(tournament: Tournament) {
   return tournament.reducedRegistrationFeeMinor ?? tournament.registrationFeeMinor;
 }
 
+function isTournamentCostLocked(tournament: Tournament | null | undefined): boolean {
+  return Boolean(tournament && ['in_progress', 'results_review', 'finished'].includes(tournament.status));
+}
+
 function getTournamentRegistrationFee(tournament: Tournament) {
   return {
     kind: 'regular' as const,
@@ -430,8 +457,15 @@ function groupLeaderboardRows(rows: TournamentLeaderboardRow[]) {
     .sort(([categoryA], [categoryB]) => categoryA.localeCompare(categoryB))
     .map(([category, groupRows]) => ({
       category,
-      rows: groupRows.slice().sort((a, b) => a.net - b.net),
+      rows: groupRows.slice().sort((a, b) => a.net - b.net || a.gross - b.gross || a.player.localeCompare(b.player)),
     }));
+}
+
+function finalizeLeaderboardRows(rows: TournamentLeaderboardRow[]) {
+  return rows
+    .slice()
+    .sort((a, b) => a.category.localeCompare(b.category) || a.net - b.net || a.gross - b.gross || a.player.localeCompare(b.player))
+    .map((row) => ({ ...row, status: 'final' as const }));
 }
 
 function getTournamentCategoryLabels(tournament: Tournament) {
@@ -477,6 +511,53 @@ function getRegistrationStatusLabel(registration: TournamentRegistrationRecord) 
   return 'Pago pendiente';
 }
 
+function isRegistrationEligibleForScorecard(registration: TournamentRegistrationRecord) {
+  return registration.status === 'confirmed' && registration.paymentStatus === 'paid';
+}
+
+function getRegistrationGenderHint(registration: TournamentRegistrationRecord) {
+  if (registration.externalGender) {
+    return registration.externalGender;
+  }
+
+  const notes = registration.notes?.toLowerCase() ?? '';
+  if (notes.includes('female')) {
+    return 'female';
+  }
+  if (notes.includes('male')) {
+    return 'male';
+  }
+
+  return null;
+}
+
+function getTournamentCategoryForHandicap(tournament: Tournament, handicap: number, gender?: TournamentCategory['gender'] | null) {
+  const categories = gender
+    ? tournament.categories.filter((category) => category.gender === gender)
+    : tournament.categories;
+  const fallbackCategories = categories.length ? categories : tournament.categories;
+
+  for (const category of fallbackCategories) {
+    for (const flight of category.flights) {
+      const minHandicap = flight.minHandicap ?? Number.NEGATIVE_INFINITY;
+      if (handicap >= minHandicap && handicap <= flight.maxHandicap) {
+        return `${category.gender === 'female' ? 'Damas' : category.gender === 'male' ? 'Caballeros' : category.name}: ${flight.name}`;
+      }
+    }
+  }
+  return getTournamentCategoryLabels(tournament)[0] ?? '';
+}
+
+function getScorecardPlayerSearchValue(registration: TournamentRegistrationRecord, member: MemberRecord | null | undefined) {
+  const number = member?.memberNumber ?? registration.memberId ?? 'Externo';
+  const prefix = registration.origin === 'member' ? `Socio ${number}` : 'Externo';
+  return `${registration.participantName} - ${prefix}`;
+}
+
+function getScorecardRegistrationHandicap(registration: TournamentRegistrationRecord, member: MemberRecord | null | undefined) {
+  return registration.externalHandicap ?? member?.currentHandicapNumber ?? 0;
+}
+
 function getFormatLabel(format: TournamentFormat) {
   return TOURNAMENT_FORMATS.find((option) => option.value === format)?.label ?? format;
 }
@@ -488,10 +569,25 @@ function getStatusLabel(status: TournamentStatus) {
     registration_open: 'Inscripcion abierta',
     registration_closed: 'Inscripcion cerrada',
     in_progress: 'En juego',
+    results_review: 'Revision de resultados',
     finished: 'Finalizado',
   };
 
   return labels[status];
+}
+
+function getTournamentStatusActionCopy(status: TournamentStatus | undefined) {
+  const copies: Record<TournamentStatus, { title: string; label: string; verb: string; tone: 'default' | 'danger' }> = {
+    draft: { title: 'Marcar borrador', label: 'Guardar', verb: 'marcar como borrador', tone: 'default' },
+    scheduled: { title: 'Programar torneo', label: 'Programar', verb: 'programar', tone: 'default' },
+    registration_open: { title: 'Abrir inscripcion', label: 'Abrir', verb: 'abrir la inscripcion de', tone: 'default' },
+    registration_closed: { title: 'Cerrar inscripcion', label: 'Cerrar', verb: 'cerrar la inscripcion de', tone: 'danger' },
+    in_progress: { title: 'Iniciar torneo', label: 'Iniciar', verb: 'iniciar', tone: 'default' },
+    results_review: { title: 'Pasar a revision', label: 'Pasar a revision', verb: 'pasar el torneo a revision de resultados', tone: 'default' },
+    finished: { title: 'Finalizar revision', label: 'Finalizar', verb: 'finalizar la revision de resultados de', tone: 'default' },
+  };
+
+  return status ? copies[status] : copies.registration_closed;
 }
 
 function timeToMinutes(value: string) {
@@ -658,6 +754,7 @@ function createTournamentFromDraft(draft: TournamentDraft): Tournament {
     membersOnly: draft.membersOnly,
     allowNoHandicap: false,
     recurring: draft.recurring,
+    recurrencePeriod: draft.recurring ? draft.recurrencePeriod : null,
     registrationOpenAt: draft.registrationOpenAt || null,
     registrationCloseAt: draft.registrationCloseAt || null,
     registrationFeeMinor: Number.isNaN(registrationFeeMinor) ? 0 : registrationFeeMinor,
@@ -683,12 +780,14 @@ export function TournamentRegistration() {
   const { interfaceMode, user } = useAuth();
   const [searchParams] = useSearchParams();
   const canManageTournaments = interfaceMode === ROLES.ADMINISTRATIVO || interfaceMode === ROLES.DIRECTIVO;
+  const canViewPublishedTournamentResults = Boolean(user?.roleIds.includes(ROLES.SOCIO));
   const requestedTab = searchParams.get('tab');
   const requestedOpen = searchParams.get('open');
   const requestedStatus = searchParams.get('status');
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [registrations, setRegistrations] = useState<TournamentRegistrationRecord[]>([]);
   const [receipts, setReceipts] = useState<TournamentReceiptRecord[]>([]);
+  const [members, setMembers] = useState<MemberRecord[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [dataError, setDataError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -716,6 +815,16 @@ export function TournamentRegistration() {
   const [pendingCostAction, setPendingCostAction] = useState<PendingTournamentCostAction | null>(null);
   const [costTournamentId, setCostTournamentId] = useState<string | null>(null);
   const [paymentRegistrationId, setPaymentRegistrationId] = useState<string | null>(null);
+  const [externalPlayerTournamentId, setExternalPlayerTournamentId] = useState<string | null>(null);
+  const [externalPlayerDraft, setExternalPlayerDraft] = useState<ExternalPlayerDraft>({
+    fullName: '',
+    email: '',
+    phone: '',
+    handicap: '',
+    aagLicense: '',
+    amount: '',
+    notes: '',
+  });
   const [costDraft, setCostDraft] = useState<TournamentCostDraft>({
     registrationFee: '',
     reducedRegistrationFee: '',
@@ -735,11 +844,13 @@ export function TournamentRegistration() {
   });
   const [scorecardDraft, setScorecardDraft] = useState<TournamentScorecardDraft>({
     player: '',
+    registrationId: '',
     category: '',
     gross: '',
     handicap: '',
     net: '',
   });
+  const [isScorecardModalOpen, setIsScorecardModalOpen] = useState(false);
 
   useEffect(() => {
     setIsDataLoading(true);
@@ -747,6 +858,9 @@ export function TournamentRegistration() {
 
     return subscribeTournaments({
       includeAll: canManageTournaments,
+      publicStatuses: canViewPublishedTournamentResults
+        ? ['registration_open', 'results_review', 'finished']
+        : ['registration_open'],
       onNext: (items) => {
         setTournaments(items);
         setIsDataLoading(false);
@@ -757,7 +871,7 @@ export function TournamentRegistration() {
         setIsDataLoading(false);
       },
     });
-  }, [canManageTournaments]);
+  }, [canManageTournaments, canViewPublishedTournamentResults]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -785,8 +899,36 @@ export function TournamentRegistration() {
     };
   }, [canManageTournaments, user?.id]);
 
+  useEffect(() => {
+    if (!canManageTournaments) {
+      setMembers([]);
+      return;
+    }
+
+    let cancelled = false;
+    void createMembersRepository()
+      .listDirectory()
+      .then((items) => {
+        if (!cancelled) {
+          setMembers(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMembers([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageTournaments]);
+
   const visibleTournaments = useMemo(
-    () => (canManageTournaments ? tournaments : tournaments.filter((tournament) => tournament.status === 'registration_open')),
+    () =>
+      canManageTournaments
+        ? tournaments
+        : tournaments.filter((tournament) => ['registration_open', 'results_review', 'finished'].includes(tournament.status)),
     [canManageTournaments, tournaments],
   );
 
@@ -821,22 +963,44 @@ export function TournamentRegistration() {
       ? visibleTournaments.find((tournament) => tournament.id === selectedTournamentId) ?? null
       : null;
   }, [selectedTournamentId, visibleTournaments]);
+  const membersById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
+  const scorecardRegistrations = useMemo(
+    () => selectedTournament
+      ? registrations.filter((registration) =>
+          registration.tournamentId === selectedTournament.id
+          && isRegistrationEligibleForScorecard(registration),
+        ).sort((left, right) => left.participantName.localeCompare(right.participantName))
+      : [],
+    [registrations, selectedTournament],
+  );
+  const loadedScorecardRegistrationIds = useMemo(
+    () => new Set((selectedTournament?.leaderboard ?? []).flatMap((row) => (row.registrationId ? [row.registrationId] : []))),
+    [selectedTournament?.leaderboard],
+  );
+  const pendingScorecardRegistrations = useMemo(
+    () => scorecardRegistrations.filter((registration) => !loadedScorecardRegistrationIds.has(registration.id)),
+    [loadedScorecardRegistrationIds, scorecardRegistrations],
+  );
 
-  const hasScorecards = (tournament: Tournament | null | undefined) =>
-    Boolean(tournament && (tournament.pendingCards > 0 || tournament.approvedCards > 0 || tournament.leaderboard.length > 0));
+  const canDisplayTournamentResults = (tournament: Tournament) =>
+    tournament.status === 'finished' && tournament.leaderboard.length > 0;
 
-  const hasVisibleScorecards = useMemo(
-    () => visibleTournaments.some((tournament) => hasScorecards(tournament)),
+  const tournamentsWithResults = useMemo(
+    () => visibleTournaments.filter((tournament) => canDisplayTournamentResults(tournament)),
     [visibleTournaments],
   );
-  const tournamentsWithResults = useMemo(
-    () => visibleTournaments.filter((tournament) => hasScorecards(tournament)),
-    [visibleTournaments],
+  const hasVisibleScorecards = useMemo(
+    () => tournamentsWithResults.length > 0,
+    [tournamentsWithResults],
   );
 
   const registrationTournament = useMemo(
     () => tournaments.find((tournament) => tournament.id === registrationTournamentId) ?? null,
     [registrationTournamentId, tournaments],
+  );
+  const externalPlayerTournament = useMemo(
+    () => tournaments.find((tournament) => tournament.id === externalPlayerTournamentId) ?? null,
+    [externalPlayerTournamentId, tournaments],
   );
   const registrationFeeSelection = useMemo(
     () => (registrationTournament ? getTournamentRegistrationFee(registrationTournament) : null),
@@ -1080,9 +1244,13 @@ export function TournamentRegistration() {
     setActiveTab('details');
   };
 
-  const updateTournamentStatus = async (tournamentId: string, status: TournamentStatus, message: string) => {
+  const updateTournamentStatus = async (
+    tournamentId: string,
+    patch: Partial<TournamentDocument>,
+    message: string,
+  ) => {
     try {
-      await updateTournamentRecord(tournamentId, { status }, user?.id ?? 'system');
+      await updateTournamentRecord(tournamentId, patch, user?.id ?? 'system');
       setNotice(message);
     } catch (error) {
       setNotice(error instanceof Error ? `No pudimos actualizar el estado del torneo: ${error.message}` : 'No pudimos actualizar el estado del torneo.');
@@ -1105,17 +1273,58 @@ export function TournamentRegistration() {
       return;
     }
 
+    const targetTournament = tournaments.find((tournament) => tournament.id === pendingStatusAction.tournamentId) ?? null;
+    const targetRegistrations = registrations.filter(
+      (registration) => registration.tournamentId === pendingStatusAction.tournamentId && isRegistrationEligibleForScorecard(registration),
+    );
+    const loadedRegistrationIds = new Set((targetTournament?.leaderboard ?? []).flatMap((row) => (row.registrationId ? [row.registrationId] : [])));
+    const pendingCards = Math.max(0, targetRegistrations.filter((registration) => !loadedRegistrationIds.has(registration.id)).length);
+    const statusMessages: Record<TournamentStatus, string> = {
+      draft: `Se marco "${pendingStatusAction.tournamentName}" como borrador.`,
+      scheduled: `Se programo "${pendingStatusAction.tournamentName}".`,
+      registration_open: `Se activo la inscripcion de "${pendingStatusAction.tournamentName}".`,
+      registration_closed: `Se cerro la inscripcion de "${pendingStatusAction.tournamentName}".`,
+      in_progress: `Se inicio "${pendingStatusAction.tournamentName}".`,
+      results_review: `"${pendingStatusAction.tournamentName}" paso a revision de resultados.`,
+      finished: `Se finalizaron los resultados de "${pendingStatusAction.tournamentName}".`,
+    };
+
+    if (pendingStatusAction.nextStatus === 'finished' && pendingCards > 0) {
+      setNotice(`Todavia faltan ${pendingCards} tarjetas antes de finalizar la revision.`);
+      setPendingStatusAction(null);
+      return;
+    }
+
+    const patch: Partial<TournamentDocument> = pendingStatusAction.nextStatus === 'results_review'
+      ? {
+          status: 'results_review',
+          pendingCards,
+          approvedCards: targetTournament?.leaderboard.length ?? 0,
+          leaderboard: (targetTournament?.leaderboard ?? []).map((row) => ({ ...row, status: 'provisional' as const })),
+        }
+      : pendingStatusAction.nextStatus === 'finished'
+        ? {
+            status: 'finished',
+            pendingCards: 0,
+            approvedCards: targetTournament?.leaderboard.length ?? 0,
+            leaderboard: finalizeLeaderboardRows(targetTournament?.leaderboard ?? []),
+          }
+        : { status: pendingStatusAction.nextStatus };
+
     await updateTournamentStatus(
       pendingStatusAction.tournamentId,
-      pendingStatusAction.nextStatus,
-      pendingStatusAction.nextStatus === 'registration_open'
-        ? `Se activo la inscripcion de "${pendingStatusAction.tournamentName}".`
-        : `Se cerro la inscripcion de "${pendingStatusAction.tournamentName}".`,
+      patch,
+      statusMessages[pendingStatusAction.nextStatus],
     );
     setPendingStatusAction(null);
   };
 
   const openCostEditor = (tournament: Tournament) => {
+    if (isTournamentCostLocked(tournament)) {
+      setNotice('No se puede editar el monto una vez iniciado el torneo.');
+      return;
+    }
+
     setSelectedTournamentId(tournament.id);
     setActiveTab('details');
     setCostTournamentId(tournament.id);
@@ -1191,6 +1400,11 @@ export function TournamentRegistration() {
     if (!costTournament) {
       return;
     }
+    if (isTournamentCostLocked(costTournament)) {
+      setNotice('No se puede editar el monto una vez iniciado el torneo.');
+      closeCostEditor();
+      return;
+    }
 
     const registrationFeeMinor = parseMoneyToMinor(costDraft.registrationFee || '0');
     const reducedRegistrationFeeMinor = parseMoneyToMinor(costDraft.reducedRegistrationFee || '0');
@@ -1216,6 +1430,13 @@ export function TournamentRegistration() {
 
   const confirmTournamentCostChange = async () => {
     if (!pendingCostAction) {
+      return;
+    }
+    const targetTournament = tournaments.find((tournament) => tournament.id === pendingCostAction.tournamentId) ?? null;
+    if (isTournamentCostLocked(targetTournament)) {
+      setNotice('No se puede editar el monto una vez iniciado el torneo.');
+      setPendingCostAction(null);
+      closeCostEditor();
       return;
     }
 
@@ -1280,37 +1501,18 @@ export function TournamentRegistration() {
       return;
     }
 
-    if (tournament.status === 'in_progress' && tournament.pendingCards > 0) {
-      const nextApprovedCards = tournament.approvedCards + 1;
-      const nextLeaderboard = tournament.leaderboard.length > 0
-        ? tournament.leaderboard
-        : [
-            {
-              player: `Tarjeta aprobada ${nextApprovedCards}`,
-              category: 'General',
-              gross: 72,
-              handicap: 0,
-              net: 72,
-              status: 'provisional' as const,
-            },
-          ];
+    if (tournament.status === 'registration_closed') {
+      requestTournamentStatusChange(tournament, 'in_progress');
+      return;
+    }
 
-      try {
-        await updateTournamentRecord(
-          tournament.id,
-          {
-            pendingCards: tournament.pendingCards - 1,
-            approvedCards: nextApprovedCards,
-            leaderboard: nextLeaderboard,
-          },
-          user?.id ?? 'system',
-        );
-        setSelectedTournamentId(tournament.id);
-        setActiveTab('leaderboard');
-        setNotice(`Se aprobo una tarjeta pendiente de "${tournament.name}".`);
-      } catch (error) {
-        setNotice(error instanceof Error ? `No pudimos aprobar la tarjeta: ${error.message}` : 'No pudimos aprobar la tarjeta.');
-      }
+    if (tournament.status === 'in_progress') {
+      requestTournamentStatusChange(tournament, 'results_review');
+      return;
+    }
+
+    if (tournament.status === 'results_review') {
+      openScorecardModal(tournament);
       return;
     }
 
@@ -1358,6 +1560,73 @@ export function TournamentRegistration() {
     }
   };
 
+  const openExternalPlayerModal = (tournament: Tournament) => {
+    setExternalPlayerTournamentId(tournament.id);
+    setExternalPlayerDraft({
+      fullName: '',
+      email: '',
+      phone: '',
+      handicap: '',
+      aagLicense: '',
+      amount: amountMinorToInput(tournament.registrationFeeMinor),
+      notes: '',
+    });
+  };
+
+  const closeExternalPlayerModal = () => {
+    setExternalPlayerTournamentId(null);
+  };
+
+  const handleExternalPlayerDraftChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
+    setExternalPlayerDraft((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleCreateExternalPlayer = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!externalPlayerTournament) {
+      return;
+    }
+    const amountMinor = parseMoneyToMinor(externalPlayerDraft.amount || '0');
+    const handicap = externalPlayerDraft.handicap.trim() ? Number(externalPlayerDraft.handicap) : null;
+    if (!externalPlayerDraft.fullName.trim() || !externalPlayerDraft.email.trim()) {
+      setNotice('Completa nombre, apellido y email del jugador externo.');
+      return;
+    }
+    if (!Number.isFinite(amountMinor) || amountMinor <= 0 || (handicap !== null && !Number.isFinite(handicap))) {
+      setNotice('Revisa el monto y el handicap del jugador externo.');
+      return;
+    }
+    try {
+      const result = await tournamentCallables.registerExternalParticipant({
+        tournamentId: externalPlayerTournament.id,
+        fullName: externalPlayerDraft.fullName.trim(),
+        email: externalPlayerDraft.email.trim(),
+        phone: externalPlayerDraft.phone.trim() || null,
+        handicap,
+        aagLicense: externalPlayerDraft.aagLicense.trim() || null,
+        amountMinor,
+        managedByStaff: true,
+        notes: externalPlayerDraft.notes.trim() || null,
+      });
+      closeExternalPlayerModal();
+      setIsRegistrationsListOpen(true);
+      setPaymentRegistrationId(result.registrationId);
+      setPaymentDraft({
+        paymentMethodId: 'cash',
+        operationDate: getTodayInputDate(),
+        amount: amountMinorToInput(result.amountMinor),
+        paymentReference: '',
+        notes: externalPlayerDraft.notes.trim(),
+      });
+      setNotice(result.duplicate
+        ? 'Ese jugador externo ya estaba inscripto; se abrió su pago pendiente.'
+        : 'Jugador externo agregado. Completa el pago con el formulario habitual.');
+    } catch (error) {
+      setNotice(error instanceof Error ? 'No pudimos agregar el jugador externo: ' + error.message : 'No pudimos agregar el jugador externo.');
+    }
+  };
+
   const openPaymentModal = (registration: TournamentRegistrationRecord) => {
     if (registration.status === 'pending_approval') {
       setNotice('Aproba la inscripcion antes de registrar el pago.');
@@ -1401,13 +1670,87 @@ export function TournamentRegistration() {
     });
   };
 
+  const resetScorecardDraft = () => {
+    setScorecardDraft({ player: '', registrationId: '', category: '', gross: '', handicap: '', net: '' });
+  };
+
+  const buildScorecardDraftFromRegistration = (
+    registration: TournamentRegistrationRecord,
+    tournament: Tournament,
+    grossValue = '',
+  ): TournamentScorecardDraft => {
+    const member = registration.memberId ? membersById.get(registration.memberId) : null;
+    const handicap = getScorecardRegistrationHandicap(registration, member);
+    const gross = Number(grossValue);
+
+    return {
+      player: getScorecardPlayerSearchValue(registration, member),
+      registrationId: registration.id,
+      category: getTournamentCategoryForHandicap(tournament, handicap, getRegistrationGenderHint(registration)),
+      gross: grossValue,
+      handicap: String(handicap),
+      net: grossValue && Number.isFinite(gross) ? String(gross - handicap) : '',
+    };
+  };
+
+  const openScorecardModal = (tournament: Tournament, registration?: TournamentRegistrationRecord) => {
+    if (tournament.status !== 'results_review') {
+      setNotice('Primero pasa el torneo a revision de resultados para cargar tarjetas.');
+      return;
+    }
+
+    setSelectedTournamentId(tournament.id);
+    setActiveTab('details');
+    setIsCardsListOpen(true);
+    if (registration) {
+      setScorecardDraft(buildScorecardDraftFromRegistration(registration, tournament));
+    } else {
+      resetScorecardDraft();
+    }
+    setIsScorecardModalOpen(true);
+  };
+
+  const closeScorecardModal = () => {
+    setIsScorecardModalOpen(false);
+    resetScorecardDraft();
+  };
+
   const handleScorecardDraftChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
+    if (name === 'player' && selectedTournament) {
+      const registration = pendingScorecardRegistrations.find((entry) => {
+        const member = entry.memberId ? membersById.get(entry.memberId) : null;
+        return getScorecardPlayerSearchValue(entry, member) === value;
+      });
+      if (registration) {
+        setScorecardDraft((current) => buildScorecardDraftFromRegistration(registration, selectedTournament, current.gross));
+        return;
+      }
+      setScorecardDraft((current) => ({ ...current, player: value, registrationId: '', category: '', handicap: '' }));
+      return;
+    }
+    if (name === 'gross') {
+      const gross = Number(value);
+      const handicap = Number(scorecardDraft.handicap);
+      setScorecardDraft((current) => ({
+        ...current,
+        gross: value,
+        net: Number.isFinite(gross) && Number.isFinite(handicap) ? String(gross - handicap) : current.net,
+      }));
+      return;
+    }
     setScorecardDraft((current) => ({ ...current, [name]: value }));
   };
 
-  const handleAddScorecard = async () => {
+  const handleAddScorecard = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+
     if (!selectedTournament) {
+      return;
+    }
+
+    if (selectedTournament.status !== 'results_review') {
+      setNotice('Primero pasa el torneo a revision de resultados para cargar tarjetas.');
       return;
     }
 
@@ -1415,31 +1758,49 @@ export function TournamentRegistration() {
     const handicap = Number(scorecardDraft.handicap);
     const net = scorecardDraft.net ? Number(scorecardDraft.net) : gross - handicap;
 
-    if (!scorecardDraft.player.trim() || !scorecardDraft.category || [gross, handicap, net].some((value) => !Number.isFinite(value))) {
-      setNotice('Completa jugador, categoria, gross y handicap para cargar la tarjeta.');
+    if (!scorecardDraft.registrationId || !scorecardDraft.player.trim() || !scorecardDraft.category || [gross, handicap, net].some((value) => !Number.isFinite(value))) {
+      setNotice('Selecciona un jugador inscripto y completa gross para cargar la tarjeta.');
       return;
     }
 
+    if (selectedTournament.leaderboard.some((row) => row.registrationId === scorecardDraft.registrationId)) {
+      setNotice('Ese jugador ya tiene una tarjeta cargada en revision.');
+      return;
+    }
+
+    const registration = scorecardRegistrations.find((entry) => entry.id === scorecardDraft.registrationId);
+    const member = registration?.memberId ? membersById.get(registration.memberId) : null;
+    const teeOrder = registration ? scorecardRegistrations.findIndex((entry) => entry.id === registration.id) + 1 : null;
     const row: TournamentLeaderboardRow = {
-      player: scorecardDraft.player.trim(),
+      registrationId: scorecardDraft.registrationId,
+      memberNumber: registration ? getParticipantNumber(registration) : null,
+      teeOrder,
+      player: registration?.participantName ?? scorecardDraft.player.trim(),
       category: scorecardDraft.category,
       gross,
       handicap,
       net,
-      status: 'final',
+      status: 'provisional',
     };
+    const nextLeaderboard = [...selectedTournament.leaderboard, row];
+    const pendingAfterSave = Math.max(0, scorecardRegistrations.length - nextLeaderboard.filter((entry) => entry.registrationId).length);
 
     try {
       await updateTournamentRecord(
         selectedTournament.id,
         {
-          approvedCards: selectedTournament.approvedCards + 1,
-          leaderboard: [...selectedTournament.leaderboard, row],
+          pendingCards: pendingAfterSave,
+          approvedCards: nextLeaderboard.length,
+          leaderboard: nextLeaderboard,
         },
         user?.id ?? 'system',
       );
-      setScorecardDraft({ player: '', category: '', gross: '', handicap: '', net: '' });
-      setNotice(`Tarjeta cargada para ${row.player}. El ranking se actualizo por categoria.`);
+      resetScorecardDraft();
+      setIsCardsListOpen(true);
+      if (pendingAfterSave === 0) {
+        setIsScorecardModalOpen(false);
+      }
+      setNotice(`Tarjeta cargada para ${registration?.participantName ?? member?.firstName ?? row.player}. Queda en revision hasta finalizar resultados.`);
     } catch (error) {
       setNotice(error instanceof Error ? `No pudimos guardar la tarjeta: ${error.message}` : 'No pudimos guardar la tarjeta.');
     }
@@ -1510,11 +1871,7 @@ export function TournamentRegistration() {
       <div className="tournament-shell">
         <section className="floating-card tournament-hero">
           <div className="tournament-hero__copy">
-            <p className="eyebrow">Torneos</p>
             <h1>{canManageTournaments ? 'Gestion de torneos' : 'Torneos del club'}</h1>
-            <p>
-              Calendario, inscripciones, categorias, salidas, tarjetas y resultados
-            </p>
           </div>
 
           <div className="tournament-hero__actions">
@@ -1569,7 +1926,7 @@ export function TournamentRegistration() {
                 onClick={() => setActiveTab('calendar')}
               >
                 <Icon type="list" />
-                Calendario
+                <span className="tournament-tab__label">Calendario</span>
               </button>
               {hasVisibleScorecards && (
                 <button
@@ -1578,7 +1935,7 @@ export function TournamentRegistration() {
                   onClick={() => setActiveTab('leaderboard')}
                 >
                   <Icon type="trophy" />
-                  Resultados
+                  <span className="tournament-tab__label">Resultados</span>
                 </button>
               )}
               {selectedTournament && (
@@ -1588,7 +1945,7 @@ export function TournamentRegistration() {
                   onClick={() => setActiveTab('details')}
                 >
                   <Icon type="score" />
-                  Detalle del torneo
+                  <span className="tournament-tab__label">Detalle del torneo</span>
                 </button>
               )}
             </div>
@@ -1656,7 +2013,7 @@ export function TournamentRegistration() {
                   <small>
                     {canManageTournaments
                       ? 'Usa la busqueda si necesitas acotar el listado antes de operar.'
-                      : 'Solo se muestran torneos con inscripcion abierta.'}
+                      : 'Se muestran inscripciones abiertas, revisiones y resultados publicados.'}
                   </small>
                 </div>
 
@@ -1737,7 +2094,7 @@ export function TournamentRegistration() {
                             <div className="tournament-row__actions">
                               {canManageTournaments ? (
                                 <>
-                                  {['draft', 'scheduled', 'registration_closed'].includes(tournament.status) && (
+                                  {['draft', 'scheduled'].includes(tournament.status) && (
                                     <button
                                       type="button"
                                       className="ui-action-button ui-action-button--positive tournament-row__button"
@@ -1747,6 +2104,18 @@ export function TournamentRegistration() {
                                       }}
                                     >
                                       Activar inscripcion
+                                    </button>
+                                  )}
+                                  {tournament.status === 'registration_closed' && (
+                                    <button
+                                      type="button"
+                                      className="ui-action-button ui-action-button--positive tournament-row__button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        requestTournamentStatusChange(tournament, 'in_progress');
+                                      }}
+                                    >
+                                      Iniciar torneo
                                     </button>
                                   )}
                                   {tournament.status === 'registration_open' && (
@@ -1761,7 +2130,7 @@ export function TournamentRegistration() {
                                       Cerrar inscripcion
                                     </button>
                                   )}
-                                  {tournament.status === 'in_progress' && tournament.pendingCards > 0 && (
+                                  {tournament.status === 'in_progress' && (
                                     <button
                                       type="button"
                                       className="ui-action-button ui-action-button--positive tournament-row__button"
@@ -1770,10 +2139,22 @@ export function TournamentRegistration() {
                                         handleTournamentAction(tournament);
                                       }}
                                     >
-                                      Aprobar tarjeta
+                                      Pasar a revision
                                     </button>
                                   )}
-                                  {hasScorecards(tournament) && (
+                                  {tournament.status === 'results_review' && (
+                                    <button
+                                      type="button"
+                                      className="ui-action-button ui-action-button--positive tournament-row__button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleTournamentAction(tournament);
+                                      }}
+                                    >
+                                      Cargar tarjeta
+                                    </button>
+                                  )}
+                                  {canDisplayTournamentResults(tournament) && (
                                     <button
                                       type="button"
                                       className="ui-action-button ui-action-button--secondary tournament-row__button"
@@ -1788,16 +2169,38 @@ export function TournamentRegistration() {
                                   )}
                                 </>
                               ) : (
-                                <button
-                                  type="button"
-                                  className={currentRegistration ? 'ui-action-button ui-action-button--secondary tournament-row__button' : 'ui-action-button ui-action-button--positive tournament-row__button'}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleTournamentAction(tournament);
-                                  }}
-                                >
-                                  {currentRegistration ? getRegistrationStatusLabel(currentRegistration) : 'Inscribirme'}
-                                </button>
+                                <>
+                                  {tournament.status === 'registration_open' && (
+                                    <button
+                                      type="button"
+                                      className={currentRegistration ? 'ui-action-button ui-action-button--secondary tournament-row__button' : 'ui-action-button ui-action-button--positive tournament-row__button'}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleTournamentAction(tournament);
+                                      }}
+                                    >
+                                      {currentRegistration ? getRegistrationStatusLabel(currentRegistration) : 'Inscribirme'}
+                                    </button>
+                                  )}
+                                  {tournament.status === 'results_review' && (
+                                    <span className="tournament-row__status-note">Revision de resultados</span>
+                                  )}
+                                  {tournament.status === 'finished' && tournament.leaderboard.length > 0 && (
+                                    <button
+                                      type="button"
+                                      className="ui-action-button ui-action-button--secondary tournament-row__button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setSelectedTournamentId(tournament.id);
+                                        setSelectedLeaderboardCategory(null);
+                                        setOpenLeaderboardTournamentId(tournament.id);
+                                        setActiveTab('leaderboard');
+                                      }}
+                                    >
+                                      Resultados
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </article>
@@ -1814,13 +2217,13 @@ export function TournamentRegistration() {
                 <div className="tournament-section-header">
                   <div>
                     <p className="eyebrow">Resultados</p>
-                    <h2>Torneos con tarjetas cargadas</h2>
+                    <h2>Torneos finalizados</h2>
                   </div>
                 </div>
 
                 {tournamentsWithResults.length === 0 ? (
                   <div className="empty-state empty-state--inline">
-                    La tabla de resultados se activa cuando hay tarjetas cargadas y resultados publicados.
+                    La tabla de resultados se activa cuando el torneo esta finalizado y tiene tarjetas cargadas.
                   </div>
                 ) : (
                   <div className="tournament-result-list">
@@ -1841,7 +2244,7 @@ export function TournamentRegistration() {
                             <span>
                               <strong>{tournament.name}</strong>
                               <small>
-                                {formatDate(tournament.date)} · {tournament.leaderboard.length} resultados · {getStatusLabel(tournament.status)}
+                                {formatDate(tournament.date)} - {tournament.leaderboard.length} resultados - {getStatusLabel(tournament.status)}
                               </small>
                             </span>
                             <span className="search-collapse__chevron">
@@ -1877,18 +2280,25 @@ export function TournamentRegistration() {
                                       <div className="tournament-score-table">
                                         <div className="tournament-score-table__head">
                                           <span>Pos.</span>
-                                          <span>Jugador / equipo</span>
+                                          <span>Jugador</span>
+                                          <span>Salida</span>
                                           <span>Gross</span>
                                           <span>Hcp</span>
                                           <span>Neto</span>
+                                          <span>Estado</span>
                                         </div>
                                         {selectedGroup.rows.map((row, index) => (
                                           <div key={`${tournament.id}-${selectedGroup.category}-${row.player}-${row.net}`} className="tournament-score-row">
                                             <strong>{index + 1}</strong>
-                                            <span>{row.player}</span>
+                                            <span>
+                                              {row.player}
+                                              {row.memberNumber && <small>{row.memberNumber}</small>}
+                                            </span>
+                                            <span>{row.teeOrder ? `#${row.teeOrder}` : '-'}</span>
                                             <span>{row.gross}</span>
                                             <span>{row.handicap}</span>
                                             <strong>{row.net}</strong>
+                                            <span>{row.status === 'final' ? 'Final' : 'En revisión'}</span>
                                           </div>
                                         ))}
                                       </div>
@@ -1899,23 +2309,27 @@ export function TournamentRegistration() {
                                 <div className="tournament-ranking-picker">
                                   <div>
                                     <strong>Selecciona una categoria</strong>
-                                    <small>Las tarjetas cargadas por administracion alimentan cada ranking interno.</small>
+                                    <small>Tabla final publicada por categoria.</small>
                                   </div>
                                   <div className="tournament-ranking-picker__items">
-                                    {leaderboardGroups.map((group) => (
-                                      <button
-                                        key={`${tournament.id}-${group.category}`}
-                                        type="button"
-                                        className="tournament-ranking-choice"
-                                        onClick={() => setSelectedLeaderboardCategory({ tournamentId: tournament.id, category: group.category })}
-                                      >
-                                        <span>{group.category}</span>
-                                        <small>{group.rows.length} tarjetas</small>
-                                        <span className="search-collapse__chevron">
-                                          <Icon type="chevron" />
-                                        </span>
-                                      </button>
-                                    ))}
+                                    {leaderboardGroups.length === 0 ? (
+                                      <div className="empty-state empty-state--inline">Todavia no hay tarjetas cargadas para publicar.</div>
+                                    ) : (
+                                      leaderboardGroups.map((group) => (
+                                        <button
+                                          key={`${tournament.id}-${group.category}`}
+                                          type="button"
+                                          className="tournament-ranking-choice"
+                                          onClick={() => setSelectedLeaderboardCategory({ tournamentId: tournament.id, category: group.category })}
+                                        >
+                                          <span>{group.category}</span>
+                                          <small>{group.rows.length} tarjetas</small>
+                                          <span className="search-collapse__chevron">
+                                            <Icon type="chevron" />
+                                          </span>
+                                        </button>
+                                      ))
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -2019,36 +2433,185 @@ export function TournamentRegistration() {
                     <strong>{selectedTournament.approvedCards + selectedTournament.pendingCards}</strong>
                     {canManageTournaments && (
                       <UiActionButton type="button" variant="secondary" compact onClick={() => setIsCardsListOpen((current) => !current)}>
-                        Modificar
+                        Ver listado
                       </UiActionButton>
                     )}
                   </div>
                 </div>
 
-                {isCardsListOpen && (
+                {canManageTournaments && (selectedTournament.status === 'results_review' || isCardsListOpen) && (
+                  <div className="tournament-scorecard-admin" aria-label="Administracion de tarjetas">
+                    <div className="tournament-scorecard-form">
+                      <div className="tournament-section-header">
+                        <div>
+                          <p className="eyebrow">Tarjetas</p>
+                          <h3>Revision de tarjetas</h3>
+                        </div>
+                        {selectedTournament.status === 'results_review' && (
+                          <UiActionButton
+                            type="button"
+                            variant="positive"
+                            compact
+                            disabled={pendingScorecardRegistrations.length === 0}
+                            onClick={() => openScorecardModal(selectedTournament)}
+                          >
+                            <Icon type="plus" />
+                            <span>Cargar tarjeta</span>
+                          </UiActionButton>
+                        )}
+                      </div>
+
+                      <div className="tournament-scorecard-summary">
+                        <div>
+                          <span>Jugadores</span>
+                          <strong>{scorecardRegistrations.length}</strong>
+                        </div>
+                        <div>
+                          <span>Tarjetas cargadas</span>
+                          <strong>{selectedTournament.leaderboard.length}</strong>
+                        </div>
+                        <div>
+                          <span>Pendientes</span>
+                          <strong>{pendingScorecardRegistrations.length}</strong>
+                        </div>
+                      </div>
+
+                      <div className="tournament-scorecard-review">
+                        <div className="tournament-score-table tournament-score-table--review">
+                          <div className="tournament-score-table__head">
+                            <span>Salida</span>
+                            <span>Jugador</span>
+                            <span>Categoria</span>
+                            <span>Hcp</span>
+                            <span>Tarjeta</span>
+                          </div>
+                          {scorecardRegistrations.map((registration, index) => {
+                            const member = registration.memberId ? membersById.get(registration.memberId) : null;
+                            const handicap = getScorecardRegistrationHandicap(registration, member);
+                            const loadedCard = selectedTournament.leaderboard.find((row) => row.registrationId === registration.id);
+                            return (
+                              <div
+                                key={registration.id}
+                                className={`tournament-score-row tournament-score-row--review ${loadedCard ? 'tournament-score-row--loaded' : ''}`}
+                              >
+                                <strong>{index + 1}</strong>
+                                <span>
+                                  {registration.participantName}
+                                  <small>{getParticipantNumber(registration)}</small>
+                                </span>
+                                <span>{getTournamentCategoryForHandicap(selectedTournament, handicap, getRegistrationGenderHint(registration))}</span>
+                                <span>{handicap}</span>
+                                <span className="scorecard-status-cell">
+                                  <strong className={`scorecard-status-pill ${loadedCard ? 'scorecard-status-pill--loaded' : 'scorecard-status-pill--missing'}`}>
+                                    {loadedCard ? 'Tarjeta cargada' : 'Sin tarjeta cargada'}
+                                  </strong>
+                                  {loadedCard ? (
+                                    <small>
+                                      Gross {loadedCard.gross} / Neto {loadedCard.net}
+                                    </small>
+                                  ) : selectedTournament.status === 'results_review' ? (
+                                    <UiActionButton
+                                      type="button"
+                                      variant="secondary"
+                                      compact
+                                      onClick={() => openScorecardModal(selectedTournament, registration)}
+                                    >
+                                      Cargar
+                                    </UiActionButton>
+                                  ) : null}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {scorecardRegistrations.length === 0 && (
+                            <div className="empty-state empty-state--inline">No hay jugadores pagos para cargar tarjetas.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {canManageTournaments && (
+                  <div className="tournament-side-section tournament-results-workflow">
+                    <div className="tournament-section-header">
+                      <div>
+                        <p className="eyebrow">Flujo del torneo</p>
+                        <h3>Revisión de resultados</h3>
+                        <p>
+                          El torneo pasa de juego a revisión, se cargan las tarjetas de cada jugador y al finalizar se publica la tabla final.
+                        </p>
+                      </div>
+                      <span className={`status-pill status-pill--${selectedTournament.status}`}>
+                        {getStatusLabel(selectedTournament.status)}
+                      </span>
+                    </div>
+                    <div className="tournament-mode-actions tournament-mode-actions--bottom">
+                      {selectedTournament.status === 'registration_closed' && (
+                        <UiActionButton type="button" variant="positive" onClick={() => requestTournamentStatusChange(selectedTournament, 'in_progress')}>
+                          Iniciar torneo
+                        </UiActionButton>
+                      )}
+                      {selectedTournament.status === 'in_progress' && (
+                        <UiActionButton type="button" variant="positive" onClick={() => requestTournamentStatusChange(selectedTournament, 'results_review')}>
+                          Pasar a revisión
+                        </UiActionButton>
+                      )}
+                      {selectedTournament.status === 'results_review' && (
+                        <>
+                          <UiActionButton type="button" variant="secondary" onClick={() => openScorecardModal(selectedTournament)}>
+                            Cargar tarjeta
+                          </UiActionButton>
+                          <UiActionButton
+                            type="button"
+                            variant="positive"
+                            disabled={pendingScorecardRegistrations.length > 0 || selectedTournament.leaderboard.length === 0}
+                            onClick={() => requestTournamentStatusChange(selectedTournament, 'finished')}
+                          >
+                            Finalizar revisión
+                          </UiActionButton>
+                          <small>
+                            {pendingScorecardRegistrations.length > 0
+                              ? `Faltan ${pendingScorecardRegistrations.length} tarjetas para publicar resultados.`
+                              : 'Todas las tarjetas están cargadas y listas para publicar.'}
+                          </small>
+                        </>
+                      )}
+                      {selectedTournament.status === 'finished' && (
+                        <UiActionButton type="button" variant="secondary" onClick={() => setActiveTab('leaderboard')}>
+                          Ver tabla final
+                        </UiActionButton>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/*
+                {selectedTournament && false && isCardsListOpen && (
                   <div className="tournament-scorecard-admin" aria-label="Administracion de tarjetas">
                     {canManageTournaments && (
                       <div className="tournament-scorecard-form">
                         <div>
                           <p className="eyebrow">Tarjetas</p>
-                          <h3>Cargar tarjeta validada</h3>
-                          <p>Administracion carga las tarjetas aprobadas y el ranking se actualiza por categoria.</p>
+                          <h3>Revisión de tarjetas</h3>
+                          <p>Administración carga cada tarjeta, asociada al jugador, handicap y categoría correspondiente.</p>
                         </div>
                         <div className="tournament-cost-form__row">
                           <label className="form-field">
-                            <span>Jugador o equipo</span>
-                            <input name="player" value={scorecardDraft.player} onChange={handleScorecardDraftChange} />
+                            <span>Jugador inscripto</span>
+                            <input name="player" list="scorecard-players" value={scorecardDraft.player} onChange={handleScorecardDraftChange} placeholder="Buscar por nombre o socio" />
+                            <datalist id="scorecard-players">
+                              {pendingScorecardRegistrations.map((registration) => {
+                                const member = registration.memberId ? membersById.get(registration.memberId) : null;
+                                return (
+                                  <option key={registration.id} value={getScorecardPlayerSearchValue(registration, member)} />
+                                );
+                              })}
+                            </datalist>
                           </label>
                           <label className="form-field">
                             <span>Categoria</span>
-                            <select name="category" value={scorecardDraft.category} onChange={handleScorecardDraftChange}>
-                              <option value="">Seleccionar</option>
-                              {getTournamentCategoryLabels(selectedTournament).map((categoryLabel) => (
-                                <option key={categoryLabel} value={categoryLabel}>
-                                  {categoryLabel}
-                                </option>
-                              ))}
-                            </select>
+                            <input name="category" value={scorecardDraft.category} readOnly placeholder="Se completa con la inscripcion" />
                           </label>
                         </div>
                         <div className="tournament-cost-form__row">
@@ -2058,21 +2621,53 @@ export function TournamentRegistration() {
                           </label>
                           <label className="form-field">
                             <span>Handicap</span>
-                            <input name="handicap" type="number" step="0.1" value={scorecardDraft.handicap} onChange={handleScorecardDraftChange} />
+                            <input name="handicap" type="number" step="0.1" value={scorecardDraft.handicap} readOnly />
                           </label>
                           <label className="form-field">
                             <span>Neto</span>
                             <input name="net" type="number" step="0.1" value={scorecardDraft.net} onChange={handleScorecardDraftChange} placeholder="Auto" />
                           </label>
-                          <UiActionButton type="button" variant="positive" compact onClick={handleAddScorecard}>
+                          <UiActionButton type="button" variant="positive" compact onClick={() => void handleAddScorecard()}>
                             <Icon type="plus" />
                             <span>Cargar tarjeta</span>
                           </UiActionButton>
+                        </div>
+                        <div className="tournament-scorecard-review">
+                          <div className="tournament-score-table tournament-score-table--review">
+                            <div className="tournament-score-table__head">
+                              <span>Salida</span>
+                              <span>Jugador</span>
+                              <span>Categoría</span>
+                              <span>Hcp</span>
+                              <span>Estado</span>
+                            </div>
+                            {scorecardRegistrations.map((registration, index) => {
+                              const member = registration.memberId ? membersById.get(registration.memberId) : null;
+                              const handicap = getScorecardRegistrationHandicap(registration, member);
+                              const loadedCard = selectedTournament.leaderboard.find((row) => row.registrationId === registration.id);
+                              return (
+                                <div key={registration.id} className="tournament-score-row tournament-score-row--review">
+                                  <strong>{index + 1}</strong>
+                                  <span>
+                                    {registration.participantName}
+                                    <small>{getParticipantNumber(registration)}</small>
+                                  </span>
+                                  <span>{getTournamentCategoryForHandicap(selectedTournament, handicap, getRegistrationGenderHint(registration))}</span>
+                                  <span>{handicap}</span>
+                                  <strong>{loadedCard ? 'Cargada' : 'Pendiente'}</strong>
+                                </div>
+                              );
+                            })}
+                            {scorecardRegistrations.length === 0 && (
+                              <div className="empty-state empty-state--inline">No hay jugadores pagos para cargar tarjetas.</div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
+                */}
 
                 {canManageTournaments && (
                   <div className="tournament-side-section">
@@ -2081,7 +2676,7 @@ export function TournamentRegistration() {
                         <p className="eyebrow">Monto</p>
                         <h3>Costos del torneo</h3>
                       </div>
-                      {costTournament?.id !== selectedTournament.id && (
+                      {costTournament?.id !== selectedTournament.id && !isTournamentCostLocked(selectedTournament) && (
                         <UiActionButton type="button" variant="secondary" compact onClick={() => openCostEditor(selectedTournament)}>
                           Editar monto
                         </UiActionButton>
@@ -2105,8 +2700,13 @@ export function TournamentRegistration() {
                         <strong>{formatAmountMinor(selectedTournament.prizeCostMinor)}</strong>
                       </div>
                     </div>
+                    {isTournamentCostLocked(selectedTournament) && (
+                      <div className="accounting-inline-notice accounting-inline-notice--info">
+                        El monto queda bloqueado una vez iniciado el torneo.
+                      </div>
+                    )}
 
-                    {costTournament?.id === selectedTournament.id ? (
+                    {costTournament?.id === selectedTournament.id && !isTournamentCostLocked(selectedTournament) ? (
                       <form className="tournament-cost-form" onSubmit={handleSaveTournamentCosts}>
                         <div className="tournament-cost-form__row">
                           <label className="form-field">
@@ -2252,6 +2852,9 @@ export function TournamentRegistration() {
                             {selectedTournamentPaymentSummary.pendingApproval} por aprobar
                           </span>
                         )}
+                        <UiActionButton type="button" compact onClick={() => openExternalPlayerModal(selectedTournament)}>
+                          Agregar jugador externo
+                        </UiActionButton>
                         <UiActionButton type="button" variant="secondary" compact onClick={() => setIsRegistrationsListOpen((current) => !current)}>
                           Ver listado
                         </UiActionButton>
@@ -2403,7 +3006,7 @@ export function TournamentRegistration() {
                       Abre {formatDateTimeForDisplay(selectedTournament.registrationOpenAt)} y cierra {formatDateTimeForDisplay(selectedTournament.registrationCloseAt)}. La sincronizacion automatica revisa estos horarios y actualiza el estado del torneo.
                     </p>
                     <div className="tournament-mode-actions tournament-mode-actions--bottom">
-                      {['draft', 'scheduled', 'registration_closed'].includes(selectedTournament.status) && (
+                      {['draft', 'scheduled'].includes(selectedTournament.status) && (
                         <UiActionButton
                           type="button"
                           variant="positive"
@@ -2420,9 +3023,6 @@ export function TournamentRegistration() {
                         >
                           Cerrar inscripcion
                         </UiActionButton>
-                      )}
-                      {!['draft', 'scheduled', 'registration_open', 'registration_closed'].includes(selectedTournament.status) && (
-                        <small>La inscripcion no se modifica cuando el torneo ya esta en juego o finalizado.</small>
                       )}
                     </div>
                   </div>
@@ -2860,7 +3460,8 @@ export function TournamentRegistration() {
                         <select id="recurrencePeriod" name="recurrencePeriod" value={draft.recurrencePeriod} onChange={handleDraftChange}>
                           <option value="weekly">Semanal</option>
                           <option value="biweekly">Quincenal</option>
-                          <option value="monthly">Mensual</option>
+                          <option value='monthly'>Mensual</option>
+                          <option value='annual'>Anual</option>
                         </select>
                       </label>
                     )}
@@ -2902,6 +3503,156 @@ export function TournamentRegistration() {
                     Crear torneo
                   </UiActionButton>
                 )}
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {isScorecardModalOpen && selectedTournament && (
+        <div className="modal-overlay quick-actions-modal-overlay" onClick={closeScorecardModal}>
+          <section
+            className="floating-card member-modal-card quick-actions-modal accounting-operation-modal tournament-scorecard-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scorecard-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="member-modal__header quick-actions-modal__header">
+              <div className="member-modal__title accounting-operation-modal__title-block">
+                <p className="eyebrow-light">Tarjeta de torneo</p>
+                <h2 id="scorecard-modal-title" className="accounting-operation-modal__title">Cargar tarjeta</h2>
+                <strong className="accounting-operation-modal__meta">{selectedTournament.name}</strong>
+              </div>
+              <div className="member-modal__header-actions">
+                <button type="button" className="modal-close-button" aria-label="Cerrar carga de tarjeta" onClick={closeScorecardModal}>
+                  <ModalCloseIcon />
+                </button>
+              </div>
+            </div>
+
+            <div className="tournament-scorecard-modal__summary">
+              <div>
+                <span>Jugadores</span>
+                <strong>{scorecardRegistrations.length}</strong>
+              </div>
+              <div>
+                <span>Pendientes</span>
+                <strong>{pendingScorecardRegistrations.length}</strong>
+              </div>
+              <div>
+                <span>Estado</span>
+                <strong>Revision de resultados</strong>
+              </div>
+            </div>
+
+            <form className="member-editor-form tournament-scorecard-modal__form" onSubmit={(event) => void handleAddScorecard(event)}>
+              <label className="form-field member-editor-form__wide">
+                <span>Jugador inscripto</span>
+                <input
+                  name="player"
+                  list="scorecard-modal-players"
+                  value={scorecardDraft.player}
+                  onChange={handleScorecardDraftChange}
+                  placeholder="Buscar por nombre, socio o AAG"
+                  required
+                />
+                <datalist id="scorecard-modal-players">
+                  {pendingScorecardRegistrations.map((registration) => {
+                    const member = registration.memberId ? membersById.get(registration.memberId) : null;
+                    return (
+                      <option key={registration.id} value={getScorecardPlayerSearchValue(registration, member)} />
+                    );
+                  })}
+                </datalist>
+              </label>
+
+              <label className="form-field member-editor-form__wide">
+                <span>Categoria</span>
+                <input name="category" value={scorecardDraft.category} readOnly placeholder="Se completa con la inscripcion" />
+              </label>
+
+              <div className="tournament-scorecard-modal__score-row member-editor-form__wide">
+                <label className="form-field">
+                  <span>Gross</span>
+                  <input name="gross" type="number" min="0" value={scorecardDraft.gross} onChange={handleScorecardDraftChange} required />
+                </label>
+                <label className="form-field">
+                  <span>Handicap</span>
+                  <input name="handicap" type="number" step="0.1" value={scorecardDraft.handicap} readOnly />
+                </label>
+                <label className="form-field">
+                  <span>Neto</span>
+                  <input name="net" type="number" step="0.1" value={scorecardDraft.net} onChange={handleScorecardDraftChange} placeholder="Auto" />
+                </label>
+              </div>
+
+              <div className="form-actions member-editor-form__wide">
+                <UiActionButton type="button" variant="danger" onClick={closeScorecardModal}>
+                  Cancelar
+                </UiActionButton>
+                <UiActionButton type="submit" variant="positive" disabled={!scorecardDraft.registrationId || !scorecardDraft.gross}>
+                  Cargar tarjeta
+                </UiActionButton>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {externalPlayerTournament && (
+        <div className="modal-overlay" onClick={closeExternalPlayerModal}>
+          <section
+            className="floating-card info-dialog-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="external-player-dialog-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="info-dialog-card__header">
+              <div>
+                <p className="eyebrow">Jugador exclusivo del torneo</p>
+                <h2 id="external-player-dialog-title">Agregar jugador externo</h2>
+                <small>{externalPlayerTournament.name}</small>
+              </div>
+              <button type="button" className="icon-button" aria-label="Cerrar alta externa" onClick={closeExternalPlayerModal}>X</button>
+            </div>
+            <p className="profile-note">
+              Este jugador solo se incorpora a este torneo. La inscripcion queda aprobada y luego usa el mismo formulario de pago y recibo.
+            </p>
+            <form className="accounting-entry-form" onSubmit={handleCreateExternalPlayer}>
+              <label className="form-field">
+                <span>Nombre y apellido</span>
+                <input name="fullName" value={externalPlayerDraft.fullName} onChange={handleExternalPlayerDraftChange} required />
+              </label>
+              <label className="form-field">
+                <span>Email</span>
+                <input name="email" type="email" value={externalPlayerDraft.email} onChange={handleExternalPlayerDraftChange} required />
+              </label>
+              <label className="form-field">
+                <span>Telefono</span>
+                <input name="phone" value={externalPlayerDraft.phone} onChange={handleExternalPlayerDraftChange} />
+              </label>
+              <label className="form-field">
+                <span>Handicap</span>
+                <input name="handicap" type="number" step="0.1" value={externalPlayerDraft.handicap} onChange={handleExternalPlayerDraftChange} />
+              </label>
+              <label className="form-field">
+                <span>Matricula AAG</span>
+                <input name="aagLicense" value={externalPlayerDraft.aagLicense} onChange={handleExternalPlayerDraftChange} />
+              </label>
+              <label className="form-field">
+                <span>Precio de inscripcion</span>
+                <input name="amount" inputMode="decimal" value={externalPlayerDraft.amount} onChange={handleExternalPlayerDraftChange} required />
+                <small>Se precarga el valor regular y puede modificarse para este jugador.</small>
+              </label>
+              <label className="form-field form-field--wide">
+                <span>Notas</span>
+                <textarea name="notes" rows={3} value={externalPlayerDraft.notes} onChange={handleExternalPlayerDraftChange} />
+              </label>
+              <div className="form-actions form-actions--right form-field--wide">
+                <button type="button" className="btn-danger" onClick={closeExternalPlayerModal}>Cancelar</button>
+                <button type="submit" className="btn-primary">Crear y continuar al pago</button>
               </div>
             </form>
           </section>
@@ -3064,14 +3815,14 @@ export function TournamentRegistration() {
 
       <ConfirmDialog
         open={Boolean(pendingStatusAction)}
-        title={pendingStatusAction?.nextStatus === 'registration_open' ? 'Abrir inscripcion' : 'Cerrar inscripcion'}
+        title={getTournamentStatusActionCopy(pendingStatusAction?.nextStatus).title}
         description={
           pendingStatusAction
-            ? `Vas a ${pendingStatusAction.nextStatus === 'registration_open' ? 'abrir' : 'cerrar'} la inscripcion de "${pendingStatusAction.tournamentName}".`
+            ? `Vas a ${getTournamentStatusActionCopy(pendingStatusAction.nextStatus).verb} "${pendingStatusAction.tournamentName}".`
             : null
         }
-        confirmLabel={pendingStatusAction?.nextStatus === 'registration_open' ? 'Abrir' : 'Cerrar'}
-        tone={pendingStatusAction?.nextStatus === 'registration_closed' ? 'danger' : 'default'}
+        confirmLabel={getTournamentStatusActionCopy(pendingStatusAction?.nextStatus).label}
+        tone={getTournamentStatusActionCopy(pendingStatusAction?.nextStatus).tone}
         onCancel={() => setPendingStatusAction(null)}
         onConfirm={confirmTournamentStatusChange}
       />

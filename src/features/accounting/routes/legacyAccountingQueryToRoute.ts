@@ -25,18 +25,9 @@ export function legacyAccountingQueryToRoute(search: string | URLSearchParams): 
     params.set('tab', 'egresos');
   } else if (section === 'movimientos' && subsection === 'expense-queue') {
     pathname = '/accounting/caja';
-    params.set('tab', 'rendiciones');
+    params.set('tab', 'movimientos');
   } else if (section === 'empleados' && (subsection === 'employee-expenses' || subsection === 'expense-queue')) {
-    pathname = '/accounting/caja';
-    params.set('tab', 'rendiciones');
-  } else if (section === 'movimientos' && subsection === 'mercado-pago') {
-    pathname = '/accounting/caja';
-    params.set('tab', 'cobros');
-    params.set('mode', 'mercadopago');
-  } else if (section === 'cuotas' && subsection === 'mercado-pago') {
-    pathname = '/accounting/caja';
-    params.set('tab', 'cobros');
-    params.set('mode', 'mercadopago');
+    pathname = '/accounting/employees';
   } else if (section === 'empleados' && subsection === 'employee-list') {
     pathname = '/accounting/employees';
   } else if (section === 'sensibles' && subsection === 'reference') {

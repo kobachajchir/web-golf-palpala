@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { CompactDetailsToggle } from '../components/CompactDetailsToggle';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DescriptionList } from '../components/DescriptionList';
@@ -6,19 +6,18 @@ import { IconActionMenu } from '../components/IconActionMenu';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { PersonProfileHeader } from '../components/PersonProfileHeader';
 import { RoleChipList } from '../components/RoleChipList';
+import { SquaredCircleButton } from '../components/SquaredCircleButton';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
 import { UiActionButton } from '../components/UiActionButton';
 import { normalizeRoleIds, ROLE_LABELS, ROLES, type RoleType } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import type { EntityWithId as AccountingEntityWithId, MemberFeeChargeDocument } from '../modules/accounting/domain/models';
-import { createAccountingCallables } from '../modules/accounting/functions/accounting.callables';
 import { createMemberFeeChargesRepository } from '../modules/accounting/infrastructure/firestore/repositories';
 import { createNotificationsCallables } from '../modules/notifications/functions/notifications.callables';
 import { createUsersCallables } from '../modules/users/functions/users.callables';
 import type { EntityWithId, MemberDocument } from '../modules/users/domain/models';
-import { createMembersRepository } from '../modules/users/infrastructure/firestore/repositories';
 import {
-  getClubMemberById,
+  getClubMemberProfile,
   getClubMemberHousehold,
   type ClubMemberRecord,
 } from '../modules/users/services/memberDirectory';
@@ -28,12 +27,10 @@ import type { TemporaryMemberCredentials } from '../modules/users/types/user.typ
 const STAFF_MODE_OPTIONS = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO] as const;
 const LICENSE_MAX_MONTHS = 6;
 const ASSIGNABLE_ROLE_OPTIONS: RoleType[] = [
-  ROLES.DIRECTIVO,
-  ROLES.ADMINISTRATIVO,
   ROLES.EMPLEADO,
-  ROLES.COMISION_DIRECTIVA,
-  ROLES.SOCIO,
+  ROLES.ADMINISTRATIVO,
 ];
+const ASSIGNABLE_ROLE_SET = new Set<RoleType>(ASSIGNABLE_ROLE_OPTIONS);
 
 type TimestampLike = {
   toDate?: () => Date;
@@ -197,6 +194,22 @@ function MinusIcon() {
   );
 }
 
+function KeyIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M14.5 5.5a5.25 5.25 0 1 1-1.18 8.14l-2.1 2.1H9v2.24H6.76V20H3v-3.76l6.36-6.36A5.25 5.25 0 0 1 14.5 5.5Zm0 2a3.25 3.25 0 0 0-3.25 3.25c0 .56.14 1.09.39 1.55l.34.63-6.98 6.98H7v-2.24h2.24v-2.25l3.7-3.7.63.34a3.25 3.25 0 1 0 .93-4.56Zm1.75 2.25a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z" />
+    </svg>
+  );
+}
+
+function AccessToggleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
+      <path d="M12 2a5 5 0 0 1 5 5v2h1.5A2.5 2.5 0 0 1 21 11.5v8A2.5 2.5 0 0 1 18.5 22h-13A2.5 2.5 0 0 1 3 19.5v-8A2.5 2.5 0 0 1 5.5 9H7V7a5 5 0 0 1 5-5Zm6.5 9h-13a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5ZM12 13.25a1.25 1.25 0 0 1 1 2v1.5a1 1 0 1 1-2 0v-1.5a1.25 1.25 0 0 1 1-2ZM12 4a3 3 0 0 0-3 3v2h6V7a3 3 0 0 0-3-3Z" />
+    </svg>
+  );
+}
+
 export function MemberMembershipProfile() {
   const { memberId } = useParams();
   const [searchParams] = useSearchParams();
@@ -207,6 +220,9 @@ export function MemberMembershipProfile() {
   const [household, setHousehold] = useState<ClubMemberRecord[]>([]);
   const [authStatus, setAuthStatus] = useState<MemberAuthStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [feeChargesLoading, setFeeChargesLoading] = useState(false);
+  const [householdLoading, setHouseholdLoading] = useState(false);
+  const [authStatusLoading, setAuthStatusLoading] = useState(false);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessMessage, setAccessMessage] = useState('');
   const [openHouseholdActionsId, setOpenHouseholdActionsId] = useState<string | null>(null);
@@ -224,47 +240,89 @@ export function MemberMembershipProfile() {
   const [memberInquiryError, setMemberInquiryError] = useState('');
   const [memberInquirySuccess, setMemberInquirySuccess] = useState('');
   const [isMemberInquirySubmitting, setIsMemberInquirySubmitting] = useState(false);
-  const accountingCallables = useMemo(() => createAccountingCallables(), []);
   const notificationsCallables = useMemo(() => createNotificationsCallables(), []);
   const usersCallables = useMemo(() => createUsersCallables(), []);
+  const loadRequestRef = useRef(0);
   const resolvedMemberId = memberId ?? (user?.profileType === 'member' ? user.profileId ?? undefined : undefined);
   const actorMemberId = user?.profileType === 'member' ? user.profileId ?? null : null;
   const canManageMembership = (STAFF_MODE_OPTIONS as readonly string[]).includes(interfaceMode);
   const isDirectivo = hasRole(ROLES.DIRECTIVO) && interfaceMode === ROLES.DIRECTIVO;
+  const isAdministrativo = hasRole(ROLES.ADMINISTRATIVO) && interfaceMode === ROLES.ADMINISTRATIVO;
+  const canAddAdministrativeRole = isDirectivo || isAdministrativo;
   const canSubmitMemberInquiry = Boolean(actorMemberId && resolvedMemberId && actorMemberId === resolvedMemberId);
   const requestedFocus = searchParams.get('focus');
 
   const loadMembershipData = useCallback(async () => {
+    const requestId = loadRequestRef.current + 1;
+    loadRequestRef.current = requestId;
+    const isCurrentRequest = () => loadRequestRef.current === requestId;
+
     if (!resolvedMemberId) {
       setLoading(false);
+      setFeeChargesLoading(false);
+      setHouseholdLoading(false);
+      setAuthStatusLoading(false);
       return;
     }
 
-    const [loadedMember, loadedMemberDocument, loadedFeeCharges, loadedHousehold, loadedAuthStatus] = await Promise.all([
-      getClubMemberById(resolvedMemberId),
-      createMembersRepository().getById(resolvedMemberId).catch(() => null),
-      createMemberFeeChargesRepository().listByMember(resolvedMemberId).catch(() => []),
-      getClubMemberHousehold(resolvedMemberId).catch(() => []),
-      canManageMembership ? usersCallables.getMemberAuthStatus({ memberId: resolvedMemberId }).catch(() => null) : Promise.resolve(null),
+    setLoading(true);
+    setFeeCharges([]);
+    setHousehold([]);
+    setAuthStatus(null);
+    setFeeChargesLoading(false);
+    setHouseholdLoading(false);
+    setAuthStatusLoading(false);
+
+    const loadedProfile = await getClubMemberProfile(resolvedMemberId);
+    if (!isCurrentRequest()) {
+      return;
+    }
+
+    setMember(loadedProfile.member);
+    setMemberDocument(loadedProfile.memberDocument);
+    setLoading(false);
+
+    if (!loadedProfile.member) {
+      return;
+    }
+
+    setFeeChargesLoading(true);
+    setHouseholdLoading(true);
+    setAuthStatusLoading(canManageMembership);
+
+    const [feeChargesResult, householdResult, authStatusResult] = await Promise.allSettled([
+      createMemberFeeChargesRepository().listByMember(resolvedMemberId),
+      getClubMemberHousehold(resolvedMemberId, loadedProfile.memberDocument),
+      canManageMembership ? usersCallables.getMemberAuthStatus({ memberId: resolvedMemberId }) : Promise.resolve(null),
     ]);
 
-    setMember(loadedMember);
-    setMemberDocument(loadedMemberDocument);
-    setFeeCharges(loadedFeeCharges);
-    setHousehold(loadedHousehold);
-    setAuthStatus(loadedAuthStatus);
-    setLoading(false);
+    if (!isCurrentRequest()) {
+      return;
+    }
+
+    setFeeCharges(feeChargesResult.status === 'fulfilled' ? feeChargesResult.value : []);
+    setHousehold(householdResult.status === 'fulfilled' ? householdResult.value : []);
+    setAuthStatus(authStatusResult.status === 'fulfilled' ? authStatusResult.value : null);
+    setFeeChargesLoading(false);
+    setHouseholdLoading(false);
+    setAuthStatusLoading(false);
   }, [canManageMembership, resolvedMemberId, usersCallables]);
 
   useEffect(() => {
     let mounted = true;
 
     if (!resolvedMemberId) {
+      setMember(null);
+      setMemberDocument(null);
+      setFeeCharges([]);
+      setHousehold([]);
+      setAuthStatus(null);
+      setFeeChargesLoading(false);
+      setHouseholdLoading(false);
+      setAuthStatusLoading(false);
       setLoading(false);
       return;
     }
-
-    setLoading(true);
 
     void loadMembershipData()
       .then(() => {
@@ -282,11 +340,15 @@ export function MemberMembershipProfile() {
         setFeeCharges([]);
         setHousehold([]);
         setAuthStatus(null);
+        setFeeChargesLoading(false);
+        setHouseholdLoading(false);
+        setAuthStatusLoading(false);
         setLoading(false);
       });
 
     return () => {
       mounted = false;
+      loadRequestRef.current += 1;
     };
   }, [loadMembershipData, resolvedMemberId]);
 
@@ -316,7 +378,12 @@ export function MemberMembershipProfile() {
       return;
     }
 
-    setAuthStatus(await usersCallables.getMemberAuthStatus({ memberId: resolvedMemberId }));
+    setAuthStatusLoading(true);
+    try {
+      setAuthStatus(await usersCallables.getMemberAuthStatus({ memberId: resolvedMemberId }));
+    } finally {
+      setAuthStatusLoading(false);
+    }
   };
 
   const handleCreateAccess = async () => {
@@ -400,25 +467,6 @@ export function MemberMembershipProfile() {
     }
   };
 
-  const handleSyncClaims = async () => {
-    if (!authStatus?.linkedUserId || !canManageMembership) {
-      return;
-    }
-
-    setAccessLoading(true);
-    setAccessMessage('');
-
-    try {
-      await usersCallables.syncCustomClaims({ uid: authStatus.linkedUserId });
-      setAccessMessage('Claims sincronizados.');
-      await refreshAuthStatus();
-    } catch (error) {
-      setAccessMessage(error instanceof Error ? error.message : 'No pudimos sincronizar claims.');
-    } finally {
-      setAccessLoading(false);
-    }
-  };
-
   const handleMemberInquiryChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = event.target;
     setMemberInquiryForm((current) => ({
@@ -455,27 +503,37 @@ export function MemberMembershipProfile() {
   const assignedRoleOptions = useMemo(() => normalizeRoleIds(authStatus?.roleIds ?? []), [authStatus?.roleIds]);
   const missingRoleOptions = useMemo(() => {
     const assignedRoleIds = new Set(assignedRoleOptions);
-    return ASSIGNABLE_ROLE_OPTIONS.filter((roleId) => !assignedRoleIds.has(roleId));
-  }, [assignedRoleOptions]);
+    return ASSIGNABLE_ROLE_OPTIONS
+      .filter((roleId) => !assignedRoleIds.has(roleId))
+      .filter((roleId) => isDirectivo || roleId === ROLES.ADMINISTRATIVO);
+  }, [assignedRoleOptions, isDirectivo]);
+  const removableRoleOptions = useMemo(
+    () => assignedRoleOptions.filter((roleId) => ASSIGNABLE_ROLE_SET.has(roleId)),
+    [assignedRoleOptions],
+  );
   const isAddRoleDisabled = accessLoading || missingRoleOptions.length === 0;
-  const isRemoveRoleDisabled = accessLoading || assignedRoleOptions.length <= 1;
+  const isRemoveRoleDisabled = accessLoading || removableRoleOptions.length === 0 || assignedRoleOptions.length <= 1;
 
   useEffect(() => {
     if (missingRoleOptions.length === 0) {
       setIsRoleDropdownOpen(false);
     }
-    if (assignedRoleOptions.length <= 1) {
+    if (removableRoleOptions.length === 0 || assignedRoleOptions.length <= 1) {
       setIsRemoveRoleDropdownOpen(false);
     }
-  }, [assignedRoleOptions.length, missingRoleOptions.length]);
+  }, [assignedRoleOptions.length, missingRoleOptions.length, removableRoleOptions.length]);
 
   const handleAddRole = async (roleId: RoleType) => {
-    if (!authStatus?.linkedUserId || !isDirectivo) {
+    if (
+      !authStatus?.linkedUserId
+      || !canAddAdministrativeRole
+      || (!isDirectivo && roleId !== ROLES.ADMINISTRATIVO)
+    ) {
       return;
     }
 
     const currentRoles = assignedRoleOptions.length > 0 ? assignedRoleOptions : [ROLES.SOCIO];
-    if (currentRoles.includes(roleId)) {
+    if (!ASSIGNABLE_ROLE_SET.has(roleId) || currentRoles.includes(roleId)) {
       setIsRoleDropdownOpen(false);
       return;
     }
@@ -498,7 +556,7 @@ export function MemberMembershipProfile() {
   };
 
   const handleRemoveRole = async (roleId: RoleType) => {
-    if (!authStatus?.linkedUserId || !isDirectivo || assignedRoleOptions.length <= 1) {
+    if (!authStatus?.linkedUserId || !isDirectivo || assignedRoleOptions.length <= 1 || !ASSIGNABLE_ROLE_SET.has(roleId)) {
       return;
     }
 
@@ -611,50 +669,38 @@ export function MemberMembershipProfile() {
     memberPendingFamilyRemoval?.id === actorMemberId && !canManageMembership
       ? 'Salir del grupo familiar'
       : 'Eliminar del grupo familiar';
-  const accessStatusLabel = authStatus?.hasAuthUser
+  const accessStatusLabel = authStatusLoading
+    ? 'Cargando acceso'
+    : authStatus?.hasAuthUser
     ? (authStatus.authDisabled || authStatus.userActive === false ? 'Acceso deshabilitado' : 'Acceso activo')
     : 'Sin acceso creado';
+  const accessControlsDisabled = accessLoading || authStatusLoading;
+  const debtValueLabel = feeChargesLoading ? 'Cargando...' : formatCurrency(payableFeeTotalMinor);
+  const debtHelperLabel = feeChargesLoading
+    ? 'Consultando cuotas pendientes'
+    : `${payableFeeCharges.length} cuota${payableFeeCharges.length === 1 ? '' : 's'} pendiente${payableFeeCharges.length === 1 ? '' : 's'}`;
+  const familySizeLabel =
+    householdLoading && member.familyGroupId
+      ? 'Cargando...'
+      : hasFamilyGroup
+        ? `${Math.max(household.length, member.householdSize)} integrante${Math.max(household.length, member.householdSize) === 1 ? '' : 's'}`
+        : 'Sin grupo';
+  const familyHelperLabel =
+    householdLoading && member.familyGroupId
+      ? 'Consultando grupo familiar'
+      : holderMember
+        ? `Titular: ${holderMember.displayName}`
+        : member.familyGroupCode ?? 'Sin titular informado';
   const statusBadgeClass = member.active ? 'status-pill status-pill-green' : 'status-pill status-pill--bloqueado';
-
-  const handlePayMembershipChargesWithMercadoPago = async () => {
-    if (payableFeeCharges.length === 0) {
-      return;
-    }
-
-    setAccessLoading(true);
-    setAccessMessage('');
-
-    try {
-      const checkout = await accountingCallables.createMercadoPagoCheckout({
-        items: payableFeeCharges.map((charge) => ({
-          sourceType: 'member_fee_charge',
-          sourceId: charge.id,
-        })),
-        notes: `Checkout Mercado Pago generado desde membresia para socio ${member.memberNumber}.`,
-      });
-
-      if (checkout.checkoutUrl) {
-        window.location.assign(checkout.checkoutUrl);
-        return;
-      }
-
-      setAccessMessage('Mercado Pago preparo la sesion, pero no devolvio una URL de pago.');
-    } catch (error) {
-      setAccessMessage(error instanceof Error ? error.message : 'No pudimos preparar el pago con Mercado Pago.');
-    } finally {
-      setAccessLoading(false);
-    }
-  };
 
   return (
     <div className="page-container profile-page">
       <section className="floating-card membership-profile-card">
         <PersonProfileHeader
-          eyebrow="Perfil de membresia"
           title={member.displayName}
           avatarLabel={member.displayName}
           subtitle={
-            <span>
+            <span className="eyebrow membership-profile-subtitle">
               Socio #{member.memberNumber} | {member.memberTypeLabel}
             </span>
           }
@@ -667,7 +713,7 @@ export function MemberMembershipProfile() {
           }
           actions={
             canManageMembership ? (
-              <UiActionButton to="/admin/members" variant="secondary" icon={<ArrowLeftIcon />}>
+              <UiActionButton to="/admin/members" variant="secondary" icon={<ArrowLeftIcon />} className="membership-back-button">
                 Volver al padron
               </UiActionButton>
             ) : null
@@ -687,13 +733,13 @@ export function MemberMembershipProfile() {
           </article>
           <article className="membership-summary-card">
             <span>Deuda</span>
-            <strong>{formatCurrency(payableFeeTotalMinor)}</strong>
-            <small>{payableFeeCharges.length} cuota{payableFeeCharges.length === 1 ? '' : 's'} pendiente{payableFeeCharges.length === 1 ? '' : 's'}</small>
+            <strong>{debtValueLabel}</strong>
+            <small>{debtHelperLabel}</small>
           </article>
           <article className="membership-summary-card">
             <span>Grupo familiar</span>
-            <strong>{hasFamilyGroup ? `${Math.max(household.length, member.householdSize)} integrante${Math.max(household.length, member.householdSize) === 1 ? '' : 's'}` : 'Sin grupo'}</strong>
-            <small>{holderMember ? `Titular: ${holderMember.displayName}` : member.familyGroupCode ?? 'Sin titular informado'}</small>
+            <strong>{familySizeLabel}</strong>
+            <small>{familyHelperLabel}</small>
           </article>
           {canManageMembership && (
             <article className="membership-summary-card">
@@ -709,21 +755,20 @@ export function MemberMembershipProfile() {
             <div className="accounting-section-header">
               <div>
                 <p className="eyebrow">Cuotas pendientes</p>
-                <h2>Pagar membresia online</h2>
+                <h2>Cobro de membresia</h2>
                 <p>
                   Podés pagar {payableFeeCharges.length} cuota{payableFeeCharges.length === 1 ? '' : 's'} junta
-                  {payableFeeCharges.length === 1 ? '' : 's'} con Mercado Pago. El cobro definitivo se registra
-                  cuando Mercado Pago confirma la acreditacion.
+                  . El cobro se registra desde Caja o desde el panel de Renovaciones.
                 </p>
               </div>
               <div className="accounting-inline-actions">
                 <strong>{formatCurrency(payableFeeTotalMinor)}</strong>
                 <UiActionButton
+                  to={`/accounting/member-dues?tab=renewals&memberId=${member.id}`}
                   variant="positive"
-                  disabled={accessLoading || membershipPaymentAvailability !== 'Disponible'}
-                  onClick={() => void handlePayMembershipChargesWithMercadoPago()}
+                  disabled={membershipPaymentAvailability !== 'Disponible'}
                 >
-                  {accessLoading ? 'Preparando...' : 'Pagar con Mercado Pago'}
+                  Ir a cobrar
                 </UiActionButton>
               </div>
             </div>
@@ -782,7 +827,7 @@ export function MemberMembershipProfile() {
                   items={[
                     { label: 'Nombre legado', value: member.fullName },
                     { label: 'ID interno', value: member.id },
-                    { label: 'Origen', value: member.source === 'legacy-padron' ? 'Padron legado cargado' : 'Registro manual' },
+                    { label: 'Origen', value: member.source === 'legacy-padron' ? 'Padron inicial de la app' : 'Registro manual' },
                     {
                       label: 'Ultima actualizacion',
                       value: new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(member.updatedAt)),
@@ -793,12 +838,6 @@ export function MemberMembershipProfile() {
                 />
               </CompactDetailsToggle>
 
-              {member.notes && (
-                <div className="membership-note">
-                  <span>Observaciones</span>
-                  <p>{member.notes}</p>
-                </div>
-              )}
             </article>
           )}
 
@@ -819,47 +858,52 @@ export function MemberMembershipProfile() {
                   <div>
                     <span>Roles</span>
                     <RoleChipList roleIds={assignedRoleOptions} />
-                    {!isDirectivo && <small>Solo Comite Ejecutivo puede modificar roles.</small>}
+                    {!canAddAdministrativeRole && <small>No tenes permisos para modificar roles.</small>}
+                    {isAdministrativo && <small>Podes conceder el rol Administrativo a este socio.</small>}
                   </div>
-                  {isDirectivo && (
+                  {canAddAdministrativeRole && (
                     <div className="access-role-actions">
-                      <IconActionMenu
-                        label="Agregar rol"
-                        icon={<PlusIcon />}
-                        open={!isAddRoleDisabled && isRoleDropdownOpen}
-                        items={missingRoleOptions.map((roleId) => ({
-                          id: roleId,
-                          label: ROLE_LABELS[roleId],
-                          disabled: accessLoading,
-                          onSelect: () => void handleAddRole(roleId),
-                        }))}
-                        onToggle={() => {
-                          if (isAddRoleDisabled) {
-                            return;
-                          }
-                          setIsRemoveRoleDropdownOpen(false);
-                          setIsRoleDropdownOpen((current) => !current);
-                        }}
-                      />
-                      <IconActionMenu
-                        label="Quitar rol"
-                        icon={<MinusIcon />}
-                        open={!isRemoveRoleDisabled && isRemoveRoleDropdownOpen}
-                        items={assignedRoleOptions.map((roleId) => ({
-                          id: roleId,
-                          label: ROLE_LABELS[roleId],
-                          danger: true,
-                          disabled: accessLoading,
-                          onSelect: () => void handleRemoveRole(roleId),
-                        }))}
-                        onToggle={() => {
-                          if (isRemoveRoleDisabled) {
-                            return;
-                          }
-                          setIsRoleDropdownOpen(false);
-                          setIsRemoveRoleDropdownOpen((current) => !current);
-                        }}
-                      />
+                      {missingRoleOptions.length > 0 && (
+                        <IconActionMenu
+                          label="Agregar rol"
+                          icon={<PlusIcon />}
+                          open={!isAddRoleDisabled && isRoleDropdownOpen}
+                          items={missingRoleOptions.map((roleId) => ({
+                            id: roleId,
+                            label: ROLE_LABELS[roleId],
+                            disabled: accessLoading,
+                            onSelect: () => void handleAddRole(roleId),
+                          }))}
+                          onToggle={() => {
+                            if (isAddRoleDisabled) {
+                              return;
+                            }
+                            setIsRemoveRoleDropdownOpen(false);
+                            setIsRoleDropdownOpen((current) => !current);
+                          }}
+                        />
+                      )}
+                      {isDirectivo && (
+                        <IconActionMenu
+                          label="Quitar rol"
+                          icon={<MinusIcon />}
+                          open={!isRemoveRoleDisabled && isRemoveRoleDropdownOpen}
+                          items={removableRoleOptions.map((roleId) => ({
+                            id: roleId,
+                            label: ROLE_LABELS[roleId],
+                            danger: true,
+                            disabled: accessLoading,
+                            onSelect: () => void handleRemoveRole(roleId),
+                          }))}
+                          onToggle={() => {
+                            if (isRemoveRoleDisabled) {
+                              return;
+                            }
+                            setIsRoleDropdownOpen(false);
+                            setIsRemoveRoleDropdownOpen((current) => !current);
+                          }}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -876,40 +920,32 @@ export function MemberMembershipProfile() {
                 {!authStatus?.linkedUserId && (
                   <UiActionButton
                     variant="positive"
-                    disabled={accessLoading}
+                    disabled={accessControlsDisabled}
                     icon={<span className="membership-action-icon">+</span>}
                     onClick={handleCreateAccess}
                   >
-                    Crear acceso
+                    {authStatusLoading ? 'Cargando acceso...' : 'Crear acceso'}
                   </UiActionButton>
                 )}
                 {authStatus?.linkedUserId && (
-                  <>
-                    <UiActionButton
+                  <div className="membership-sensitive-actions" aria-label="Acciones de acceso">
+                    <SquaredCircleButton
                       variant="secondary"
-                      disabled={accessLoading}
-                      icon={<span className="membership-action-icon">R</span>}
+                      label="Resetear clave"
+                      disabled={accessControlsDisabled}
                       onClick={handleResetPassword}
                     >
-                      Resetear clave
-                    </UiActionButton>
-                    <UiActionButton
+                      <KeyIcon />
+                    </SquaredCircleButton>
+                    <SquaredCircleButton
                       variant={authStatus.authDisabled || authStatus.userActive === false ? 'positive' : 'danger'}
-                      disabled={accessLoading}
-                      icon={<span className="membership-action-icon">!</span>}
+                      label={authStatus.authDisabled || authStatus.userActive === false ? 'Reactivar acceso' : 'Deshabilitar acceso'}
+                      disabled={accessControlsDisabled}
                       onClick={handleToggleAccess}
                     >
-                      {authStatus.authDisabled || authStatus.userActive === false ? 'Reactivar acceso' : 'Deshabilitar acceso'}
-                    </UiActionButton>
-                    <UiActionButton
-                      variant="secondary"
-                      disabled={accessLoading}
-                      icon={<span className="membership-action-icon">OK</span>}
-                      onClick={handleSyncClaims}
-                    >
-                      Sincronizar claims
-                    </UiActionButton>
-                  </>
+                      <AccessToggleIcon />
+                    </SquaredCircleButton>
+                  </div>
                 )}
               </div>
             </article>
@@ -968,12 +1004,12 @@ export function MemberMembershipProfile() {
                   <div key={relative.id} className="household-list__item">
                     <div>
                       <strong>{relative.displayName}</strong>
-                      <small>
-                        ID #{relative.memberNumber} | {relative.memberTypeLabel}
-                        {relative.id === member.id ? ' | Perfil actual' : ''}
-                      </small>
+                      <small>ID #{relative.memberNumber} | {relative.memberTypeLabel}</small>
+                      <div className="membership-household-pills">
+                        {relative.id === member.id && <span className="membership-context-pill">Perfil actual</span>}
+                        {relative.isFamilyHolder && <span className="membership-context-pill membership-context-pill--holder">Titular</span>}
+                      </div>
                     </div>
-                    {relative.isFamilyHolder && <span className="status-pill">Titular</span>}
                     <div className="household-list__actions">
                       <Link
                         className="icon-button member-icon-button"

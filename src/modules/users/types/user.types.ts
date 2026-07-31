@@ -41,15 +41,19 @@ export interface SetMemberAuthAccessActivePayload {
 
 export interface LinkEmployeeAuthUserPayload {
   employeeId: string;
-  email: string;
+  email?: string;
   displayName?: string;
+  administrativeAccess?: boolean;
 }
 
 export interface EmployeeAuthInviteResult {
   uid: string;
   employeeId: string;
+  employeeCode?: string;
   email: string;
-  inviteLink: string;
+  loginPath?: string;
+  temporaryPassword?: string;
+  passwordGeneratedAt?: string;
   createdAuthUser?: boolean;
   claimsVersion?: number;
 }

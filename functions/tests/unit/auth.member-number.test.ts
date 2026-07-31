@@ -15,13 +15,13 @@ test('construye email sintetico interno sin exponer dominio real', () => {
   assert.equal(buildSyntheticAuthEmail('123'), 'socio-000123@club-auth.local');
 });
 
-test('genera clave temporal con hash dependiente de socio y fecha', () => {
-  const first = generateMemberTemporaryPassword('999', new Date('2026-05-07T12:34:56.000Z'));
-  const second = generateMemberTemporaryPassword('999', new Date('2026-05-07T12:35:56.000Z'));
-  const otherMember = generateMemberTemporaryPassword('998', new Date('2026-05-07T12:34:56.000Z'));
+test('genera la clave temporal global para primer ingreso', () => {
+  const first = generateMemberTemporaryPassword('999', new Date('2026-05-07T12:34:56.000Z'), 'ABC123XYZ9');
+  const second = generateMemberTemporaryPassword('999', new Date('2026-05-07T12:34:56.000Z'), 'ZZZ987QQQ1');
+  const otherMember = generateMemberTemporaryPassword('998', new Date('2026-05-07T12:34:56.000Z'), 'ABC123XYZ9');
 
-  assert.match(first.temporaryPassword, /^CGP-000999-[A-Z0-9]{10}$/);
+  assert.equal(first.temporaryPassword, 'password');
   assert.equal(first.passwordGeneratedAt, '2026-05-07T12:34:56.000Z');
-  assert.notEqual(first.temporaryPassword, second.temporaryPassword);
-  assert.notEqual(first.temporaryPassword, otherMember.temporaryPassword);
+  assert.equal(second.temporaryPassword, 'password');
+  assert.equal(otherMember.temporaryPassword, 'password');
 });

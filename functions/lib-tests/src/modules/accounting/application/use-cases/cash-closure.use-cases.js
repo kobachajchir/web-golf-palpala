@@ -2,6 +2,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import { assertIsRecord, ensureStaff, parseOptionalAccountingPeriod, parseOptionalAmountMinor, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalStringArray, parseRequiredAccountingPeriod, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
+import { assertCashClosureCanOpen } from '../cash-closure-guards.js';
 function toClubDayKey(date) {
     return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'America/Argentina/Buenos_Aires',
@@ -45,6 +46,10 @@ export async function createCashClosureUseCase(params) {
     expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] = (expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] ?? 0) + openingBalanceMinor;
     const cashExpectedMinor = expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] ?? 0;
     return params.transactions.runInTransaction(async (dataAccess) => {
+        await assertCashClosureCanOpen({
+            dataAccess,
+            closureDate: params.input.closureDate,
+        });
         const cashClosureId = await dataAccess.cashClosures.create({
             period: params.input.period,
             closureDate: Timestamp.fromDate(params.input.closureDate),

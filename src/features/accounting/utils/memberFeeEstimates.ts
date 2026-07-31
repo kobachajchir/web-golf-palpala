@@ -11,7 +11,27 @@ function normalizeMemberType(value: string | null | undefined) {
 
 export function getMemberFeeAppliedPctBps(member: UserEntityWithId<MemberDocument>, config: EntityWithId<FinancialConfigDocument>) {
   const type = normalizeMemberType(member.typeCodeSnapshot);
-  if (type.includes('FAMILY_ASSOC') || type.includes('FAMILIAR') || type.includes('ADHERENTE')) {
+
+  if (
+    type === 'PLENO'
+    || type === 'GRUPO_FAMILIAR_TITULAR'
+    || type === 'FAMILIAR_TITULAR'
+    || type === 'FAMILY_GROUP_HOLDER'
+    || type === 'FAMILY_HOLDER'
+    || type.includes('TITULAR')
+  ) {
+    return 10000;
+  }
+
+  if (
+    type === 'GRUPO_FAMILIAR_ASOCIADO'
+    || type === 'FAMILIAR_ASOCIADO'
+    || type === 'FAMILY_ASSOCIATE'
+    || type === 'FAMILY_ASSOC'
+    || type.includes('ASOCIADO')
+    || type.includes('ADJUNTO')
+    || type.includes('ADHERENTE')
+  ) {
     return config.familyAssociatePctBps;
   }
   if (type.includes('LIFETIME') || type.includes('VITALICIO')) {

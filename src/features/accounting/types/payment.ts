@@ -1,6 +1,5 @@
 import type {
   AccountingPeriod,
-  CreateMercadoPagoCheckoutResult,
   DocId,
   PaymentMethodDocument,
 } from '../../../modules/accounting/domain/models';
@@ -14,18 +13,13 @@ export type OpenItem = {
   period?: AccountingPeriod;
   description: string;
   amountMinor: number;
+  settlementLocked?: boolean;
+  isGenerated?: boolean;
   status: 'pending' | 'overdue' | 'ready' | 'paid';
   dueLabel?: string;
 };
 
 export type PaymentMethod = PaymentMethodDocument & { id: DocId };
-
-export type PaymentComposerMode = 'manual' | 'mercadopago';
-
-export type CheckoutSession = CreateMercadoPagoCheckoutResult & {
-  totalAmountMinor: number;
-  itemCount: number;
-};
 
 export type ManualPaymentRequest = {
   memberId: string;
@@ -34,6 +28,14 @@ export type ManualPaymentRequest = {
   paymentDate: string;
   reference?: string | null;
   amount: number;
+  allocationAmountsByChargeId?: Record<string, number>;
+  settlementAmountsByChargeId?: Record<string, number>;
+  periodAllocations?: Array<{
+    period: AccountingPeriod;
+    amountMinor: number;
+    settlementAmountMinor?: number;
+  }>;
+  applyEarlyPaymentDiscount?: boolean;
   notes?: string | null;
 };
 
@@ -44,23 +46,11 @@ export type ManualPaymentReceipt = {
   duplicate: boolean;
 };
 
-export type MercadoPagoCheckoutRequest = {
-  memberId: string;
-  openItemIds: string[];
-  returnBaseUrl?: string;
-  payer?: {
-    name?: string;
-    email?: string;
-  };
-};
-
 export type PaymentComposerState = {
   selectedOpenItemIds: string[];
   paymentMethodId: string | null;
   paymentDate: string;
   reference: string;
   notes: string;
-  mode: PaymentComposerMode;
   isSubmitting: boolean;
-  checkoutSession: CheckoutSession | null;
 };

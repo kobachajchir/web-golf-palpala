@@ -2,11 +2,19 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AccountingHeaderSummary } from '../components/AccountingHeaderSummary';
 import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
+import { AccountingMovementDetailModal } from '../components/AccountingMovementDetailModal';
+import { AccountingMovementsPanel } from '../components/AccountingMovementsPanel';
 import { useAccountingSummary } from '../hooks/useAccountingSummary';
-import type { CashClosureDocument, EntityWithId } from '../../../modules/accounting/domain/models';
-import { createCashClosuresRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
-import { formatCurrency, formatTimestamp, getMovementLabel, getPersonDisplayName } from '../utils/accountingFormatters';
-import { buildChargesByMemberId, estimateMemberFeeAmountMinor, getOpenFeeCharges } from '../utils/memberFeeEstimates';
+import type { CashClosureDocument, EntityWithId, FinancialMovementDocument } from '../../../modules/accounting/domain/models';
+import {
+  createCashClosuresRepository,
+  createFinancialExpenseCategoriesRepository,
+  createFinancialIncomeCategoriesRepository,
+} from '../../../modules/accounting/infrastructure/firestore/repositories';
+import { formatCurrency } from '../utils/accountingFormatters';
+import type { ExpenseCategoryOption, IncomeCategoryOption } from '../utils/accountingCategories';
+import { getFallbackExpenseCategories, getFallbackIncomeCategories } from '../utils/accountingCategories';
+import { getServerExpenseAlertMessage } from '../utils/serverExpenseAlert';
 
 type AccountingActionIcon = 'wallet' | 'calendar' | 'clipboard' | 'chart' | 'flag';
 
@@ -49,8 +57,11 @@ function ActionIcon({ type }: { type: AccountingActionIcon }) {
 }
 
 export function AccountingOverviewPage() {
-  const { summary, loading, error } = useAccountingSummary();
+  const { summary, loading, error, reload } = useAccountingSummary();
   const [closures, setClosures] = useState<Array<EntityWithId<CashClosureDocument>>>([]);
+  const [incomeCategories, setIncomeCategories] = useState<IncomeCategoryOption[]>(() => getFallbackIncomeCategories());
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryOption[]>(() => getFallbackExpenseCategories());
+  const [selectedMovement, setSelectedMovement] = useState<EntityWithId<FinancialMovementDocument> | null>(null);
   const todayKey = toClubDayKey(new Date());
 
   useEffect(() => {
@@ -77,42 +88,57 @@ export function AccountingOverviewPage() {
     };
   }, [summary?.period]);
 
-  const hasTodayClosure = closures.some((closure) => getClosureDayKey(closure) === todayKey);
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      createFinancialIncomeCategoriesRepository().listActiveSorted().catch(() => getFallbackIncomeCategories()),
+      createFinancialExpenseCategoriesRepository().listActiveSorted().catch(() => getFallbackExpenseCategories()),
+    ]).then(([nextIncomeCategories, nextExpenseCategories]) => {
+      if (cancelled) {
+        return;
+      }
+      setIncomeCategories(nextIncomeCategories.length ? nextIncomeCategories : getFallbackIncomeCategories());
+      setExpenseCategories(nextExpenseCategories.length ? nextExpenseCategories : getFallbackExpenseCategories());
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hasTodayOpenClosure = closures.some((closure) => getClosureDayKey(closure) === todayKey && closure.status === 'open');
   const pendingFeeTotalMinor = summary?.renewalPendingTotalMinor ?? 0;
-  const openChargesByMemberId = useMemo(
-    () => buildChargesByMemberId(
-      summary?.membersPreview ?? [],
-      getOpenFeeCharges([...(summary?.periodFeeCharges ?? []), ...(summary?.pendingFeeCharges ?? [])]),
-    ),
-    [summary?.membersPreview, summary?.pendingFeeCharges, summary?.periodFeeCharges],
+  const serverExpenseAlertMessage = getServerExpenseAlertMessage(
+    summary?.period,
+    summary?.periodMovements ?? [],
+    summary?.activeConfig?.serverMonthlyExpenseMinor,
+    summary?.activeConfig?.serverMonthlyExpenseDueDay,
   );
-  const pendingFeePreview = summary?.renewalMembers ?? [];
-  const pendingExpensePreview = summary?.pendingExpenses ?? [];
   const quickActions = useMemo<AccountingQuickAction[]>(() => {
     const actions: AccountingQuickAction[] = [
-      { id: 'register-payment', label: 'Registrar cobro', helper: 'Ingresos por categoria', icon: 'wallet', to: '/accounting/caja?tab=cobros' },
+      { id: 'green-fee-payment', label: 'Green Fee y cuotas', helper: 'Cobro directo', icon: 'wallet', to: '/accounting/caja?tab=cobros&modal=income-priority' },
+      { id: 'register-payment', label: 'Registrar cobro', helper: 'Ingresos por categoria', icon: 'wallet', to: '/accounting/caja?tab=cobros&modal=income-other' },
       { id: 'renewals', label: 'Renovaciones', helper: 'Socios por renovar', icon: 'calendar', to: '/accounting/member-dues?tab=renewals' },
-      { id: 'manual-expense', label: 'Registrar egreso', helper: 'Gastos operativos', icon: 'clipboard', to: '/accounting/caja?tab=egresos' },
-      { id: 'expense-review', label: 'Rendiciones', helper: 'Revision y aprobacion', icon: 'clipboard', to: '/accounting/caja?tab=rendiciones' },
+      { id: 'manual-expense', label: 'Registrar egreso', helper: 'Gastos operativos', icon: 'clipboard', to: '/accounting/caja?tab=egresos&modal=expense' },
       { id: 'daily-movements', label: 'Movimientos', helper: 'Caja operativa', icon: 'chart', to: '/accounting/caja?tab=movimientos' },
       { id: 'reports', label: 'Reportes', helper: 'Balances y resumen', icon: 'flag', to: '/accounting/reports' },
     ];
 
-    return hasTodayClosure
+    return hasTodayOpenClosure
       ? actions
-      : [{ id: 'open-cash', label: 'Abrir caja', helper: 'Jornada de hoy', icon: 'chart' as const, to: '/accounting/caja?tab=cierre' }, ...actions].slice(0, 6);
-  }, [hasTodayClosure]);
+      : [actions[0]!, actions[1]!, { id: 'open-cash', label: 'Abrir caja', helper: 'Jornada de hoy', icon: 'chart' as const, to: '/accounting/caja?tab=caja' }, ...actions.slice(2)].slice(0, 6);
+  }, [hasTodayOpenClosure]);
 
   return (
     <div className="accounting-shell">
       <section className="floating-card accounting-hero">
         <div className="accounting-hero__copy">
           <h1>Contabilidad</h1>
-          <p>Accesos por tarea para cobrar, renovar, rendir, conciliar y reportar.</p>
         </div>
       </section>
 
       <AccountingInlineNotice notice={error ? { kind: 'error', message: error } : null} />
+      <AccountingInlineNotice notice={serverExpenseAlertMessage ? { kind: 'error', message: serverExpenseAlertMessage } : null} />
       {loading && <div className="loading-state loading-state--inline"><span className="loading-spinner" /><strong>Cargando contabilidad</strong></div>}
 
       <AccountingHeaderSummary summary={summary} />
@@ -144,74 +170,39 @@ export function AccountingOverviewPage() {
               <span className="accounting-row__main">
                 <strong>Cuotas y renovaciones</strong>
                 <small>{summary?.renewalPendingConceptCount ?? 0} conceptos abiertos para cobrar</small>
-                <span className="accounting-pending-lines">
-                  {pendingFeePreview.map((member) => {
-                    const charges = openChargesByMemberId.get(member.id) ?? [];
-                    const openAmountMinor = charges.reduce((total, charge) => total + charge.finalAmountMinor, 0);
-                    const hasCurrentPeriodOpenCharge = charges.some((charge) => charge.period === summary?.period);
-                    const amountMinor = openAmountMinor + (hasCurrentPeriodOpenCharge ? 0 : estimateMemberFeeAmountMinor(member, summary?.activeConfig));
-                    return (
-                      <small key={member.id}>
-                        {getPersonDisplayName(member)} - socio {member.memberNumber} - {formatCurrency(amountMinor)}
-                      </small>
-                    );
-                  })}
-                </span>
               </span>
               <span className="accounting-row__meta">
                 <strong>{formatCurrency(pendingFeeTotalMinor)}</strong>
                 <small>Total abierto</small>
               </span>
             </Link>
-            <Link className="accounting-row accounting-row--actions" to="/accounting/caja?tab=rendiciones">
-              <span className="accounting-row__main">
-                <strong>Rendiciones pendientes</strong>
-                <small>{summary?.pendingExpenseCount ?? 0} pendientes de aprobacion</small>
-                <span className="accounting-pending-lines">
-                  {pendingExpensePreview.map((expense) => (
-                    <small key={expense.id}>{expense.description} - {expense.vendorName ?? 'Sin proveedor'} - {formatCurrency(expense.amountMinor)}</small>
-                  ))}
-                </span>
-              </span>
-              <span className="accounting-row__meta">
-                <strong>{formatCurrency(summary?.pendingExpenseTotalMinor ?? 0)}</strong>
-                <small>Total rendido</small>
-              </span>
-            </Link>
           </div>
         </section>
 
-        <section className="floating-card accounting-secondary-panel">
-          <div className="accounting-section-header">
-            <h2>Movimientos</h2>
-          </div>
-          <div className="accounting-table-wrap">
-            <table className="accounting-data-table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Movimiento</th>
-                  <th>Estado</th>
-                  <th>Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(summary?.recentMovements ?? []).map((movement) => (
-                  <tr key={movement.id}>
-                    <td>{formatTimestamp(movement.operationDate)}</td>
-                    <td><strong>{getMovementLabel(movement)}</strong></td>
-                    <td><span className={`status-chip status-chip--${movement.status}`}>{movement.status}</span></td>
-                    <td><strong>{formatCurrency(movement.netAmountMinor)}</strong></td>
-                  </tr>
-                ))}
-                {!loading && (summary?.recentMovements.length ?? 0) === 0 && (
-                  <tr><td colSpan={4}>Sin movimientos todavia.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div className="accounting-secondary-panel accounting-overview-movements">
+          <AccountingMovementsPanel
+            movements={summary?.periodMovements ?? []}
+            incomeCategories={incomeCategories}
+            expenseCategories={expenseCategories}
+            paymentMethods={summary?.paymentMethods ?? []}
+            period={summary?.period}
+            loading={loading}
+            onSelectMovement={setSelectedMovement}
+            onMovementChanged={reload}
+          />
+        </div>
       </div>
+      {selectedMovement && (
+        <AccountingMovementDetailModal
+          movement={selectedMovement}
+          members={summary?.membersPreview ?? []}
+          employees={summary?.employeesPreview ?? []}
+          paymentMethods={summary?.paymentMethods ?? []}
+          onSelectMovement={setSelectedMovement}
+          onChanged={reload}
+          onClose={() => setSelectedMovement(null)}
+        />
+      )}
     </div>
   );
 }

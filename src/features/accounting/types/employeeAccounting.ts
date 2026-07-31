@@ -1,11 +1,13 @@
 import type {
   AccountingPeriod,
+  AnnualBonusPreview,
   EmployeeAccountingLinkDocument,
   EmployeeCertificateDocument,
   EmployeePayrollCycleDocument,
   EntityWithId,
   ExternalAccountingReferenceDocument,
   OvertimeEntryDocument,
+  PaymentMethodDocument,
   SalaryConfigurationDocument,
   SalaryPaymentDocument,
 } from '../../../modules/accounting/domain/models';
@@ -38,6 +40,8 @@ export type EmployeePeriodState = {
   salaryConfiguration: EntityWithId<SalaryConfigurationDocument> | null;
   payrollCycle: EntityWithId<EmployeePayrollCycleDocument> | null;
   salaryPayment: EntityWithId<SalaryPaymentDocument> | null;
+  annualBonusPreview: AnnualBonusPreview;
+  paymentMethods: Array<EntityWithId<PaymentMethodDocument>>;
   overtimeItems: Array<EntityWithId<OvertimeEntryDocument>>;
   expenseClaims: unknown[];
   externalAssignments: Array<EntityWithId<EmployeeAccountingLinkDocument>>;

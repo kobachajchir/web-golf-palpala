@@ -14,6 +14,7 @@ import {
 } from '../modules/users/domain/constants.js';
 import type { MemberDocument, UserDocument } from '../modules/users/domain/models.js';
 import { buildCustomClaims, pickPrimaryRoleId } from '../modules/users/application/shared.js';
+import { setCustomClaimsPreservingInternalRoles } from '../modules/users/infrastructure/firestore/auth-gateway.js';
 import { buildSyntheticAuthEmail, normalizeMemberNumber } from '../modules/auth/member-number-auth.js';
 
 type BoardSeedTarget = {
@@ -363,7 +364,7 @@ async function run() {
       );
     });
 
-    await getAuth().setCustomUserClaims(authUserResult.user.uid, buildCustomClaims(roleIds, claimsVersion, true));
+    await setCustomClaimsPreservingInternalRoles(authUserResult.user.uid, buildCustomClaims(roleIds, claimsVersion, true));
 
     linked.push({
       positionCode: target.positionCode,

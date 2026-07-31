@@ -19,6 +19,7 @@ import {
   toHttpsError,
 } from '../users/application/shared.js';
 import { FirestoreUsersTransactionManager, SystemClock } from '../users/infrastructure/firestore/repositories.js';
+import { setCustomClaimsPreservingInternalRoles } from '../users/infrastructure/firestore/auth-gateway.js';
 import {
   buildSyntheticAuthEmail,
   generateMemberTemporaryPassword,
@@ -232,7 +233,7 @@ export const authOnboardingCreateMemberAuthUser = onCall(async (request) => {
       throw new HttpsError('internal', 'No se pudieron construir los custom claims.');
     }
 
-    await getAuth(getOrInitializeApp()).setCustomUserClaims(authUser.uid, claims);
+    await setCustomClaimsPreservingInternalRoles(authUser.uid, claims, getAuth(getOrInitializeApp()));
 
     return {
       uid: authUser.uid,
@@ -527,7 +528,7 @@ export const authOnboardingSetMemberAuthAccessActive = onCall(async (request) =>
     });
 
     await getAuth(getOrInitializeApp()).updateUser(member.linkedUserId, { disabled: !active });
-    await getAuth(getOrInitializeApp()).setCustomUserClaims(member.linkedUserId, claims);
+    await setCustomClaimsPreservingInternalRoles(member.linkedUserId, claims, getAuth(getOrInitializeApp()));
 
     return {
       uid: member.linkedUserId,

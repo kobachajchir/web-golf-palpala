@@ -8,9 +8,6 @@ import type {
   FinancialIncomeCategoryDocument,
   FinancialExpenseCategoryDocument,
   MacroDebitSettlementDocument,
-  MercadoPagoCheckoutSessionDocument,
-  MercadoPagoCheckoutSessionStatus,
-  MercadoPagoEventDocument,
   SalaryConfigurationDocument,
   SalaryPaymentDocument,
   ExternalAccountingReferenceDocument,
@@ -141,6 +138,7 @@ export interface FinancialMovementFilters extends PageInput {
   thirdPartyId?: string;
   accountingPeriod?: AccountingPeriod;
   status?: FinancialMovementStatus;
+  installmentPlanId?: string;
   settlementId?: string;
   bancarizado?: boolean;
   imputableImpositivo?: boolean;
@@ -155,6 +153,7 @@ export interface FinancialMovementsStore {
   update(movementId: string, patch: StorePatch<FinancialMovementDocument>, actorUid: string): Promise<void>;
   listPage(filters: FinancialMovementFilters): Promise<CursorPage<EntityWithId<FinancialMovementDocument>>>;
   listBySettlementId(settlementId: string): Promise<Array<EntityWithId<FinancialMovementDocument>>>;
+  listByInstallmentPlanId(installmentPlanId: string): Promise<Array<EntityWithId<FinancialMovementDocument>>>;
 }
 
 export interface MacroDebitSettlementFilters extends PageInput {
@@ -299,6 +298,7 @@ export interface CashClosuresStore {
   ): Promise<string>;
   update(cashClosureId: string, patch: StorePatch<CashClosureDocument>, actorUid: string): Promise<void>;
   listPage(filters: CashClosureFilters): Promise<CursorPage<EntityWithId<CashClosureDocument>>>;
+  listOpen(): Promise<Array<EntityWithId<CashClosureDocument>>>;
 }
 
 export interface ExternalAccountingReferencesStore {
@@ -387,34 +387,6 @@ export interface MemberFeeChargesStore {
   listPage(filters: MemberFeeChargeFilters): Promise<CursorPage<EntityWithId<MemberFeeChargeDocument>>>;
 }
 
-export interface MercadoPagoCheckoutSessionFilters extends PageInput {
-  status?: MercadoPagoCheckoutSessionStatus;
-  createdByUid?: string;
-}
-
-export interface MercadoPagoCheckoutSessionsStore {
-  getById(sessionId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null>;
-  getByExternalReference(externalReference: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null>;
-  getByPaymentId(paymentId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null>;
-  set(
-    sessionId: string,
-    data: StoreCreate<Omit<MercadoPagoCheckoutSessionDocument, keyof import('./models.js').AuditFields>>,
-    actorUid: string,
-  ): Promise<void>;
-  update(sessionId: string, patch: StorePatch<MercadoPagoCheckoutSessionDocument>, actorUid: string): Promise<void>;
-  listPage(filters: MercadoPagoCheckoutSessionFilters): Promise<CursorPage<EntityWithId<MercadoPagoCheckoutSessionDocument>>>;
-}
-
-export interface MercadoPagoEventsStore {
-  getById(eventId: string): Promise<EntityWithId<MercadoPagoEventDocument> | null>;
-  set(
-    eventId: string,
-    data: StoreCreate<Omit<MercadoPagoEventDocument, keyof import('./models.js').AuditFields>>,
-    actorUid: string,
-  ): Promise<void>;
-  update(eventId: string, patch: StorePatch<MercadoPagoEventDocument>, actorUid: string): Promise<void>;
-}
-
 export interface AccountingDataAccess {
   users: UsersReferenceStore;
   members: MembersReferenceStore;
@@ -443,8 +415,6 @@ export interface AccountingDataAccess {
   advertisingContracts: AdvertisingContractsStore;
   handicapCharges: HandicapChargesStore;
   memberFeeCharges: MemberFeeChargesStore;
-  mercadoPagoCheckoutSessions: MercadoPagoCheckoutSessionsStore;
-  mercadoPagoEvents: MercadoPagoEventsStore;
 }
 
 export interface AccountingTransactionManager {

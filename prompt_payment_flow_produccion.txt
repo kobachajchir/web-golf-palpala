@@ -1,0 +1,118 @@
+PROMPT PARA RETOMAR LA RAMA feature/payment-flow Y PREPARARLA PARA PRODUCCION
+
+Contexto principal
+Actuar como arquitecto/auditor tecnico del proyecto WebGolfPalpala. La rama de pagos no se prioriza ahora, pero debe quedar documentada para retomarla luego sin perder estado. No inventar funcionalidades no confirmadas en codigo. Si algo no esta confirmado, marcarlo como "No confirmado en codigo". Si existe backend pero no UI, marcar "Backend disponible, UI pendiente". Si existe UI sin persistencia real, marcar "UI sin integracion". Si hay mocks, indicar donde viven y que debe reemplazarse antes de produccion.
+
+Estado real observado
+El proyecto ya tiene un modulo contable amplio con React + Vite + Firebase/Firestore + Cloud Functions. Los pagos no estan ausentes: existe implementacion real para pago manual de cuotas, generacion de movimientos, recibos, sesiones Mercado Pago, webhook y conciliacion. El estado correcto es "parcial avanzado", no "mock completo".
+
+Archivos frontend a revisar primero
+- src/features/accounting/api/memberBillingApi.ts
+- src/features/accounting/api/accountingApi.ts
+- src/features/accounting/pages/AccountingCollectionsPage.tsx
+- src/features/accounting/components/PaymentComposer.tsx
+- src/features/accounting/pages/AccountingMemberDuesPage.tsx
+- src/features/accounting/pages/AccountingPaymentMethodsPage.tsx
+- src/pages/MemberMembershipProfile.tsx
+- src/pages/MercadoPagoReturn.tsx
+- src/modules/accounting/functions/accounting.callables.ts
+- src/modules/accounting/domain/models.ts
+
+Archivos backend a revisar primero
+- functions/src/modules/accounting/functions/accounting.callables.ts
+- functions/src/modules/accounting/application/use-cases/payment.use-cases.ts
+- functions/src/modules/accounting/application/use-cases/mercado-pago.use-cases.ts
+- functions/src/modules/accounting/infrastructure/firestore/repositories.ts
+- functions/src/modules/accounting/domain/models.ts
+- functions/src/modules/accounting/domain/constants.ts
+- functions/src/modules/notifications/notifications.service.ts
+- rules/firestore.rules
+
+Flujos confirmados
+1. Pago manual de cuotas:
+   - El frontend obtiene deuda abierta del socio.
+   - La administracion puede registrar un pago manual.
+   - El backend valida actor staff, categoria, metodo de pago, referencias para medios no efectivo, duplicados y estado de la cuota.
+   - Se genera movimiento financiero, recibo/metadatos y actualizacion de renovacion del socio.
+
+2. Mercado Pago para cuotas:
+   - Existe callable para crear checkout.
+   - Existe callable para consultar estado del checkout.
+   - Existe webhook HTTP para recibir eventos.
+   - Existe conciliacion programada.
+   - Existe emision de notificaciones de pago al socio.
+
+3. Fuentes soportadas en backend Mercado Pago:
+   - member_fee_charge
+   - tournament_registration
+   - green_fee
+   - handicap_charge
+   - concession_charge
+   - advertising_charge
+   - manual_income
+
+Estado por fuente
+- member_fee_charge: flujo mas maduro. Tiene UI en cobranzas/perfil, backend de pago manual y checkout MP.
+- tournament_registration: backend contable/MP tiene soporte parcial, pero la UI de torneos debe terminarse primero y enlazar correctamente.
+- handicap_charge: backend soportado, revisar UI antes de confirmar produccion.
+- green_fee: backend soportado, UI no confirmada.
+- concession_charge: backend soportado, UI no confirmada.
+- advertising_charge: backend soportado, UI no confirmada.
+- manual_income: backend soportado, UI no confirmada.
+
+Mocks y puntos no productivos
+- Mercado Pago usa mock solamente en emulador cuando no existe MP_ACCESS_TOKEN. En produccion esto debe ser error/configuracion obligatoria o debe estar claramente bloqueado.
+- Se debe confirmar MP_WEBHOOK_SECRET, URL publica del webhook, App Check, dominios de retorno y credenciales productivas.
+- No asumir que todas las sources soportadas por backend tienen UI productiva.
+- No mezclar pagos de torneos hasta que torneos deje de usar estado local y lea Firestore/Functions.
+
+Objetivo de la rama
+Preparar pagos para produccion sin reescribir contabilidad. Cerrar punta a punta pago manual y Mercado Pago para cuotas de socios como primer alcance productivo. Dejar otras fuentes marcadas como pendientes si no tienen UI real.
+
+Cambios a implementar
+1. Configuracion productiva:
+   - Validar y documentar MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET, URLs de retorno, URL publica del webhook y proyecto Firebase destino.
+   - Fallar de forma explicita fuera de emulador si falta configuracion critica.
+   - Confirmar ENFORCE_APP_CHECK y comportamiento esperado para callable de checkout.
+
+2. UX de checkout:
+   - Estado claro para creando checkout, redireccion, retorno aprobado, pendiente, rechazado, cancelado y error.
+   - No dejar al usuario con pago "exitoso" solo por volver de Mercado Pago; confirmar por backend/webhook/reconciliacion.
+   - Mostrar recibo/movimiento cuando exista confirmacion real.
+
+3. Webhook e idempotencia:
+   - Asegurar que eventos repetidos no dupliquen movimientos.
+   - Persistir eventos recibidos con suficiente metadata para auditoria.
+   - Registrar estados pendientes/rechazados sin crear ingresos definitivos.
+
+4. Pago manual:
+   - Mantener validacion de staff.
+   - Mantener referencia obligatoria para medios bancarizados/no efectivo.
+   - Confirmar que descuentos, comisiones y renovacion de socio queden reflejados en recibo/movimiento.
+
+5. Seguridad:
+   - Revisar rules/firestore.rules para lecturas directas del frontend: member_fee_charges, mercado_pago_checkout_sessions, financial_movements, accounting_reports y payment_methods.
+   - Confirmar que escrituras sensibles pasen por Functions salvo casos ya aceptados por reglas.
+
+6. Pruebas:
+   - Test de pago manual exitoso.
+   - Test de pago manual duplicado.
+   - Test de checkout MP creado.
+   - Test de webhook aprobado idempotente.
+   - Test de webhook pendiente/rechazado sin ingreso posteado.
+   - Test de permisos: socio solo ve sus cargos/sesiones; staff puede operar.
+   - Test de configuracion faltante fuera de emulador.
+
+Criterio de listo para produccion
+- Cuotas de socios pueden pagarse manualmente y por Mercado Pago con movimiento, recibo y estado final consistente.
+- El retorno de Mercado Pago no inventa estado; siempre depende de confirmacion backend.
+- Webhook y conciliacion son idempotentes.
+- Variables productivas estan documentadas y validadas.
+- Los mocks quedan limitados al emulador.
+- Las sources sin UI se documentan como pendientes y no se presentan como productivas.
+
+No incluir en esta rama
+- Rehacer todo el modulo contable.
+- Implementar torneos desde cero.
+- Activar pagos de torneos antes de que el modulo de torneos lea/escriba Firestore y use Functions de forma consistente.
+- Agregar nuevas categorias de ingreso sin UI y pruebas.

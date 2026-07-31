@@ -57,10 +57,6 @@ try {
     throw 'Auth Emulator no responde en 127.0.0.1:9099. Primero ejecuta npm run emulators:start:users en otra terminal.'
   }
 
-  if (-not $env:MEMBER_TEMP_PASSWORD_HASH_SECRET) {
-    $env:MEMBER_TEMP_PASSWORD_HASH_SECRET = 'club-dev-local-secret'
-  }
-
   Write-Host '[3/9] Sembrando configuracion contable base...'
   & node .\lib\scripts\seed-accounting.js
   if ($LASTEXITCODE -ne 0) {
@@ -85,28 +81,16 @@ try {
     throw 'Fallo el seed de accesos de socios desde members.'
   }
 
-  if (-not $env:TEST_EMPLOYEE_DEFAULT_PASSWORD) {
-    $env:TEST_EMPLOYEE_DEFAULT_PASSWORD = 'Club-Dev-2026'
-  }
-
   Write-Host '[7/9] Creando empleados de prueba...'
   & node .\lib\scripts\seed-test-employees.js
   if ($LASTEXITCODE -ne 0) {
     throw 'Fallo el seed de empleados de prueba.'
   }
 
-  if (-not $env:EXECUTIVE_BOARD_DEFAULT_PASSWORD) {
-    $env:EXECUTIVE_BOARD_DEFAULT_PASSWORD = 'Club-Dev-2026'
-  }
-
   Write-Host '[8/9] Creando o actualizando usuarios de Junta Directiva...'
   & node .\lib\scripts\seed-executive-board.js
   if ($LASTEXITCODE -ne 0) {
     throw 'Fallo el seed de la comision directiva.'
-  }
-
-  if (-not $env:DEV_DIRECTIVO_PASSWORD) {
-    $env:DEV_DIRECTIVO_PASSWORD = 'Club-Dev-2026'
   }
 
   Write-Host '[9/9] Creando o actualizando usuario dev 999 Koba Chajchir...'

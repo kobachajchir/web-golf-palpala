@@ -56,3 +56,15 @@ test('roles se muestran como chips y las acciones usan icon buttons cuadrados', 
   assert.match(html, /member-actions-menu/);
   assert.match(html, /Comite Ejecutivo/);
 });
+
+test('el rol desarrollador queda oculto salvo para su propia vista interna', () => {
+  const hiddenHtml = renderToStaticMarkup(
+    <RoleChipList roleIds={[ROLES.SOCIO, ROLES.DESARROLLADOR]} />,
+  );
+  const privateHtml = renderToStaticMarkup(
+    <RoleChipList roleIds={[ROLES.SOCIO, ROLES.DESARROLLADOR]} showInternalRoles />,
+  );
+
+  assert.doesNotMatch(hiddenHtml, /Desarrollador/);
+  assert.match(privateHtml, /Desarrollador/);
+});

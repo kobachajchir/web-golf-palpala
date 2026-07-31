@@ -13,6 +13,8 @@ type PasswordChangePanelProps = {
   onChanged?: () => Promise<void> | void;
 };
 
+const DEFAULT_TEMPORARY_PASSWORD = 'password';
+
 export function PasswordChangePanel({
   firebaseUser,
   requireCurrentPassword = false,
@@ -42,6 +44,11 @@ export function PasswordChangePanel({
 
     if (newPassword.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+
+    if (newPassword.trim().toLowerCase() === DEFAULT_TEMPORARY_PASSWORD) {
+      setError('La nueva contrasena no puede ser la clave temporal por defecto.');
       return;
     }
 

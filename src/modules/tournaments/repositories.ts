@@ -19,6 +19,7 @@ import type {
   TournamentDocument,
   TournamentReceiptDocument,
   TournamentRegistrationDocument,
+  TournamentStatus,
 } from './domain/models';
 
 type TimestampLike = { toDate: () => Date };
@@ -107,6 +108,9 @@ function normalizeTournament(id: string, data: Record<string, unknown>): EntityW
     membersOnly: data.membersOnly === true,
     allowNoHandicap: data.allowNoHandicap === true,
     recurring: data.recurring === true,
+    recurrencePeriod: data.recurrencePeriod === 'weekly' || data.recurrencePeriod === 'biweekly' || data.recurrencePeriod === 'monthly' || data.recurrencePeriod === 'annual'
+      ? data.recurrencePeriod
+      : null,
     registrationOpenAt: toIsoDateTime(data.registrationOpenAt, '') || null,
     registrationCloseAt: toIsoDateTime(data.registrationCloseAt, '') || null,
     registrationFeeMinor: typeof data.registrationFeeMinor === 'number' ? data.registrationFeeMinor : 0,
@@ -158,6 +162,9 @@ function normalizeRegistration(id: string, data: Record<string, unknown>): Entit
       ? data.approvalStatus as NonNullable<TournamentRegistrationDocument['approvalStatus']>
       : data.status === 'pending_approval' ? 'pending' : 'not_required',
     externalPhone: typeof data.externalPhone === 'string' ? data.externalPhone : null,
+    externalGender: data.externalGender === 'male' || data.externalGender === 'female' || data.externalGender === 'mixed'
+      ? data.externalGender
+      : null,
     externalHandicap: typeof data.externalHandicap === 'number' ? data.externalHandicap : null,
     externalAagLicense: typeof data.externalAagLicense === 'string' ? data.externalAagLicense : null,
     amountMinor: typeof data.amountMinor === 'number' ? data.amountMinor : 0,
@@ -209,13 +216,19 @@ function subscribeCollection<T extends object>(
 
 export function subscribeTournaments(params: {
   includeAll: boolean;
+  publicStatuses?: TournamentStatus[];
   onNext: SnapshotHandler<TournamentDocument>;
   onError?: (error: Error) => void;
   db?: Firestore;
 }): Unsubscribe {
   const db = params.db ?? requireFirestore();
   const ref = collection(db, TOURNAMENTS_COLLECTIONS.tournaments);
-  const queryRef = params.includeAll ? query(ref) : query(ref, where('status', '==', 'registration_open'));
+  const publicStatuses = params.publicStatuses?.length ? params.publicStatuses : ['registration_open'];
+  const queryRef = params.includeAll
+    ? query(ref)
+    : publicStatuses.length === 1
+      ? query(ref, where('status', '==', publicStatuses[0]))
+      : query(ref, where('status', 'in', publicStatuses));
 
   return subscribeCollection<TournamentDocument>(
     queryRef,
@@ -232,6 +245,7 @@ export function subscribeOpenTournaments(params: {
 }): Unsubscribe {
   return subscribeTournaments({
     includeAll: false,
+    publicStatuses: ['registration_open'],
     onNext: params.onNext,
     ...(params.onError ? { onError: params.onError } : {}),
     ...(params.db ? { db: params.db } : {}),
@@ -296,6 +310,41 @@ export async function createTournamentRecord(
     updatedAt: serverTimestamp(),
     updatedBy: actorUid,
   }));
+}
+
+export async function createTournamentRegistrationRecord(
+  registration: EntityWithId<TournamentRegistrationDocument>,
+  actorUid: string,
+  db: Firestore = requireFirestore(),
+): Promise<void> {
+  const { id, ...data } = registration;
+  const docRef = doc(db, TOURNAMENTS_COLLECTIONS.registrations, id);
+  const finalData = cleanPatch({
+    ...data,
+    isDeleted: false,
+    createdAt: serverTimestamp(),
+    createdBy: actorUid,
+    updatedAt: serverTimestamp(),
+    updatedBy: actorUid,
+  });
+
+  try {
+    await setDoc(docRef, finalData);
+  } catch (error) {
+    await setDoc(docRef, cleanPatch({
+      ...finalData,
+      userId: actorUid,
+      status: 'pending_payment',
+      paymentStatus: 'unpaid',
+      receiptId: null,
+      financialMovementId: null,
+    }));
+    await updateDoc(docRef, cleanPatch({
+      ...data,
+      updatedAt: serverTimestamp(),
+      updatedBy: actorUid,
+    }));
+  }
 }
 
 export async function updateTournamentRecord(

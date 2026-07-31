@@ -33,7 +33,7 @@ export type payment_type = {
   external_reference?: string;
 
   // Nombre del proveedor externo
-  external_provider?: 'mercado_pago' | 'manual' | 'otro';
+  external_provider?: 'manual' | 'otro';
 
   // ID externo del pago, si existe
   external_payment_id?: string;

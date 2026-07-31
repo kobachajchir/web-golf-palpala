@@ -7,7 +7,7 @@ const SECTION_LABELS: Record<EmployeeCycleSection, string> = {
   overtime: 'Horas extra',
   certificates: 'Certificados',
   'external-docs': 'Comprobantes externos',
-  expenses: 'Rendiciones',
+  expenses: 'Gastos',
   settlement: 'Liquidacion',
   payment: 'Pago',
 };

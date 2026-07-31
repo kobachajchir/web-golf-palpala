@@ -1,14 +1,12 @@
-import type { CheckoutSession, ManualPaymentReceipt } from '../types/payment';
+import type { ManualPaymentReceipt } from '../types/payment';
 import { formatCurrency } from '../utils/accountingFormatters';
 
 export function ReceiptDrawer({
   receipt,
-  checkout,
 }: {
   receipt: ManualPaymentReceipt | null;
-  checkout: CheckoutSession | null;
 }) {
-  if (!receipt && !checkout) {
+  if (!receipt) {
     return null;
   }
 
@@ -27,21 +25,6 @@ export function ReceiptDrawer({
             <small>Recibo {receipt.receiptNumbers.join(', ')}</small>
           )}
           <small>{receipt.movementIds.join(', ')}</small>
-        </>
-      )}
-      {checkout && (
-        <>
-          <h2>Checkout listo</h2>
-          <p>Sesion {checkout.sessionId}. El movimiento contable se registra cuando Mercado Pago confirme via webhook.</p>
-          <div className="accounting-inline-summary">
-            <span>{checkout.itemCount} concepto(s)</span>
-            <strong>{formatCurrency(checkout.totalAmountMinor)}</strong>
-          </div>
-          {checkout.checkoutUrl && (
-            <a className="btn-primary" href={checkout.checkoutUrl} target="_blank" rel="noreferrer">
-              Abrir checkout
-            </a>
-          )}
         </>
       )}
     </aside>

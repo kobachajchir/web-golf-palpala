@@ -11,13 +11,14 @@ export type SearchFiltersPanelField = {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: 'search' | 'text' | 'date' | 'select';
+  type?: 'search' | 'text' | 'date' | 'month' | 'select';
   options?: SearchFiltersPanelOption[];
   placeholder?: string;
   disabled?: boolean;
   hidden?: boolean;
   className?: string;
   inputMode?: 'text' | 'search' | 'email' | 'tel' | 'url' | 'none' | 'numeric' | 'decimal';
+  max?: string;
 };
 
 type SearchFiltersPanelProps = {
@@ -80,6 +81,7 @@ function renderField(field: SearchFiltersPanelField) {
           type={type}
           inputMode={field.inputMode}
           placeholder={field.placeholder}
+          max={field.max}
         />
       )}
     </label>
@@ -140,7 +142,7 @@ export function SearchFiltersPanel({
           </span>
           <span>
             <strong>{title}</strong>
-            <small>{summary}</small>
+            {summary && <small>{summary}</small>}
           </span>
         </span>
         <span className="search-collapse__meta">

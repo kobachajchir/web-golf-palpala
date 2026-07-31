@@ -1,5 +1,4 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { PAYMENT_METHOD_IDS } from '../domain/constants.js';
 import { assertCondition } from '../domain/errors.js';
 import { calculateAmountFromBps, toAccountingPeriod } from './shared.js';
 export async function createPostedMovement(params) {
@@ -8,24 +7,36 @@ export async function createPostedMovement(params) {
         : null;
     if (params.paymentMethodId) {
         assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.paymentMethodId}.`);
-        assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.paymentMethodId} está inactivo.`);
+        assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.paymentMethodId} esta inactivo.`);
     }
     let appliedCommissionPctBps = null;
     let appliedCommissionAmountMinor = null;
+    let grossAmountMinor = params.grossAmountMinor;
     let netAmountMinor = params.grossAmountMinor;
-    if (params.applyPaymentCommission === true
-        && paymentMethod?.id === PAYMENT_METHOD_IDS.credit) {
+    let paymentCommissionBreakdown = [];
+    if (params.applyPaymentCommission === true && paymentMethod) {
         const activeRule = await params.dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
-        assertCondition(activeRule, 'failed-precondition', 'No existe una regla de comisión activa para crédito.');
-        appliedCommissionPctBps = activeRule.percentageBps;
-        appliedCommissionAmountMinor = calculateAmountFromBps(params.grossAmountMinor, activeRule.percentageBps);
-        netAmountMinor = params.grossAmountMinor - appliedCommissionAmountMinor;
+        if (activeRule) {
+            appliedCommissionPctBps = activeRule.percentageBps;
+            appliedCommissionAmountMinor = calculateAmountFromBps(params.grossAmountMinor, activeRule.percentageBps);
+            paymentCommissionBreakdown = activeRule.breakdown ?? [];
+            if (params.paymentCommissionMode === 'add_to_charge') {
+                grossAmountMinor = params.grossAmountMinor + appliedCommissionAmountMinor;
+                netAmountMinor = params.grossAmountMinor;
+            }
+            else if (params.paymentCommissionMode === 'add_to_expense') {
+                netAmountMinor = params.grossAmountMinor + appliedCommissionAmountMinor;
+            }
+            else {
+                netAmountMinor = params.grossAmountMinor - appliedCommissionAmountMinor;
+            }
+        }
     }
     if (params.netAmountMinorOverride !== undefined && params.netAmountMinorOverride !== null) {
         netAmountMinor = params.netAmountMinorOverride;
         appliedCommissionAmountMinor = params.appliedCommissionAmountMinorOverride
-            ?? Math.max(params.grossAmountMinor - params.netAmountMinorOverride, 0);
-        appliedCommissionPctBps = null;
+            ?? Math.max(grossAmountMinor - params.netAmountMinorOverride, 0);
+        appliedCommissionPctBps = params.appliedCommissionPctBpsOverride ?? null;
     }
     const operationTimestamp = Timestamp.fromDate(params.operationDate);
     const approvedAtDate = params.approvedAt ?? params.operationDate;
@@ -44,7 +55,7 @@ export async function createPostedMovement(params) {
         thirdPartyId: params.thirdPartyId ?? null,
         paymentMethodId: paymentMethod?.id ?? null,
         paymentMethodCodeSnapshot: paymentMethod?.id ?? null,
-        grossAmountMinor: params.grossAmountMinor,
+        grossAmountMinor,
         appliedCommissionPctBps,
         appliedCommissionAmountMinor,
         netAmountMinor,
@@ -56,12 +67,24 @@ export async function createPostedMovement(params) {
         approvedAt: Timestamp.fromDate(approvedAtDate),
         reversalOfMovementId: null,
         voidReason: null,
-        metadata: params.metadata,
+        metadata: {
+            ...(params.metadata ?? {}),
+            ...(appliedCommissionPctBps !== null
+                ? {
+                    paymentCommissionMode: params.paymentCommissionMode ?? 'deduct_from_gross',
+                    paymentCommissionBreakdown,
+                    clubAmountMinor: params.movementType === 'income' ? netAmountMinor : null,
+                    amountToChargeMinor: params.movementType === 'income' ? grossAmountMinor : null,
+                    expenseBaseAmountMinor: params.movementType === 'expense' ? params.grossAmountMinor : null,
+                    expenseTotalDebitedMinor: params.movementType === 'expense' ? netAmountMinor : null,
+                }
+                : {}),
+        },
         notes: params.notes ?? null,
     }, params.actorUid);
     return {
         movementId,
-        grossAmountMinor: params.grossAmountMinor,
+        grossAmountMinor,
         netAmountMinor,
         appliedCommissionPctBps,
         appliedCommissionAmountMinor,

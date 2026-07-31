@@ -13,6 +13,7 @@ import {
 import { collection, getCountFromServer, query, where } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ModalCloseIcon } from '../components/ModalCloseIcon';
 import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
 import { UiActionButton } from '../components/UiActionButton';
@@ -188,14 +189,6 @@ function SummaryCard({
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
-      <path d="M6.7 5.3a1 1 0 0 1 1.4 0L12 9.17l3.9-3.88a1 1 0 1 1 1.4 1.42L13.41 10.6l3.89 3.9a1 1 0 0 1-1.42 1.4L12 12.01l-3.88 3.89a1 1 0 0 1-1.42-1.42l3.89-3.88-3.9-3.9a1 1 0 0 1 0-1.4Z" />
-    </svg>
-  );
-}
-
 function EditIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="button-icon">
@@ -239,6 +232,7 @@ function ChevronIcon() {
 export function MembersAdmin() {
   const { interfaceMode } = useAuth();
   const canEditMembers = interfaceMode === ROLES.ADMINISTRATIVO || interfaceMode === ROLES.DIRECTIVO;
+  const canSeeMemberStatus = canEditMembers || interfaceMode === ROLES.COMISION_DIRECTIVA;
   const [members, setMembers] = useState<ClubMemberRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -823,12 +817,7 @@ export function MembersAdmin() {
       <div className="directory-shell directory-workbench-shell">
         <section className="floating-card tournament-hero directory-workbench-hero">
           <div className="tournament-hero__copy">
-            <p className="eyebrow">Gestion de socios</p>
             <h1>Padron del club</h1>
-            <p>
-              Busca socios, revisa estado de membresia, administra grupos
-              familiares y entra a la ficha en un click.
-            </p>
           </div>
 
           <div className="tournament-hero__actions">
@@ -881,10 +870,6 @@ export function MembersAdmin() {
             <div>
               <p className="eyebrow">Listado operativo</p>
               <h2>Socios, membresias y accesos</h2>
-              <p className="profile-note">
-                Filtra el padron, abre fichas de membresia y ejecuta acciones
-                administrativas desde el listado.
-              </p>
             </div>
           </div>
 
@@ -938,13 +923,12 @@ export function MembersAdmin() {
                 <strong>{filteredMembers.length} socios cargados</strong>
               </div>
 
-              <div className="member-table">
+              <div className={`member-table member-table--member-admin ${canSeeMemberStatus ? 'member-table--with-status' : 'member-table--without-status'}`}>
                 <div className="member-table__head">
                   <span>Socio</span>
                   <span>Nombre</span>
                   <span>Tipo</span>
-                  <span>AAG</span>
-                  <span>Estado</span>
+                  {canSeeMemberStatus && <span>Estado</span>}
                   <span>Acciones</span>
                 </div>
 
@@ -954,18 +938,20 @@ export function MembersAdmin() {
                       No encontramos socios con esos filtros.
                     </div>
                   ) : (
-                    filteredMembers.map((member) => (
-                      <article
-                        key={member.id}
-                        className={`member-row ${selectedMemberId === member.id ? "member-row--selected" : ""} ${
-                          openMemberActionsId === member.id
-                            ? "member-row--menu-open"
-                            : ""
-                        }`}
-                      >
+                    filteredMembers.map((member) => {
+                      const hasAppAccess = Boolean(member.linkedUserId);
+
+                      return (
+                        <article
+                          key={member.id}
+                          className={`member-row ${selectedMemberId === member.id ? "member-row--selected" : ""} ${
+                            openMemberActionsId === member.id
+                              ? "member-row--menu-open"
+                              : ""
+                          }`}
+                        >
                         <div className="member-cell">
                           <strong>#{member.memberNumber}</strong>
-                          <small>{member.id}</small>
                         </div>
 
                         <div className="member-cell">
@@ -988,27 +974,18 @@ export function MembersAdmin() {
                           )}
                         </div>
 
-                        <div className="member-cell">
-                          <strong>
-                            {member.aagMembershipNumber ?? "Sin matricula"}
-                          </strong>
-                          <small>
-                            {member.linkedUserId
-                              ? "Con acceso app"
-                              : "Sin acceso app"}
-                          </small>
-                        </div>
-
-                        <div className="member-cell">
-                          <span
-                            className={`status-pill status-pill-green ${member.active ? "" : "status-pill--bloqueado"}`}
-                          >
-                            {member.active ? "Activo" : "No activo"}
-                          </span>
-                          <small>
-                            {member.status === "license" ? "Licencia" : null}
-                          </small>
-                        </div>
+                        {canSeeMemberStatus && (
+                          <div className="member-cell">
+                            <span
+                              className={`status-pill ${hasAppAccess ? "status-pill-green" : "status-pill--bloqueado"}`}
+                            >
+                              {hasAppAccess ? (member.active ? "Activo" : "Inactivo") : "Sin acceso app"}
+                            </span>
+                            <small>
+                              {member.status === "license" ? "Licencia" : null}
+                            </small>
+                          </div>
+                        )}
 
                         <div
                           className="member-actions"
@@ -1106,8 +1083,9 @@ export function MembersAdmin() {
                               </div>
                             )}
                         </div>
-                      </article>
-                    ))
+                        </article>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1130,18 +1108,21 @@ export function MembersAdmin() {
       </div>
 
       {isEditorOpen && (
-        <div className="modal-overlay" onClick={handleOverlayClick}>
+        <div className="modal-overlay quick-actions-modal-overlay" onClick={handleOverlayClick}>
           <section
-            className="floating-card member-modal-card"
+            className="floating-card member-modal-card quick-actions-modal accounting-operation-modal"
             role="dialog"
             aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div className="member-modal__header">
-              <div className="member-modal__title">
+            <div className="member-modal__header quick-actions-modal__header">
+              <div className="member-modal__title accounting-operation-modal__title-block">
                 <p className="eyebrow">
                   {selectedMember ? "Edicion de socio" : "Alta de socio"}
                 </p>
-                {selectedMember ? <h2>Actualizar registro</h2> : null}
+                <h2 className="accounting-operation-modal__title">
+                  {selectedMember ? "Actualizar registro" : "Nuevo socio"}
+                </h2>
               </div>
 
               <div className="member-modal__header-actions">
@@ -1155,19 +1136,14 @@ export function MembersAdmin() {
 
                 <button
                   type="button"
-                  className="icon-button"
+                  className="modal-close-button"
                   aria-label="Cerrar formulario"
                   onClick={closeEditor}
                 >
-                  <CloseIcon />
+                  <ModalCloseIcon />
                 </button>
               </div>
             </div>
-
-            <p className="profile-note">
-              El formulario separa membresia, identificadores y observaciones
-              sin mezclar informacion financiera.
-            </p>
 
             {error && <div className="error-message">{error}</div>}
 

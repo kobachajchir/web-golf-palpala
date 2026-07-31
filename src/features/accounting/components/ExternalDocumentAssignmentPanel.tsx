@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { getAccountingReferenceTypeLabel } from '../../../modules/accounting/domain/constants';
 import type { EmployeeAccountingLinkDocument, EntityWithId, ExternalAccountingReferenceDocument } from '../../../modules/accounting/domain/models';
 import type { EmployeeDocument } from '../../../modules/users/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
@@ -84,7 +85,7 @@ export function ExternalDocumentAssignmentPanel({
         <select value={referenceId} onChange={(event) => setReferenceId(event.target.value)}>
           {documents.map((document) => (
             <option key={document.id} value={document.id}>
-              {document.referenceType} - {formatPeriod(document.period)} - {formatCurrency(document.amountMinor)}
+              {getAccountingReferenceTypeLabel(document.referenceType)} - {formatPeriod(document.period)} - {formatCurrency(document.amountMinor)}
             </option>
           ))}
         </select>

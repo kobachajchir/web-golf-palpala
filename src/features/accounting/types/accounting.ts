@@ -9,7 +9,6 @@ import type {
   FinancialMovementDocument,
   MacroDebitSettlementDocument,
   MemberFeeChargeDocument,
-  MercadoPagoCheckoutSessionDocument,
   PaymentMethodDocument,
   SalaryPaymentDocument,
 } from '../../../modules/accounting/domain/models';
@@ -42,7 +41,6 @@ export type AccountingSummary = {
   periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
   pendingExpenses: Array<EntityWithId<ExpenseSubmissionDocument>>;
   recentExpenses: Array<EntityWithId<ExpenseSubmissionDocument>>;
-  recentMercadoPagoSessions: Array<EntityWithId<MercadoPagoCheckoutSessionDocument>>;
   recentSettlements: Array<EntityWithId<MacroDebitSettlementDocument>>;
   periodReferences: Array<EntityWithId<ExternalAccountingReferenceDocument>>;
   recentSalaryPayments: Array<EntityWithId<SalaryPaymentDocument>>;

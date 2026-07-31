@@ -7,7 +7,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SearchFiltersPanel } from '../components/SearchFiltersPanel';
 import { TemporaryCredentialsDialog } from '../components/TemporaryCredentialsDialog';
@@ -52,6 +52,25 @@ type TimestampLike = {
 };
 
 type PortalView = 'mine' | 'admin';
+
+type ReceiptSnapshot = {
+  receiptNumber: string | null;
+  conceptLabel: string;
+  movementId: string | null;
+  memberId: string | null;
+  memberNumber: string | null;
+  memberName: string | null;
+  amountMinor: number;
+  grossAmountMinor: number;
+  netAmountMinor: number;
+  categoryId: string | null;
+  paymentMethodId: string | null;
+  operationDate: TimestampLike | string | Date | number | null;
+  accountingPeriod: string | null;
+  status: string | null;
+  reference: string | null;
+  notes: string | null;
+};
 
 function NotificationIcon({ type }: { type: NotificationIconType }) {
   const icons: Record<NotificationIconType, ReactNode> = {
@@ -155,6 +174,69 @@ function formatActor(actor: NotificationActorSnapshot | null | undefined, fallba
   return fallbackUid ?? 'Sin registrar';
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readDateLike(value: unknown): TimestampLike | string | Date | number | null {
+  if (
+    value instanceof Date ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    (value && typeof value === 'object')
+  ) {
+    return value as TimestampLike | string | Date | number;
+  }
+
+  return null;
+}
+
+function formatCurrencyMinor(amountMinor: number | null | undefined): string {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  }).format((amountMinor ?? 0) / 100);
+}
+
+function getReceiptSnapshot(delivery: NotificationDelivery): ReceiptSnapshot | null {
+  const metadata = readRecord(delivery.metadata) ?? {};
+  const receipt = readRecord(metadata.receipt) ?? {};
+  const movementId = readString(receipt.movementId) ?? readString(metadata.movementId) ?? delivery.sourceId ?? null;
+  const amountMinor = readNumber(receipt.amountMinor) ?? readNumber(metadata.amountMinor);
+
+  if (delivery.type !== 'member_payment_receipt' && !movementId && amountMinor === null) {
+    return null;
+  }
+
+  return {
+    receiptNumber: readString(receipt.receiptNumber) ?? readString(metadata.receiptNumber),
+    conceptLabel: readString(receipt.conceptLabel) ?? 'Cuota societaria',
+    movementId,
+    memberId: readString(receipt.memberId) ?? readString(metadata.memberId),
+    memberNumber: readString(receipt.memberNumber) ?? delivery.recipientMemberNumber ?? null,
+    memberName: readString(receipt.memberName) ?? delivery.recipientDisplayName ?? null,
+    amountMinor: amountMinor ?? 0,
+    grossAmountMinor: readNumber(receipt.grossAmountMinor) ?? amountMinor ?? 0,
+    netAmountMinor: readNumber(receipt.netAmountMinor) ?? amountMinor ?? 0,
+    categoryId: readString(receipt.categoryId),
+    paymentMethodId: readString(receipt.paymentMethodId),
+    operationDate: readDateLike(receipt.operationDate) ?? readDateLike(delivery.createdAt),
+    accountingPeriod: readString(receipt.accountingPeriod),
+    status: readString(receipt.status),
+    reference: readString(receipt.reference),
+    notes: readString(receipt.notes),
+  };
+}
+
 function updateDeliveryStatus(
   items: NotificationDelivery[],
   deliveryId: string,
@@ -212,6 +294,7 @@ function matchesLocalFilters(
 
 export function NotificationsPortal() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, interfaceMode } = useAuth();
   const canManageNotifications = STAFF_ROLES.includes(interfaceMode);
   const notificationsCallables = useMemo(() => createNotificationsCallables(), []);
@@ -234,7 +317,9 @@ export function NotificationsPortal() {
   const [pendingActionDelivery, setPendingActionDelivery] = useState<NotificationDelivery | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [credentialsDialog, setCredentialsDialog] = useState<TemporaryMemberCredentials | null>(null);
+  const [visibleReceiptDeliveryId, setVisibleReceiptDeliveryId] = useState<string | null>(null);
   const filtersRef = useRef<HTMLDivElement | null>(null);
+  const receiptMovementParam = searchParams.get('receiptMovement');
 
   useEffect(() => {
     if (!canManageNotifications && view === 'admin') {
@@ -334,6 +419,11 @@ export function NotificationsPortal() {
   const pendingCount = activeItems.filter((item) => item.status === 'unread').length;
   const actionCount = activeItems.filter((item) => item.action && item.status !== 'actioned' && item.status !== 'dismissed').length;
   const isLoading = isAdminView ? loadingAdminItems : loadingOwnItems;
+  const selectedReceipt = useMemo(
+    () => (selectedDelivery ? getReceiptSnapshot(selectedDelivery) : null),
+    [selectedDelivery],
+  );
+  const isReceiptVisible = Boolean(selectedReceipt && selectedDelivery && visibleReceiptDeliveryId === selectedDelivery.id);
   const activeFilterCount = useMemo(
     () =>
       Number(filters.status !== 'all') +
@@ -344,6 +434,30 @@ export function NotificationsPortal() {
         : 0),
     [filters, isAdminView],
   );
+
+  useEffect(() => {
+    if (!receiptMovementParam) {
+      return;
+    }
+
+    const allItems = [...ownItems, ...adminItems];
+    const target = allItems.find((item) => {
+      const receipt = getReceiptSnapshot(item);
+      return item.sourceId === receiptMovementParam || receipt?.movementId === receiptMovementParam;
+    });
+
+    if (!target) {
+      return;
+    }
+
+    setSelectedDelivery(target);
+    setVisibleReceiptDeliveryId(target.id);
+    if (canManageNotifications && adminItems.some((item) => item.id === target.id)) {
+      setView('admin');
+    } else {
+      setView('mine');
+    }
+  }, [adminItems, canManageNotifications, ownItems, receiptMovementParam]);
 
   const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -369,6 +483,7 @@ export function NotificationsPortal() {
 
   const handleSelectDelivery = async (delivery: NotificationDelivery) => {
     setSelectedDelivery(delivery);
+    setVisibleReceiptDeliveryId(null);
 
     try {
       await markRead(delivery);
@@ -433,19 +548,15 @@ export function NotificationsPortal() {
   };
 
   return (
-    <div className="page-container tournament-page notifications-page">
-      <div className="notifications-shell">
-        <section className="floating-card tournament-hero notifications-hero">
-          <div className="tournament-hero__copy">
-            <p className="eyebrow">Centro de notificaciones</p>
+    <div className="page-container accounting-page notifications-page accounting-notifications-page">
+      <div className="accounting-shell notifications-shell accounting-notifications-shell">
+        <section className="floating-card accounting-hero notifications-hero">
+          <div className="accounting-hero__copy">
             <h1>Notificaciones</h1>
-            <p>
-              Avisos internos, acciones pendientes e historial de lectura desde el mismo panel operativo.
-            </p>
           </div>
 
           {canManageNotifications && (
-            <div className="tournament-hero__actions notifications-hero__actions">
+            <div className="accounting-hero__actions notifications-hero__actions">
               <span className="action-icon notifications-hero__icon">
                 <NotificationIcon type="bell" />
               </span>
@@ -458,7 +569,7 @@ export function NotificationsPortal() {
         </section>
 
         {canManageNotifications && (
-          <section className="tournament-summary-grid notification-summary-grid" aria-label="Resumen de notificaciones">
+          <section className="accounting-summary-grid notification-summary-grid" aria-label="Resumen de notificaciones">
             <article className="summary-card">
               <span>Pendientes</span>
               <strong>{pendingCount}</strong>
@@ -477,26 +588,23 @@ export function NotificationsPortal() {
           </section>
         )}
 
-        <section className="floating-card tournament-main-panel notifications-card">
-          <div className="tournament-section-header notifications-section-header">
-            <div>
-              <p className="eyebrow">{canManageNotifications ? 'Administrar notificaciones' : 'Mis notificaciones'}</p>
-              <h2>Bandeja e historial</h2>
-            </div>
+        <section className="floating-card accounting-primary-panel notifications-card">
+          <div className="accounting-section-header accounting-section-header--plain notifications-section-header">
+            <h2>{canManageNotifications ? 'Bandeja e historial' : 'Mis notificaciones'}</h2>
           </div>
 
           {canManageNotifications && (
             <div className="notification-tabs" role="tablist" aria-label="Vista de notificaciones">
               <button
                 type="button"
-                className={`tournament-tab notification-tab ${view === 'mine' ? 'tournament-tab--active notification-tab--active' : ''}`}
+                className={`notification-tab ${view === 'mine' ? 'notification-tab--active' : ''}`}
                 onClick={() => setView('mine')}
               >
                 Mis notificaciones
               </button>
               <button
                 type="button"
-                className={`tournament-tab notification-tab ${view === 'admin' ? 'tournament-tab--active notification-tab--active' : ''}`}
+                className={`notification-tab ${view === 'admin' ? 'notification-tab--active' : ''}`}
                 onClick={() => setView('admin')}
               >
                 Administracion
@@ -603,7 +711,7 @@ export function NotificationsPortal() {
                 <button
                   key={delivery.id}
                   type="button"
-                  className={`notification-row ${selectedDelivery?.id === delivery.id ? 'notification-row--active' : ''}`}
+                  className={`accounting-row accounting-row--actions notification-row ${selectedDelivery?.id === delivery.id ? 'notification-row--active' : ''}`}
                   onClick={() => void handleSelectDelivery(delivery)}
                 >
                   <span className={`notification-status-dot notification-status-dot--${delivery.status}`} />
@@ -623,7 +731,7 @@ export function NotificationsPortal() {
             )}
           </div>
 
-          <aside className="notification-detail">
+          <aside className="floating-card accounting-panel notification-detail">
             {selectedDelivery ? (
               <>
                 <div className="notification-detail__header">
@@ -661,7 +769,7 @@ export function NotificationsPortal() {
                   </div>
                 </div>
 
-                <article className="membership-panel notification-history-panel">
+                <article className="accounting-panel notification-history-panel">
                   <p className="eyebrow">Historial</p>
                   <div className="membership-panel__list">
                     <div>
@@ -677,7 +785,7 @@ export function NotificationsPortal() {
                   </div>
                 </article>
 
-                <article className="membership-panel notification-attachments-panel">
+                <article className="accounting-panel notification-attachments-panel">
                   <p className="eyebrow">Adjuntos</p>
                   {selectedDelivery.attachments.length === 0 ? (
                     <div className="empty-state empty-state--inline notification-attachments-empty">Sin adjuntos.</div>
@@ -695,7 +803,85 @@ export function NotificationsPortal() {
                   )}
                 </article>
 
+                {selectedReceipt && isReceiptVisible && (
+                  <article className="notification-receipt-card" aria-label="Recibo de pago">
+                    <div className="notification-receipt-card__header">
+                      <div>
+                        <p className="eyebrow">Comprobante interno</p>
+                        <h3>RECIBO DE PAGO</h3>
+                        <small>{selectedReceipt.receiptNumber ?? 'Recibo sin numeracion'}</small>
+                      </div>
+                      <div className="notification-receipt-card__stamp">
+                        <span>Total</span>
+                        <strong>{formatCurrencyMinor(selectedReceipt.netAmountMinor)}</strong>
+                      </div>
+                    </div>
+
+                    <dl className="notification-receipt-list">
+                      <div>
+                        <dt>Fecha y hora</dt>
+                        <dd>{formatDateTime(selectedReceipt.operationDate)}</dd>
+                      </div>
+                      <div>
+                        <dt>Socio</dt>
+                        <dd>{selectedReceipt.memberName ?? 'Sin socio informado'}</dd>
+                      </div>
+                      <div>
+                        <dt>Numero de socio</dt>
+                        <dd>{selectedReceipt.memberNumber ?? 'Sin numero'}</dd>
+                      </div>
+                      <div>
+                        <dt>Concepto</dt>
+                        <dd>{selectedReceipt.conceptLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>Medio de pago</dt>
+                        <dd>{selectedReceipt.paymentMethodId ?? 'Sin medio informado'}</dd>
+                      </div>
+                      <div>
+                        <dt>Categoria</dt>
+                        <dd>{selectedReceipt.categoryId ?? 'cuota_societaria'}</dd>
+                      </div>
+                      <div>
+                        <dt>Periodo</dt>
+                        <dd>{selectedReceipt.accountingPeriod ?? 'Sin periodo'}</dd>
+                      </div>
+                      <div>
+                        <dt>Referencia</dt>
+                        <dd>{selectedReceipt.reference ?? selectedReceipt.movementId ?? 'Sin referencia'}</dd>
+                      </div>
+                      <div>
+                        <dt>Estado</dt>
+                        <dd>{selectedReceipt.status ?? 'posted'}</dd>
+                      </div>
+                      <div>
+                        <dt>Importe bruto</dt>
+                        <dd>{formatCurrencyMinor(selectedReceipt.grossAmountMinor)}</dd>
+                      </div>
+                      <div>
+                        <dt>Importe neto</dt>
+                        <dd>{formatCurrencyMinor(selectedReceipt.netAmountMinor)}</dd>
+                      </div>
+                      {selectedReceipt.notes && (
+                        <div>
+                          <dt>Notas</dt>
+                          <dd>{selectedReceipt.notes}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </article>
+                )}
+
                 <div className="form-actions notification-detail__actions">
+                  {selectedReceipt && (
+                    <UiActionButton
+                      type="button"
+                      variant="positive"
+                      onClick={() => setVisibleReceiptDeliveryId(isReceiptVisible ? null : selectedDelivery.id)}
+                    >
+                      {isReceiptVisible ? 'Ocultar recibo' : 'Ver recibo'}
+                    </UiActionButton>
+                  )}
                   {selectedDelivery.route && (
                     <UiActionButton type="button" variant="secondary" onClick={() => navigate(selectedDelivery.route ?? '/notificaciones')}>
                       Abrir destino

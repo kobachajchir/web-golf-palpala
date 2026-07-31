@@ -17,8 +17,6 @@ import type {
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
   MemberFeeChargeDocument,
-  MercadoPagoCheckoutSessionDocument,
-  MercadoPagoEventDocument,
   OvertimeEntryDocument,
   PayrollConfigDocument,
   PaymentCommissionRuleDocument,
@@ -64,9 +62,6 @@ import type {
   MemberFeeChargesStore,
   MemberReferenceFilters,
   MembersReferenceStore,
-  MercadoPagoCheckoutSessionFilters,
-  MercadoPagoCheckoutSessionsStore,
-  MercadoPagoEventsStore,
   OvertimeEntriesStore,
   OvertimeEntryFilters,
   PayrollConfigsStore,
@@ -402,6 +397,9 @@ class InMemoryFinancialMovementsStore implements FinancialMovementsStore {
     if (filters.status) {
       items = items.filter((item) => item.status === filters.status);
     }
+    if (filters.installmentPlanId) {
+      items = items.filter((item) => item.installmentPlanId === filters.installmentPlanId);
+    }
     if (filters.settlementId) {
       items = items.filter((item) => item.settlementId === filters.settlementId);
     }
@@ -418,6 +416,12 @@ class InMemoryFinancialMovementsStore implements FinancialMovementsStore {
   public async listBySettlementId(settlementId: string): Promise<Array<EntityWithId<FinancialMovementDocument>>> {
     return Array.from(this.items.values())
       .filter((item) => item.settlementId === settlementId)
+      .sort((a, b) => a.operationDate.toMillis() - b.operationDate.toMillis());
+  }
+
+  public async listByInstallmentPlanId(installmentPlanId: string): Promise<Array<EntityWithId<FinancialMovementDocument>>> {
+    return Array.from(this.items.values())
+      .filter((item) => item.installmentPlanId === installmentPlanId)
       .sort((a, b) => a.operationDate.toMillis() - b.operationDate.toMillis());
   }
 }
@@ -857,6 +861,10 @@ class InMemoryCashClosuresStore implements CashClosuresStore {
     items.sort((a, b) => b.closureDate.toMillis() - a.closureDate.toMillis());
     return pageFromItems(items, filters.limit, filters.cursorId);
   }
+
+  public async listOpen(): Promise<Array<EntityWithId<CashClosureDocument>>> {
+    return Array.from(this.items.values()).filter((item) => item.status === 'open');
+  }
 }
 
 class InMemoryExternalAccountingReferencesStore implements ExternalAccountingReferencesStore {
@@ -1128,84 +1136,6 @@ class InMemoryMemberFeeChargesStore implements MemberFeeChargesStore {
   }
 }
 
-class InMemoryMercadoPagoCheckoutSessionsStore implements MercadoPagoCheckoutSessionsStore {
-  public constructor(private readonly items: Map<string, EntityWithId<MercadoPagoCheckoutSessionDocument>>) {}
-
-  public async getById(sessionId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
-    return this.items.get(sessionId) ?? null;
-  }
-
-  public async getByExternalReference(externalReference: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
-    return Array.from(this.items.values()).find((item) => item.externalReference === externalReference) ?? null;
-  }
-
-  public async getByPaymentId(paymentId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
-    return Array.from(this.items.values()).find((item) => item.paymentId === paymentId) ?? null;
-  }
-
-  public async set(
-    sessionId: string,
-    data: Omit<MercadoPagoCheckoutSessionDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
-    actorUid: string,
-  ): Promise<void> {
-    this.items.set(sessionId, { id: sessionId, ...data, ...createAudit(actorUid) });
-  }
-
-  public async update(sessionId: string, patch: StorePatch<MercadoPagoCheckoutSessionDocument>, actorUid: string): Promise<void> {
-    const existing = this.items.get(sessionId);
-    if (!existing) {
-      return;
-    }
-    this.items.set(sessionId, {
-      id: existing.id,
-      ...applyPatch(existing, patch),
-      updatedAt: timestampNow(),
-      updatedBy: actorUid,
-    });
-  }
-
-  public async listPage(filters: MercadoPagoCheckoutSessionFilters): Promise<CursorPage<EntityWithId<MercadoPagoCheckoutSessionDocument>>> {
-    let items = Array.from(this.items.values());
-    if (filters.status) {
-      items = items.filter((item) => item.status === filters.status);
-    }
-    if (filters.createdByUid) {
-      items = items.filter((item) => item.createdByUid === filters.createdByUid);
-    }
-    items.sort((left, right) => right.updatedAt.toDate().getTime() - left.updatedAt.toDate().getTime());
-    return pageFromItems(items, filters.limit, filters.cursorId);
-  }
-}
-
-class InMemoryMercadoPagoEventsStore implements MercadoPagoEventsStore {
-  public constructor(private readonly items: Map<string, EntityWithId<MercadoPagoEventDocument>>) {}
-
-  public async getById(eventId: string): Promise<EntityWithId<MercadoPagoEventDocument> | null> {
-    return this.items.get(eventId) ?? null;
-  }
-
-  public async set(
-    eventId: string,
-    data: Omit<MercadoPagoEventDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
-    actorUid: string,
-  ): Promise<void> {
-    this.items.set(eventId, { id: eventId, ...data, ...createAudit(actorUid) });
-  }
-
-  public async update(eventId: string, patch: StorePatch<MercadoPagoEventDocument>, actorUid: string): Promise<void> {
-    const existing = this.items.get(eventId);
-    if (!existing) {
-      return;
-    }
-    this.items.set(eventId, {
-      id: existing.id,
-      ...applyPatch(existing, patch),
-      updatedAt: timestampNow(),
-      updatedBy: actorUid,
-    });
-  }
-}
-
 export class InMemoryAccountingTransactionManager implements AccountingTransactionManager {
   public readonly users = new Map<string, EntityWithId<ReferencedUserDocument>>();
   public readonly members = new Map<string, EntityWithId<ReferencedMemberDocument>>();
@@ -1234,8 +1164,6 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
   public readonly advertisingContracts = new Map<string, EntityWithId<AdvertisingContractDocument>>();
   public readonly handicapCharges = new Map<string, EntityWithId<HandicapChargeDocument>>();
   public readonly memberFeeCharges = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
-  public readonly mercadoPagoCheckoutSessions = new Map<string, EntityWithId<MercadoPagoCheckoutSessionDocument>>();
-  public readonly mercadoPagoEvents = new Map<string, EntityWithId<MercadoPagoEventDocument>>();
 
   private counters = {
     financialConfig: 0,
@@ -1285,8 +1213,6 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
     advertisingContracts: new InMemoryAdvertisingContractsStore(this.advertisingContracts, () => `advertising-contract-${++this.counters.advertisingContract}`),
     handicapCharges: new InMemoryHandicapChargesStore(this.handicapCharges, () => `handicap-charge-${++this.counters.handicapCharge}`),
     memberFeeCharges: new InMemoryMemberFeeChargesStore(this.memberFeeCharges, () => `member-fee-charge-${++this.counters.memberFeeCharge}`),
-    mercadoPagoCheckoutSessions: new InMemoryMercadoPagoCheckoutSessionsStore(this.mercadoPagoCheckoutSessions),
-    mercadoPagoEvents: new InMemoryMercadoPagoEventsStore(this.mercadoPagoEvents),
   };
 
   public async runInTransaction<T>(handler: (dataAccess: AccountingDataAccess) => Promise<T>): Promise<T> {

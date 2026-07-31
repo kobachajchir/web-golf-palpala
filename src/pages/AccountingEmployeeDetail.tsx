@@ -4,6 +4,7 @@ import { ROLES } from '../constants/roles';
 import { useAuth } from '../hooks/useAuth';
 import {
   ACCOUNTING_REFERENCE_TYPES,
+  getAccountingReferenceTypeLabel,
 } from '../modules/accounting/domain/constants';
 import type {
   AccountingPeriod,
@@ -79,6 +80,12 @@ type ReferenceRecordFormState = {
   attachmentUrl: string;
   allocatedAmountMinor: string;
   paidAt: string;
+  notes: string;
+};
+
+type AnnualBonusFormState = {
+  amount: string;
+  operationDate: string;
   notes: string;
 };
 
@@ -231,6 +238,12 @@ export function EmployeeAccountingPage() {
     notes: '',
   });
 
+  const [annualBonusForm, setAnnualBonusForm] = useState<AnnualBonusFormState>({
+    amount: '',
+    operationDate: todayInputValue(),
+    notes: '',
+  });
+  const [annualBonusAmountEditable, setAnnualBonusAmountEditable] = useState(false);
   const canOperate = interfaceMode === ROLES.ADMINISTRATIVO || interfaceMode === ROLES.DIRECTIVO;
   const canPostPayroll = interfaceMode === ROLES.DIRECTIVO;
 
@@ -309,6 +322,14 @@ export function EmployeeAccountingPage() {
     [snapshot.accountingLinks],
   );
 
+  const annualBonusSalaryBaseMinor = snapshot.payrollCycle?.salaryGrossMinor ?? snapshot.salaryPayment?.salaryGrossMinor ?? 0;
+  const annualBonusSuggestedMinor = Math.round(annualBonusSalaryBaseMinor / 2);
+
+  useEffect(() => {
+    if (!annualBonusAmountEditable && annualBonusSuggestedMinor > 0) {
+      setAnnualBonusForm((current) => ({ ...current, amount: String(annualBonusSuggestedMinor / 100) }));
+    }
+  }, [annualBonusAmountEditable, annualBonusSuggestedMinor]);
   const handleCreateOvertime = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!employeeId) {
@@ -553,6 +574,40 @@ export function EmployeeAccountingPage() {
     }
   };
 
+  const handlePostAnnualBonus = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!employeeId) {
+      return;
+    }
+    const amountMinor = annualBonusAmountEditable ? parseAmountInputToMinor(annualBonusForm.amount) : undefined;
+    if (annualBonusAmountEditable && (!Number.isFinite(amountMinor) || (amountMinor ?? 0) <= 0)) {
+      setNotice({ kind: 'error', message: 'Revisa el monto del aguinaldo.' });
+      return;
+    }
+
+    setSubmittingAction('post-annual-bonus');
+    setNotice(null);
+    try {
+      const result = await accountingCallables.postAnnualBonusPayment({
+        employeeId,
+        operationDate: buildArgentinaDateIso(annualBonusForm.operationDate),
+        notes: annualBonusForm.notes.trim() || null,
+        ...(amountMinor !== undefined ? { amountMinor } : {}),
+      });
+      setNotice({
+        kind: 'success',
+        message: `Aguinaldo ${result.bonusNumber}/2 registrado por ${formatCurrency(result.amountMinor)}. Quedan ${result.remainingAnnualSlots} disponibles este año.`,
+      });
+      setAnnualBonusForm((current) => ({ ...current, notes: '' }));
+    } catch (error) {
+      setNotice({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'No pudimos registrar el aguinaldo.',
+      });
+    } finally {
+      setSubmittingAction(null);
+    }
+  };
   if (!canOperate) {
     return <div className="empty-state">La ficha contable del empleado esta disponible para administracion y Comité Ejecutivo.</div>;
   }
@@ -611,7 +666,7 @@ export function EmployeeAccountingPage() {
 
         {selectedSection && (
           <div className="accounting-success">
-            Vista enfocada desde empleados: {selectedSection === 'salary' ? 'configuracion de sueldo' : 'comprobantes y rendiciones'}.
+            Vista enfocada desde empleados: {selectedSection === 'salary' ? 'configuracion de sueldo' : 'comprobantes laborales'}.
           </div>
         )}
 
@@ -824,7 +879,7 @@ export function EmployeeAccountingPage() {
                 >
                   {ACCOUNTING_REFERENCE_TYPES.map((referenceType) => (
                     <option key={referenceType} value={referenceType}>
-                      {referenceType}
+                      {getAccountingReferenceTypeLabel(referenceType)}
                     </option>
                   ))}
                 </select>
@@ -932,7 +987,7 @@ export function EmployeeAccountingPage() {
                   <option value="">Seleccionar referencia</option>
                   {snapshot.externalReferences.map((reference) => (
                     <option key={reference.id} value={reference.id}>
-                      {reference.referenceType} - {reference.providerName ?? 'Sin proveedor'} - {formatCurrency(reference.amountMinor)}
+                      {getAccountingReferenceTypeLabel(reference.referenceType)} - {reference.providerName ?? 'Sin proveedor'} - {formatCurrency(reference.amountMinor)}
                     </option>
                   ))}
                 </select>
@@ -971,7 +1026,7 @@ export function EmployeeAccountingPage() {
 
             <div className="accounting-topic-list">
               {ACCOUNTING_REFERENCE_TYPES.map((referenceType) => (
-                <span key={referenceType}>{referenceType}</span>
+                <span key={referenceType}>{getAccountingReferenceTypeLabel(referenceType)}</span>
               ))}
             </div>
           </section>
@@ -988,7 +1043,7 @@ export function EmployeeAccountingPage() {
               {snapshot.accountingLinks.map((link) => (
                 <article key={link.id} className="accounting-row">
                   <div className="accounting-row__main">
-                    <strong>{link.referenceType}</strong>
+                    <strong>{getAccountingReferenceTypeLabel(link.referenceType)}</strong>
                     <small>Referencia {link.referenceId}</small>
                   </div>
                   <div className="accounting-row__meta">
@@ -1006,6 +1061,7 @@ export function EmployeeAccountingPage() {
         </div>
 
         {canPostPayroll && (
+          <>
           <section className="floating-card accounting-owner-footer">
             <div className="accounting-section-header">
               <div>
@@ -1073,6 +1129,44 @@ export function EmployeeAccountingPage() {
               </div>
             </form>
           </section>
+
+          <section className="floating-card accounting-owner-footer">
+            <div className="accounting-section-header">
+              <div>
+                <p className="eyebrow">Comite Ejecutivo</p>
+                <h2>Registrar aguinaldo</h2>
+                <small>Se calcula como el 50% del sueldo cargado. El sistema admite como maximo dos por empleado y año.</small>
+              </div>
+            </div>
+            <form className="accounting-entry-form" onSubmit={handlePostAnnualBonus}>
+              <div className="manual-income-fee-detail form-field--wide">
+                <div><span>Sueldo de referencia</span><strong>{formatCurrency(annualBonusSalaryBaseMinor)}</strong></div>
+                <div><span>Aguinaldo sugerido</span><strong>{formatCurrency(annualBonusSuggestedMinor)}</strong></div>
+              </div>
+              <label className="checkbox-row form-field--wide">
+                <input type="checkbox" checked={annualBonusAmountEditable} onChange={(event) => setAnnualBonusAmountEditable(event.target.checked)} />
+                <span>Modificar monto manualmente</span>
+              </label>
+              <label className="form-field">
+                <span>Monto de aguinaldo</span>
+                <input inputMode="decimal" value={annualBonusForm.amount} readOnly={!annualBonusAmountEditable} onChange={(event) => setAnnualBonusForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Se calcula automaticamente" />
+              </label>
+              <label className="form-field">
+                <span>Fecha de pago</span>
+                <input type="date" value={annualBonusForm.operationDate} onChange={(event) => setAnnualBonusForm((current) => ({ ...current, operationDate: event.target.value }))} required />
+              </label>
+              <label className="form-field form-field--wide">
+                <span>Notas</span>
+                <textarea value={annualBonusForm.notes} onChange={(event) => setAnnualBonusForm((current) => ({ ...current, notes: event.target.value }))} />
+              </label>
+              <div className="form-actions form-actions--right form-field--wide">
+                <button type="submit" className="btn-primary" disabled={submittingAction === 'post-annual-bonus'}>
+                  {submittingAction === 'post-annual-bonus' ? 'Registrando...' : 'Registrar aguinaldo'}
+                </button>
+              </div>
+            </form>
+          </section>
+          </>
         )}
       </div>
     </div>

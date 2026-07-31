@@ -1,0 +1,2380 @@
+.accounting-operations-bar {
+  padding: 0.7rem 0.85rem;
+}
+
+.accounting-operations-grid {
+  gap: 8px;
+}
+
+.accounting-module-nav__item {
+  min-height: 76px;
+  padding: 0.7rem 0.75rem;
+}
+
+.accounting-module-nav__item span {
+  font-size: 14px;
+}
+
+.accounting-operations-panel {
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.accounting-operations-panel__header {
+  align-items: center;
+}
+
+.accounting-operations-panel .accounting-chevron-button {
+  width: auto;
+  min-height: 36px;
+  height: 36px;
+  padding: 0.45rem 0.7rem;
+  font-size: 13px;
+}
+
+.accounting-operations-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accounting-module-nav__item {
+  min-height: 62px;
+  padding: 0.55rem 0.65rem;
+}
+
+.accounting-module-nav__item-label.eyebrow {
+  font-size: 14px;
+  line-height: 1.2;
+  letter-spacing: 0.035em;
+}
+
+.accounting-dialog-form > .form-actions {
+  width: 100%;
+  flex: 1 1 100%;
+  justify-content: flex-end;
+}
+.manual-income-renewals__list,
+.accounting-renewal-reconciliation {
+  display: grid;
+  gap: 10px;
+}
+
+.manual-income-renewals__list .renewal-payment-line__title > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+@media (max-width: 767px) {
+  .accounting-operations-panel {
+    padding: 0.85rem;
+  }
+
+  .accounting-operations-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accounting-module-nav__item {
+    min-height: 58px;
+    padding: 0.5rem 0.55rem;
+  }
+
+  .accounting-module-nav__item-label.eyebrow {
+    font-size: 13px;
+  }
+}
+
+.accounting-module-page {
+  max-width: none;
+}
+
+.accounting-module-page .accounting-module-shell {
+  width: min(1380px, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.accounting-module-page .accounting-module-content,
+.accounting-module-page .accounting-module-content > .accounting-shell {
+  width: 100%;
+  max-width: 100%;
+}
+
+.accounting-collapsible-card__body > .search-collapse,
+.accounting-collapsible-card__body > .directory-results,
+.accounting-collapsible-card__body > .accounting-list,
+.accounting-collapsible-card__body > .accounting-renewals-list,
+.accounting-collapsible-card__body > .accounting-full-width-section,
+.accounting-full-width-section > .accounting-entry-form,
+.accounting-full-width-section > .accounting-list,
+.accounting-full-width-section .accounting-row {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-full-width-section {
+  display: grid;
+  width: 100%;
+}
+
+.home-accounting-page {
+  align-items: stretch;
+}
+
+.home-accounting-shell,
+.home-accounting-page .home-hero,
+.home-accounting-page .home-summary-grid,
+.home-accounting-page .home-actions-panel,
+.home-accounting-page .home-tournaments-panel,
+.home-accounting-page .home-action-grid,
+.home-accounting-page .home-tournament-list {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.home-accounting-shell {
+  width: min(1380px, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.home-accounting-page .home-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: clamp(20px, 2.8vw, 30px);
+}
+
+.home-accounting-page .home-hero .accounting-hero__copy {
+  gap: 0;
+}
+
+.home-accounting-page .home-hero__actions {
+  justify-content: flex-end;
+}
+
+.home-user-chip {
+  min-width: min(260px, 100%);
+  padding: 12px 14px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.88)),
+    var(--field-bg);
+  display: grid;
+  gap: 3px;
+  text-align: left;
+}
+
+.home-user-chip strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.home-user-chip small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.home-accounting-page .home-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.home-accounting-page .home-summary-card {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 128px;
+  justify-items: start;
+  align-content: center;
+  text-align: left;
+}
+
+.home-accounting-page .home-summary-card strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.home-accounting-page .home-actions-panel,
+.home-accounting-page .home-tournaments-panel {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.home-accounting-page .home-actions-panel .role-card__header,
+.home-accounting-page .home-tournaments-panel .accounting-section-header {
+  margin-bottom: 0;
+}
+
+.home-accounting-page .quick-actions-edit-button {
+  flex: 0 0 auto;
+  min-height: 42px;
+}
+
+.home-accounting-page .home-action-grid.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.home-accounting-page .home-action-tile {
+  width: 100%;
+  min-width: 0;
+  min-height: 138px;
+  border-color: rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.88)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.06);
+}
+
+.home-accounting-page .home-action-tile:hover,
+.home-accounting-page .home-action-tile:focus-visible {
+  border-color: rgba(13, 92, 67, 0.34);
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.home-accounting-page .home-action-tile strong,
+.home-accounting-page .home-action-tile small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.home-accounting-page .home-tournament-list {
+  display: grid;
+  gap: 12px;
+}
+
+.home-accounting-page .home-tournament-summary__item.accounting-row {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.72)),
+    var(--field-bg);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.05);
+}
+
+.home-accounting-page .home-tournament-summary__item.accounting-row:hover,
+.home-accounting-page .home-tournament-summary__item.accounting-row:focus-visible {
+  border-color: rgba(13, 92, 67, 0.34);
+  box-shadow: 0 16px 32px rgba(20, 63, 73, 0.1);
+  outline: none;
+}
+
+.home-accounting-page .home-tournament-summary__item strong,
+.home-accounting-page .home-tournament-summary__item small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.home-accounting-page .home-tournament-summary__status {
+  min-width: fit-content;
+  display: inline-flex;
+  align-self: center;
+  justify-self: end;
+  white-space: normal;
+}
+
+.home-quick-actions-modal {
+  width: min(1040px, calc(100vw - 48px));
+  max-width: 1040px;
+  display: grid;
+  gap: 18px;
+}
+
+.home-quick-actions-modal .quick-actions-modal__header {
+  align-items: flex-start;
+}
+
+.home-quick-actions-modal .quick-actions-modal__copy {
+  max-width: 680px;
+  margin: 0;
+}
+
+.home-quick-actions-modal .quick-actions-picker {
+  width: 100%;
+}
+
+.home-quick-actions-modal .quick-actions-category {
+  width: 100%;
+  max-width: none;
+}
+
+.home-quick-actions-modal .quick-actions-category__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.home-quick-actions-modal .quick-action-option {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+
+.home-quick-actions-modal .quick-action-option > span:not(.action-icon):not(.quick-action-option__check) {
+  min-width: 0;
+}
+
+.home-quick-actions-modal .quick-action-option strong,
+.home-quick-actions-modal .quick-action-option small {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .home-accounting-page .home-hero,
+  .home-accounting-page .home-tournament-summary__item.accounting-row {
+    grid-template-columns: 1fr;
+  }
+
+  .home-accounting-page .home-hero__actions,
+  .home-accounting-page .role-card__header,
+  .home-accounting-page .home-tournaments-panel .accounting-section-header {
+    justify-content: flex-start;
+  }
+
+  .home-user-chip,
+  .home-accounting-page .quick-actions-edit-button,
+  .home-accounting-page .home-tournament-summary__action,
+  .home-accounting-page .home-tournament-summary__status {
+    width: 100%;
+  }
+
+  .home-accounting-page .home-tournament-summary__status {
+    justify-self: start;
+  }
+
+  .home-quick-actions-modal {
+    width: min(100%, calc(100vw - 24px));
+  }
+
+  .home-quick-actions-modal .quick-actions-modal__header,
+  .home-quick-actions-modal .quick-actions-picker__header,
+  .home-quick-actions-modal .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.accounting-notifications-page {
+  align-items: stretch;
+}
+
+.accounting-notifications-shell,
+.accounting-notifications-page .notifications-hero,
+.accounting-notifications-page .notification-summary-grid,
+.accounting-notifications-page .notifications-card,
+.accounting-notifications-page .notifications-search-collapse,
+.accounting-notifications-page .notifications-layout,
+.accounting-notifications-page .notifications-list,
+.accounting-notifications-page .notification-detail,
+.accounting-notifications-page .notification-history-panel,
+.accounting-notifications-page .notification-attachments-panel {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-notifications-shell {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-notifications-page .notifications-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: clamp(20px, 2.8vw, 30px);
+}
+
+.accounting-notifications-page .notifications-hero .accounting-hero__copy {
+  gap: 0;
+}
+
+.accounting-notifications-page .notifications-hero__actions {
+  justify-content: flex-end;
+}
+
+.accounting-notifications-page .notifications-hero__icon {
+  flex: 0 0 auto;
+}
+
+.accounting-notifications-page .notifications-hero__status {
+  min-width: 210px;
+  border-color: rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.88)),
+    var(--field-bg);
+}
+
+.accounting-notifications-page .notification-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.accounting-notifications-page .notification-summary-grid .summary-card {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  min-height: 128px;
+  flex: none;
+}
+
+.accounting-notifications-page .notifications-card {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-notifications-page .notifications-section-header {
+  margin-bottom: 0;
+}
+
+.accounting-notifications-page .notification-tabs {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.accounting-notifications-page .notification-tab {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.88)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.06);
+}
+
+.accounting-notifications-page .notification-tab:hover,
+.accounting-notifications-page .notification-tab:focus-visible,
+.accounting-notifications-page .notification-tab--active {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: #fff;
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-notifications-page .notifications-search-collapse {
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background: var(--card-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.06);
+  overflow: hidden;
+}
+
+.accounting-notifications-page .notifications-search-collapse .search-collapse__trigger {
+  min-height: 64px;
+  padding: 14px 16px;
+  border: 0;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.88)),
+    var(--field-bg);
+}
+
+.accounting-notifications-page .notifications-search-collapse .search-collapse__title,
+.accounting-notifications-page .notifications-search-collapse .search-collapse__meta {
+  min-width: 0;
+}
+
+.accounting-notifications-page .notifications-search-collapse .search-collapse__icon {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+}
+
+.accounting-notifications-page .notifications-search-collapse__body {
+  padding: 16px;
+  border-top: 1px solid rgba(47, 128, 83, 0.12);
+}
+
+.accounting-notifications-page .notifications-toolbar {
+  padding: 0;
+}
+
+.accounting-notifications-page .notifications-toolbar__row.member-toolbar__row,
+.accounting-notifications-page .notifications-filter-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  align-items: end;
+  gap: 14px;
+}
+
+.accounting-notifications-page .notifications-toolbar .member-search,
+.accounting-notifications-page .notifications-toolbar .member-filter,
+.accounting-notifications-page .notifications-filter-row .form-field,
+.accounting-notifications-page .notifications-toolbar__actions {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: none;
+}
+
+.accounting-notifications-page .notifications-toolbar__actions {
+  justify-content: flex-end;
+}
+
+.accounting-notifications-page .notifications-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.68fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.accounting-notifications-page .notifications-list {
+  display: grid;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.accounting-notifications-page .notification-row {
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  grid-template-columns: 10px minmax(0, 1fr) minmax(150px, 0.45fr);
+  gap: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.72)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.05);
+}
+
+.accounting-notifications-page .notification-row:hover,
+.accounting-notifications-page .notification-row:focus-visible,
+.accounting-notifications-page .notification-row--active {
+  border-color: rgba(13, 92, 67, 0.34);
+  background: rgba(15, 122, 90, 0.08);
+  box-shadow: 0 16px 32px rgba(20, 63, 73, 0.1);
+}
+
+.accounting-notifications-page .notification-row__main strong,
+.accounting-notifications-page .notification-row__main small,
+.accounting-notifications-page .notification-row__main span,
+.accounting-notifications-page .notification-row__meta small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.accounting-notifications-page .notification-row__meta {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.accounting-notifications-page .notification-status-pill {
+  max-width: 100%;
+}
+
+.accounting-notifications-page .notification-detail {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  align-self: start;
+  padding: clamp(18px, 2.4vw, 24px);
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  background:
+    linear-gradient(180deg, var(--field-bg), rgba(255, 255, 255, 0.78)),
+    var(--card-bg);
+}
+
+.accounting-notifications-page .notification-detail__header {
+  align-items: flex-start;
+}
+
+.accounting-notifications-page .notification-detail__header h2 {
+  overflow-wrap: anywhere;
+}
+
+.accounting-notifications-page .notification-detail .profile-note {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.accounting-notifications-page .notification-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.accounting-notifications-page .notification-detail-grid > div {
+  min-width: 0;
+}
+
+.accounting-notifications-page .notification-detail-grid strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.accounting-notifications-page .notification-history-panel,
+.accounting-notifications-page .notification-attachments-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.05);
+}
+
+.accounting-notifications-page .notification-receipt-card {
+  display: grid;
+  gap: 16px;
+  padding: clamp(16px, 2.2vw, 22px);
+  border: 1px solid rgba(13, 92, 67, 0.22);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--card-bg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72), 0 14px 28px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-notifications-page .notification-receipt-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed rgba(13, 92, 67, 0.28);
+}
+
+.accounting-notifications-page .notification-receipt-card__header h3 {
+  margin: 2px 0 4px;
+  color: var(--primary-dark);
+  font-size: clamp(22px, 2.6vw, 30px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.accounting-notifications-page .notification-receipt-card__header small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.accounting-notifications-page .notification-receipt-card__stamp {
+  min-width: 150px;
+  padding: 12px 14px;
+  border: 1px solid rgba(13, 92, 67, 0.2);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.08);
+  text-align: right;
+}
+
+.accounting-notifications-page .notification-receipt-card__stamp span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.accounting-notifications-page .notification-receipt-card__stamp strong {
+  color: var(--primary-dark);
+  font-size: 24px;
+}
+
+.accounting-notifications-page .notification-receipt-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+
+.accounting-notifications-page .notification-receipt-list > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.38fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(47, 128, 83, 0.1);
+}
+
+.accounting-notifications-page .notification-receipt-list > div:last-child {
+  border-bottom: 0;
+}
+
+.accounting-notifications-page .notification-receipt-list dt,
+.accounting-notifications-page .notification-receipt-list dd {
+  margin: 0;
+}
+
+.accounting-notifications-page .notification-receipt-list dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.accounting-notifications-page .notification-receipt-list dd {
+  color: var(--text);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.accounting-notifications-page .notification-detail__actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .accounting-notifications-page .notifications-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .accounting-notifications-page .notifications-hero,
+  .accounting-notifications-page .notification-tabs,
+  .accounting-notifications-page .notifications-toolbar__row.member-toolbar__row,
+  .accounting-notifications-page .notifications-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-notifications-page .notifications-hero__actions,
+  .accounting-notifications-page .notifications-toolbar__actions,
+  .accounting-notifications-page .notification-detail__actions {
+    justify-content: flex-start;
+  }
+
+  .accounting-notifications-page .notifications-hero__status,
+  .accounting-notifications-page .notifications-toolbar__actions .ui-action-button,
+  .accounting-notifications-page .notification-detail__actions .ui-action-button {
+    width: 100%;
+  }
+
+  .accounting-notifications-page .notification-row {
+    grid-template-columns: 10px minmax(0, 1fr);
+  }
+
+  .accounting-notifications-page .notification-row__meta {
+    grid-column: 2;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .accounting-notifications-page .notification-receipt-card__header {
+    flex-direction: column;
+  }
+
+  .accounting-notifications-page .notification-receipt-card__stamp {
+    width: 100%;
+    text-align: left;
+  }
+
+  .accounting-notifications-page .notification-receipt-list > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+.club-contact-profile-page {
+  align-items: stretch;
+}
+
+.club-page {
+  align-items: stretch;
+}
+
+.club-accounting-shell,
+.club-page-stack,
+.club-summary,
+.club-gallery-panel,
+.club-collapse,
+.club-board-editor-form,
+.club-board-list,
+.club-board-list .member-table__body {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.club-accounting-shell {
+  width: min(1380px, 100%);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.club-page-stack {
+  display: grid;
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.club-page .club-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: stretch;
+  gap: 18px;
+  text-align: left;
+}
+
+.club-page .club-hero .accounting-hero__copy {
+  justify-items: start;
+}
+
+.club-page .club-hero__description {
+  display: none;
+}
+
+.club-page .club-hero__brand {
+  justify-content: flex-end;
+}
+
+.club-page .club-hero__logo {
+  width: clamp(76px, 9vw, 116px);
+  max-width: none;
+  filter: drop-shadow(0 12px 20px rgba(20, 63, 73, 0.16));
+}
+
+.club-summary {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.club-gallery-panel,
+.club-collapse,
+.club-board-editor-form {
+  display: grid;
+  gap: 18px;
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.club-gallery-panel .accounting-section-header--plain,
+.club-collapse.accounting-primary-panel .club-collapse__header,
+.club-board-editor-header {
+  margin-bottom: 0;
+}
+
+.club-page .club-gallery {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-items: stretch;
+  gap: 14px;
+}
+
+.club-page .club-photo-card {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.06);
+}
+
+.club-page .club-photo-card img {
+  width: 100%;
+  min-height: 220px;
+  max-height: none;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.club-page .club-photo-placeholder {
+  min-height: 220px;
+  height: 100%;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(245, 250, 246, 0.84)),
+    var(--field-bg);
+}
+
+.club-collapse--legacy {
+  display: none !important;
+}
+
+.club-board-embedded {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(47, 128, 83, 0.14);
+}
+
+.club-board-embedded__header,
+.club-board-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.club-board-embedded__title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.club-board-embedded__title > span {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.club-board-embedded__title strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+.club-board-toggle-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(47, 128, 83, 0.2);
+  border-radius: 12px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.club-board-toggle-button:hover,
+.club-board-toggle-button:focus-visible,
+.club-board-toggle-button[aria-expanded='true'] {
+  outline: none;
+  border-color: rgba(13, 92, 67, 0.36);
+  background: rgba(15, 122, 90, 0.12);
+  box-shadow: var(--focus-ring);
+}
+
+.club-board-toggle-button-row-variant {
+  width: auto;
+  height: auto;
+  padding: 6px 10px;
+  display: inline-flex;
+}
+
+.club-board-period-pill {
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  border-radius: 999px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.no-background{
+  background: transparent;
+}
+
+.no-border{
+  border: 0;
+}
+
+.club-board-table-panel {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.club-board-table-toolbar {
+  justify-content: flex-start;
+}
+
+.club-board-table-toolbar strong {
+  color: var(--primary-dark);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.club-board-edit-button.ui-action-button {
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.club-board-table-wrap {
+  width: fit-content;
+  max-width: 100%;
+  justify-self: start;
+  overflow-x: auto;
+}
+
+.club-board-table {
+  width: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+
+.club-board-table th,
+.club-board-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(47, 128, 83, 0.12);
+  white-space: nowrap;
+}
+
+.club-board-table th {
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.club-board-table th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.club-board-table th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.club-board-table td {
+  background: rgba(255, 255, 255, 0.74);
+  font-weight: 800;
+}
+
+.club-board-table td:nth-child(2) {
+  color: var(--text);
+  font-weight: 900;
+}
+
+.club-board-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.club-board-table__row--inactive {
+  opacity: 0.62;
+}
+
+.club-board-editor-form--embedded {
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.86)),
+    var(--field-bg);
+  box-shadow: none;
+}
+
+.club-collapse.accounting-primary-panel .club-collapse__header {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.club-collapse__header > span:first-child strong {
+  color: var(--text);
+  font-size: 22px;
+}
+
+.club-board-list {
+  display: grid;
+  gap: 12px;
+}
+
+.club-board-list .member-table__head {
+  display: none;
+}
+
+.club-board-list .member-table__body {
+  display: grid;
+  gap: 12px;
+}
+
+.club-page .club-board-row {
+  grid-template-columns: minmax(140px, 0.52fr) minmax(0, 1.4fr) minmax(160px, 0.58fr);
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.club-page .club-board-row > * {
+  min-width: 0;
+}
+
+.club-page .status-chip--active {
+  background: rgba(15, 122, 90, 0.1);
+  color: var(--primary-dark);
+}
+
+.club-page .status-chip--inactive {
+  background: var(--surface-warm);
+  color: var(--warm-text);
+}
+
+.club-board-editor-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.club-board-editor-header,
+.club-board-editor-form .board-current-seat,
+.club-board-editor-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.club-board-editor-form > *,
+.club-board-editor-form .form-field {
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .club-page .club-hero,
+  .club-page .club-board-row,
+  .club-board-editor-form {
+    grid-template-columns: 1fr;
+  }
+
+  .club-page .club-hero__brand,
+  .club-collapse__actions,
+  .club-board-table-toolbar {
+    justify-content: flex-start;
+  }
+
+  .club-page .club-hero__logo {
+    width: 84px;
+  }
+
+  .club-board-table-wrap {
+    width: 100%;
+  }
+}
+
+.accounting-reports-page {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-reports-summary,
+.accounting-reports-sections,
+.accounting-report-detail-movements,
+.accounting-reports-page .accounting-collapse-stack,
+.accounting-reports-page .accounting-collapsible-section,
+.accounting-reports-page .accounting-collapsible-card,
+.accounting-reports-page .accounting-collapsible-card__body,
+.accounting-reports-page .accounting-full-width-section,
+.accounting-reports-page .accounting-reports-form,
+.accounting-reports-page .accounting-report-fieldset,
+.accounting-reports-page .accounting-reports-list,
+.accounting-report-detail-movements .accounting-movements-panel,
+.accounting-report-detail-movements .accounting-summary-grid,
+.accounting-report-detail-movements .accounting-panel,
+.accounting-report-detail-movements .accounting-list {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-reports-summary {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.accounting-reports-page .accounting-collapsible-trigger.ui-action-button {
+  min-height: 72px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-reports-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-reports-page .accounting-collapsible-card {
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-reports-page .accounting-collapsible-card__body {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.accounting-reports-generate-section,
+.accounting-reports-history-section,
+.accounting-report-detail-movements {
+  gap: 16px;
+}
+
+.accounting-reports-page .accounting-reports-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 14px;
+}
+
+.accounting-reports-page .accounting-reports-form > *,
+.accounting-reports-page .accounting-report-fieldset > *,
+.accounting-reports-page .accounting-report-history-row > * {
+  min-width: 0;
+}
+
+.accounting-reports-page .accounting-reports-form .accounting-month-picker {
+  width: 100%;
+}
+
+.accounting-reports-page .accounting-reports-form .form-field:has(textarea),
+.accounting-reports-page .accounting-report-fieldset,
+.accounting-reports-page .accounting-reports-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.accounting-reports-page .accounting-report-fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(47, 128, 83, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.accounting-reports-page .accounting-report-fieldset legend {
+  padding-inline: 8px;
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.accounting-reports-page .accounting-reports-form textarea {
+  min-height: 108px;
+}
+
+.accounting-reports-list {
+  display: grid;
+  gap: 12px;
+}
+
+.accounting-reports-page .accounting-report-history-row {
+  width: 100%;
+  grid-template-columns: minmax(0, 1.55fr) minmax(125px, 0.45fr) minmax(145px, 0.5fr) minmax(165px, 0.65fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.accounting-reports-page .accounting-report-row__action {
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid rgba(47, 128, 83, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 122, 90, 0.08);
+  color: var(--primary-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.accounting-report-detail-page .accounting-hero__copy p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+@media (max-width: 980px) {
+  .accounting-reports-page .accounting-reports-form,
+  .accounting-reports-page .accounting-report-history-row {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-reports-page .accounting-report-row__action {
+    justify-self: start;
+  }
+}
+
+.accounting-employees-page,
+.accounting-employee-cycle-page {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-employees-summary,
+.accounting-employees-sections,
+.accounting-employees-page .accounting-collapse-stack,
+.accounting-employees-page .accounting-collapsible-section,
+.accounting-employees-page .accounting-collapsible-card,
+.accounting-employees-page .accounting-collapsible-card__body,
+.accounting-employees-page .accounting-full-width-section,
+.accounting-employees-page .accounting-employees-list,
+.accounting-employees-page .accounting-chart-grid,
+.accounting-employee-cycle-page .accounting-primary-panel,
+.accounting-employee-cycle-page .accounting-panel,
+.accounting-employee-cycle-page .accounting-employee-cycle-summary,
+.accounting-employee-cycle-page .accounting-employee-cycle-overtime-panel,
+.accounting-employee-cycle-page .accounting-list,
+.accounting-employee-cycle-page .accounting-cycle-liquidation {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-employees-summary,
+.accounting-employees-page .accounting-employees-stats-grid,
+.accounting-employee-cycle-page .accounting-employee-cycle-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.accounting-employees-page .accounting-collapsible-trigger.ui-action-button {
+  min-height: 72px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-employees-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-employees-page .accounting-collapsible-card {
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-employees-page .accounting-collapsible-card__body {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.accounting-employees-stats-section,
+.accounting-employees-chart-grid {
+  gap: 16px;
+}
+
+.accounting-employees-page .accounting-employees-list {
+  display: grid;
+  gap: 12px;
+}
+
+.accounting-employees-page .accounting-employee-row {
+  grid-template-columns: minmax(0, 1.55fr) minmax(120px, 0.42fr) minmax(150px, 0.55fr) minmax(130px, 0.45fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.accounting-employees-page .accounting-employee-row > *,
+.accounting-employee-cycle-page .accounting-row > * {
+  min-width: 0;
+}
+
+.accounting-employees-page .accounting-employee-row__actions {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.accounting-employee-cycle-page .accounting-hero__copy p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.accounting-employee-cycle-page .accounting-section-header--plain {
+  margin-bottom: 0;
+}
+
+.accounting-employee-cycle-page .accounting-employee-cycle-summary,
+.accounting-employee-cycle-page .accounting-employee-cycle-overtime-panel {
+  gap: 18px;
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-employee-cycle-page .accounting-cycle-liquidation {
+  max-width: none;
+  margin-inline: 0;
+  text-align: left;
+}
+
+.accounting-employee-cycle-page .accounting-cycle-liquidation > div:first-child {
+  justify-items: start;
+  text-align: left;
+}
+
+.accounting-employee-cycle-page .accounting-cycle-liquidation__grid > div {
+  justify-items: start;
+  text-align: left;
+}
+
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form .form-field,
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form .check-field,
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form .form-actions {
+  min-width: 0;
+}
+
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form .form-field:has(textarea),
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.accounting-employee-cycle-page .accounting-employee-cycle-modal-form textarea {
+  min-height: 108px;
+}
+
+@media (max-width: 980px) {
+  .accounting-employees-page .accounting-employee-row,
+  .accounting-employee-cycle-page .accounting-employee-cycle-modal-form {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-employees-page .accounting-employee-row__actions {
+    justify-content: flex-start;
+  }
+
+  .accounting-employee-cycle-page .accounting-section-header--plain,
+  .accounting-employee-cycle-page .form-actions--split {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.accounting-bank-settlements-page {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-bank-settlements-summary,
+.accounting-bank-settlements-sections,
+.accounting-bank-settlements-page .accounting-collapse-stack,
+.accounting-bank-settlements-page .accounting-collapsible-section,
+.accounting-bank-settlements-page .accounting-collapsible-card,
+.accounting-bank-settlements-page .accounting-collapsible-card__body,
+.accounting-bank-settlements-page .accounting-full-width-section,
+.accounting-bank-settlements-page .accounting-chart-grid,
+.accounting-bank-settlements-page .accounting-settlement-breakdown,
+.accounting-bank-settlements-page .accounting-bank-settlements-bank-list,
+.accounting-bank-settlements-page .accounting-bank-settlements-history-list {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-bank-settlements-summary {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.accounting-bank-settlements-page .accounting-collapsible-trigger.ui-action-button {
+  min-height: 72px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-bank-settlements-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-bank-settlements-page .accounting-collapsible-card {
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-bank-settlements-page .accounting-collapsible-card__body {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.accounting-bank-settlements-stats-section,
+.accounting-bank-settlements-history-section,
+.accounting-bank-settlements-breakdown {
+  gap: 16px;
+}
+
+.accounting-bank-settlements-chart-grid {
+  align-items: stretch;
+}
+
+.accounting-bank-settlements-page .accounting-chart-card {
+  min-width: 0;
+}
+
+.accounting-bank-settlements-bank-list,
+.accounting-bank-settlements-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.accounting-bank-settlements-page .accounting-bank-settlement-bank-row {
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(150px, 0.6fr));
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.accounting-bank-settlements-page .accounting-bank-settlement-row {
+  grid-template-columns: minmax(0, 1.5fr) repeat(4, minmax(120px, 0.55fr)) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.accounting-bank-settlements-page .accounting-row__meta .status-chip {
+  width: fit-content;
+}
+
+.accounting-bank-settlement-row__actions {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.accounting-bank-settlement-row__actions:empty::before {
+  content: 'Sin acciones';
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  .accounting-bank-settlements-page .accounting-bank-settlement-row {
+    grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(120px, 0.6fr)) auto;
+  }
+}
+
+@media (max-width: 820px) {
+  .accounting-bank-settlements-page .accounting-bank-settlement-bank-row,
+  .accounting-bank-settlements-page .accounting-bank-settlement-row {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-bank-settlement-row__actions {
+    justify-content: flex-start;
+  }
+}
+
+.accounting-member-dues-page {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-member-dues-summary,
+.accounting-member-dues-sections,
+.accounting-member-dues-page .accounting-collapse-stack,
+.accounting-member-dues-page .accounting-collapsible-section,
+.accounting-member-dues-page .accounting-collapsible-card,
+.accounting-member-dues-page .accounting-collapsible-card__body,
+.accounting-member-dues-page .accounting-full-width-section,
+.accounting-member-dues-page .accounting-renewals-list,
+.accounting-member-dues-page .accounting-pricing-summary,
+.accounting-member-dues-page .accounting-pricing-form {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-member-dues-summary,
+.accounting-member-dues-page .accounting-pricing-summary {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.accounting-member-dues-page .accounting-collapsible-trigger.ui-action-button {
+  min-height: 72px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-member-dues-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-member-dues-page .accounting-collapsible-card {
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-member-dues-page .accounting-collapsible-card__body {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.accounting-member-dues-renewals-section,
+.accounting-member-dues-config-section {
+  gap: 16px;
+}
+
+.accounting-member-dues-page .accounting-search-collapse,
+.accounting-member-dues-results {
+  width: 100%;
+  max-width: none;
+}
+
+.accounting-member-dues-results {
+  justify-content: flex-start;
+}
+
+.accounting-member-dues-page .accounting-renewals-list {
+  display: grid;
+  gap: 12px;
+  max-height: min(640px, 68svh);
+}
+
+.accounting-member-dues-page .accounting-renewal-row {
+  grid-template-columns: minmax(0, 1.55fr) minmax(180px, 0.5fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.accounting-member-dues-page .accounting-renewal-row .accounting-row__meta {
+  justify-items: start;
+}
+
+.accounting-member-dues-page .accounting-renewal-row .accounting-inline-actions {
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.accounting-member-dues-page .accounting-member-dues-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+.accounting-member-dues-page .accounting-member-dues-form .form-field,
+.accounting-member-dues-page .accounting-member-dues-form .form-actions,
+.accounting-member-dues-page .accounting-renewal-row > * {
+  min-width: 0;
+}
+
+.accounting-member-dues-page .accounting-member-dues-form .form-field:has(textarea),
+.accounting-member-dues-page .accounting-member-dues-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.accounting-member-dues-page .accounting-member-dues-form textarea {
+  min-height: 108px;
+}
+
+@media (max-width: 980px) {
+  .accounting-member-dues-page .accounting-renewal-row,
+  .accounting-member-dues-page .accounting-member-dues-form {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-member-dues-page .accounting-renewal-row .accounting-inline-actions {
+    justify-content: flex-start;
+  }
+}
+
+.accounting-payment-methods-page {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-payment-methods-summary,
+.accounting-payment-methods-sections,
+.accounting-payment-methods-page .accounting-collapse-stack,
+.accounting-payment-methods-page .accounting-collapsible-section,
+.accounting-payment-methods-page .accounting-collapsible-card,
+.accounting-payment-methods-page .accounting-collapsible-card__body,
+.accounting-payment-methods-page .accounting-full-width-section,
+.accounting-payment-methods-page .accounting-payment-methods-list,
+.accounting-payment-methods-page .accounting-commission-workbench,
+.accounting-payment-methods-page .accounting-commission-card {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-payment-methods-summary {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.accounting-payment-methods-page .accounting-collapsible-trigger.ui-action-button {
+  min-height: 72px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-payment-methods-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-payment-methods-page .accounting-collapsible-card {
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-payment-methods-page .accounting-collapsible-card__body {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.accounting-payment-methods-section {
+  gap: 16px;
+}
+
+.accounting-payment-methods-page .accounting-section-header--plain {
+  margin-bottom: 0;
+}
+
+.accounting-payment-methods-page .accounting-section-header--plain h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.accounting-payment-methods-list {
+  display: grid;
+  gap: 12px;
+}
+
+.accounting-payment-methods-page .accounting-payment-method-row {
+  width: 100%;
+  grid-template-columns: minmax(0, 1.5fr) minmax(150px, 0.68fr) minmax(110px, 0.48fr) minmax(170px, 0.72fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.accounting-payment-method-row--inactive {
+  opacity: 0.78;
+}
+
+.accounting-payment-methods-page .accounting-row__meta .status-chip {
+  width: fit-content;
+}
+
+.accounting-payment-methods-page .accounting-row-menu-actions {
+  justify-self: end;
+}
+
+.accounting-payment-methods-page .accounting-payment-methods-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.accounting-payment-methods-page .accounting-commission-card {
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.06);
+}
+
+.accounting-payment-methods-page .accounting-commission-card__header > div:first-child,
+.accounting-payment-methods-page .accounting-commission-lines__header > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+
+.accounting-payment-methods-page .accounting-commission-card__header .eyebrow,
+.accounting-payment-methods-page .accounting-commission-lines__header .eyebrow {
+  margin: 0;
+}
+
+.accounting-payment-methods-page .accounting-commission-notes textarea {
+  min-height: 108px;
+}
+
+@media (max-width: 980px) {
+  .accounting-payment-methods-page .accounting-payment-method-row,
+  .accounting-payment-methods-page .accounting-payment-methods-form {
+    grid-template-columns: 1fr;
+  }
+
+  .accounting-payment-methods-page .accounting-row-menu-actions {
+    justify-self: start;
+  }
+}
+
+.accounting-external-docs-page {
+  gap: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-external-docs-summary {
+  width: 100%;
+}
+
+.accounting-external-docs-sections,
+.accounting-external-docs-page .accounting-collapse-stack,
+.accounting-external-docs-page .accounting-collapsible-section,
+.accounting-external-docs-page .accounting-collapsible-card,
+.accounting-external-docs-page .accounting-collapsible-card__body,
+.accounting-external-docs-page .accounting-full-width-section,
+.accounting-external-docs-page .accounting-external-docs-list {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.accounting-external-docs-page .accounting-collapsible-trigger.ui-action-button {
+  min-height: 72px;
+  border: 1px solid rgba(47, 128, 83, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 246, 0.9)),
+    var(--field-bg);
+  box-shadow: 0 12px 26px rgba(20, 63, 73, 0.08);
+}
+
+.accounting-external-docs-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(13, 92, 67, 0.34);
+  background:
+    linear-gradient(135deg, var(--primary), var(--primary-dark));
+  box-shadow: 0 18px 36px rgba(20, 63, 73, 0.14);
+}
+
+.accounting-external-docs-page .accounting-collapsible-card {
+  padding: clamp(18px, 2.6vw, 28px);
+}
+
+.accounting-external-docs-page .accounting-collapsible-card__body {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+
+.accounting-external-docs-form {
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+.accounting-external-docs-form .form-field,
+.accounting-external-docs-form .accounting-inline-summary,
+.accounting-external-docs-list .accounting-row {
+  min-width: 0;
+}
+
+.accounting-external-docs-form .form-field--wide,
+.accounting-external-docs-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.accounting-external-docs-list {
+  display: grid;
+  gap: 12px;
+}
+
+@media (max-width: 920px) {
+  .accounting-external-docs-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.member-modal-card.quick-actions-modal.accounting-operation-modal {
+  width: min(920px, calc(100vw - 64px));
+  max-width: 920px;
+}
+
+.member-modal-card.quick-actions-modal.accounting-operation-modal .member-editor-form {
+  width: 100%;
+}
+
+.accounting-cash-required-modal {
+  display: grid;
+  gap: 16px;
+}
+
+/* Dark accounting surfaces: use flat colors instead of washed gradients. */
+:root[data-theme='dark'] {
+  --accounting-dark-bar: #1b343b;
+  --accounting-dark-hero: #173c39;
+  --accounting-dark-panel: #122b34;
+  --accounting-dark-panel-soft: #17343d;
+  --accounting-dark-panel-muted: #10262f;
+  --accounting-dark-row: #102832;
+  --accounting-dark-tile: #0f2830;
+  --accounting-dark-tile-hover: #14323a;
+  --accounting-dark-green-soft: #123a32;
+  --accounting-dark-red-soft: #3a1d22;
+  --accounting-dark-blue-soft: #132f44;
+  --accounting-dark-border: rgba(95, 210, 167, 0.22);
+  --accounting-dark-border-strong: rgba(95, 210, 167, 0.34);
+  --accounting-dark-border-muted: rgba(166, 189, 200, 0.16);
+}
+
+:root[data-theme='dark'] .accounting-operations-bar {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-bar);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme='dark'] .accounting-operations-panel {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-panel);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme='dark'] .accounting-module-nav__item {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-tile);
+}
+
+:root[data-theme='dark'] .accounting-module-nav__item:hover,
+:root[data-theme='dark'] .accounting-module-nav__item:focus-visible,
+:root[data-theme='dark'] .accounting-module-nav__item--active {
+  border-color: var(--accounting-dark-border-strong);
+  background: var(--accounting-dark-green-soft);
+}
+
+:root[data-theme='dark'] .accounting-chevron {
+  border-color: var(--accounting-dark-border);
+  background: var(--accounting-dark-green-soft);
+  color: var(--primary);
+  box-shadow: none;
+}
+
+:root[data-theme='dark'] .floating-card.accounting-hero {
+  border-color: var(--accounting-dark-border);
+  background: var(--accounting-dark-hero);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme='dark'] .accounting-primary-panel,
+:root[data-theme='dark'] .accounting-secondary-panel,
+:root[data-theme='dark'] .accounting-panel,
+:root[data-theme='dark'] .accounting-owner-footer,
+:root[data-theme='dark'] .accounting-embedded-panel,
+:root[data-theme='dark'] .accounting-payment-composer,
+:root[data-theme='dark'] .accounting-receipt-drawer,
+:root[data-theme='dark'] .accounting-entry-modal,
+:root[data-theme='dark'] .accounting-cash-required-modal {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-panel);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme='dark'] .accounting-section-content-slot {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-panel-muted);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+}
+
+:root[data-theme='dark'] .summary-card,
+:root[data-theme='dark'] .accounting-chart-card,
+:root[data-theme='dark'] .accounting-link-group,
+:root[data-theme='dark'] .accounting-commission-card,
+:root[data-theme='dark'] .accounting-server-expense-card,
+:root[data-theme='dark'] .accounting-aag-pending-card,
+:root[data-theme='dark'] .accounting-stat-bar,
+:root[data-theme='dark'] .accounting-action-card,
+:root[data-theme='dark'] .accounting-entry-modal__section,
+:root[data-theme='dark'] .accounting-entry-modal__summary,
+:root[data-theme='dark'] .accounting-entry-modal__payment-card,
+:root[data-theme='dark'] .accounting-sensitive-section,
+:root[data-theme='dark'] .accounting-sensitive-card {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-panel-soft);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme='dark'] .accounting-row,
+:root[data-theme='dark'] .accounting-data-table tr,
+:root[data-theme='dark'] .accounting-report-history-row,
+:root[data-theme='dark'] .accounting-renewal-row,
+:root[data-theme='dark'] .accounting-payment-method-row,
+:root[data-theme='dark'] .accounting-bank-settlement-row,
+:root[data-theme='dark'] .accounting-bank-settlement-bank-row,
+:root[data-theme='dark'] .accounting-employee-row,
+:root[data-theme='dark'] .accounting-topic-list span,
+:root[data-theme='dark'] .accounting-month-picker__panel,
+:root[data-theme='dark'] .accounting-link-button,
+:root[data-theme='dark'] .accounting-segmented,
+:root[data-theme='dark'] .accounting-chart-summary__table tr {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-row);
+}
+
+:root[data-theme='dark'] .accounting-section-toggle,
+:root[data-theme='dark'] .accounting-collapsible-card,
+:root[data-theme='dark'] .accounting-collapsible-trigger.ui-action-button,
+:root[data-theme='dark'] .accounting-reports-page .accounting-collapsible-trigger.ui-action-button,
+:root[data-theme='dark'] .accounting-employees-page .accounting-collapsible-trigger.ui-action-button,
+:root[data-theme='dark'] .accounting-bank-settlements-page .accounting-collapsible-trigger.ui-action-button,
+:root[data-theme='dark'] .accounting-member-dues-page .accounting-collapsible-trigger.ui-action-button,
+:root[data-theme='dark'] .accounting-payment-methods-page .accounting-collapsible-trigger.ui-action-button,
+:root[data-theme='dark'] .accounting-external-docs-page .accounting-collapsible-trigger.ui-action-button {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-panel-soft);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme='dark'] .accounting-section-toggle:hover,
+:root[data-theme='dark'] .accounting-section-toggle:focus-visible,
+:root[data-theme='dark'] .accounting-section-toggle--open,
+:root[data-theme='dark'] .accounting-collapsible-card:focus-within {
+  border-color: var(--accounting-dark-border-strong);
+  background: var(--accounting-dark-green-soft);
+  box-shadow: var(--focus-ring);
+}
+
+:root[data-theme='dark'] .accounting-collapsible-card__body,
+:root[data-theme='dark'] .accounting-report-fieldset,
+:root[data-theme='dark'] .accounting-inline-summary,
+:root[data-theme='dark'] .accounting-confirmation-summary,
+:root[data-theme='dark'] .accounting-line-chart,
+:root[data-theme='dark'] .accounting-bar-chart__track,
+:root[data-theme='dark'] .accounting-stat-bar__track,
+:root[data-theme='dark'] .accounting-sticky-actions,
+:root[data-theme='dark'] .accounting-table-wrap,
+:root[data-theme='dark'] .accounting-data-table thead,
+:root[data-theme='dark'] .accounting-data-table th {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-panel-muted);
+  box-shadow: none;
+}
+
+:root[data-theme='dark'] .accounting-collapsible-trigger.ui-action-button--positive,
+:root[data-theme='dark'] .accounting-reports-page .accounting-collapsible-trigger.ui-action-button--positive,
+:root[data-theme='dark'] .accounting-employees-page .accounting-collapsible-trigger.ui-action-button--positive,
+:root[data-theme='dark'] .accounting-bank-settlements-page .accounting-collapsible-trigger.ui-action-button--positive,
+:root[data-theme='dark'] .accounting-member-dues-page .accounting-collapsible-trigger.ui-action-button--positive,
+:root[data-theme='dark'] .accounting-payment-methods-page .accounting-collapsible-trigger.ui-action-button--positive,
+:root[data-theme='dark'] .accounting-external-docs-page .accounting-collapsible-trigger.ui-action-button--positive {
+  border-color: rgba(95, 210, 167, 0.46);
+  background: #178362;
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22);
+}
+
+:root[data-theme='dark'] .accounting-action-tile,
+:root[data-theme='dark'] .accounting-hub-card,
+:root[data-theme='dark'] .home-accounting-page .home-action-tile,
+:root[data-theme='dark'] .home-accounting-page .home-user-chip,
+:root[data-theme='dark'] .home-accounting-page .home-tournament-summary__item.accounting-row,
+:root[data-theme='dark'] .quick-action-option {
+  border-color: var(--accounting-dark-border-muted);
+  background: var(--accounting-dark-tile);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme='dark'] .accounting-action-tile:hover,
+:root[data-theme='dark'] .accounting-action-tile:focus-visible,
+:root[data-theme='dark'] .accounting-hub-card:hover,
+:root[data-theme='dark'] .home-accounting-page .home-action-tile:hover,
+:root[data-theme='dark'] .home-accounting-page .home-action-tile:focus-visible,
+:root[data-theme='dark'] .home-accounting-page .home-tournament-summary__item.accounting-row:hover,
+:root[data-theme='dark'] .home-accounting-page .home-tournament-summary__item.accounting-row:focus-visible,
+:root[data-theme='dark'] .quick-action-option:hover,
+:root[data-theme='dark'] .quick-action-option:focus-visible,
+:root[data-theme='dark'] .quick-action-option--selected {
+  border-color: var(--accounting-dark-border-strong);
+  background: var(--accounting-dark-tile-hover);
+  box-shadow: var(--focus-ring);
+}
+
+:root[data-theme='dark'] .accounting-action-tile--expense {
+  border-color: rgba(255, 127, 136, 0.3);
+  background: var(--accounting-dark-red-soft);
+}
+
+:root[data-theme='dark'] .accounting-action-tile--expense .action-icon {
+  background: rgba(255, 127, 136, 0.16);
+  color: var(--danger-text);
+}
+
+:root[data-theme='dark'] .accounting-action-tile--transfer {
+  border-color: rgba(104, 172, 225, 0.24);
+  background: var(--accounting-dark-blue-soft);
+}
+
+:root[data-theme='dark'] .accounting-action-tile--transfer .action-icon {
+  background: rgba(104, 172, 225, 0.14);
+  color: #8cc8f3;
+}
+
+:root[data-theme='dark'] .accounting-success,
+:root[data-theme='dark'] .accounting-row--button:focus-visible,
+:root[data-theme='dark'] .accounting-row--selected,
+:root[data-theme='dark'] .accounting-link-button--active,
+:root[data-theme='dark'] .accounting-segmented__item--active,
+:root[data-theme='dark'] .accounting-month-picker__month--selected {
+  border-color: var(--accounting-dark-border-strong);
+  background: var(--accounting-dark-green-soft);
+}
+
+:root[data-theme='dark'] .accounting-bar-chart__track i,
+:root[data-theme='dark'] .accounting-stat-bar__fill,
+:root[data-theme='dark'] .accounting-vertical-trend-chart__bar--income {
+  background: var(--primary);
+}
+
+:root[data-theme='dark'] .accounting-vertical-trend-chart__bar--expense {
+  background: var(--danger);
+}
+
+:root[data-theme='dark'] .accounting-page .ui-action-button--positive,
+:root[data-theme='dark'] .accounting-module-page .ui-action-button--positive,
+:root[data-theme='dark'] .accounting-entry-modal .btn-primary {
+  border-color: rgba(95, 210, 167, 0.42);
+  background: #178362;
+  color: #fff;
+}
+
+:root[data-theme='dark'] .accounting-page .ui-action-button--positive:hover,
+:root[data-theme='dark'] .accounting-page .ui-action-button--positive:focus-visible,
+:root[data-theme='dark'] .accounting-module-page .ui-action-button--positive:hover,
+:root[data-theme='dark'] .accounting-module-page .ui-action-button--positive:focus-visible,
+:root[data-theme='dark'] .accounting-entry-modal .btn-primary:hover,
+:root[data-theme='dark'] .accounting-entry-modal .btn-primary:focus-visible {
+  background: #1a946d;
+}
+
+:root[data-theme='dark'] .accounting-page .ui-action-button--secondary,
+:root[data-theme='dark'] .accounting-module-page .ui-action-button--secondary,
+:root[data-theme='dark'] .accounting-entry-modal .btn-secondary {
+  border-color: rgba(104, 172, 225, 0.3);
+  background: var(--accounting-dark-blue-soft);
+  color: #b8dcf6;
+}
+
+:root[data-theme='dark'] .accounting-page .ui-action-button--danger,
+:root[data-theme='dark'] .accounting-module-page .ui-action-button--danger,
+:root[data-theme='dark'] .accounting-entry-modal .btn-danger {
+  border-color: rgba(255, 127, 136, 0.34);
+  background: var(--accounting-dark-red-soft);
+  color: var(--danger-text);
+}
+
+/* Final flat-surface layer: no gradients on operational divs, buttons or tables. */
+:where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(
+  .floating-card,
+  .summary-card,
+  .accounting-operations-bar,
+  .accounting-operations-panel,
+  .accounting-section-content-slot,
+  .accounting-section-toggle,
+  .accounting-collapsible-card,
+  .accounting-collapsible-card__body,
+  .accounting-collapsible-trigger,
+  .accounting-primary-panel,
+  .accounting-secondary-panel,
+  .accounting-panel,
+  .accounting-row,
+  .accounting-table-wrap,
+  .accounting-data-table,
+  .accounting-data-table thead,
+  .accounting-data-table tbody,
+  .accounting-data-table tr,
+  .accounting-data-table th,
+  .accounting-data-table td,
+  .accounting-action-card,
+  .accounting-action-tile,
+  .accounting-hub-card,
+  .accounting-stat-bar,
+  .accounting-chart-card,
+  .accounting-line-chart,
+  .accounting-link-group,
+  .accounting-link-button,
+  .accounting-segmented,
+  .accounting-entry-modal,
+  .accounting-entry-modal__section,
+  .accounting-entry-modal__summary,
+  .accounting-entry-modal__payment-card,
+  .home-action-tile,
+  .home-user-chip,
+  .home-tournament-summary__item,
+  .notification-row,
+  .notification-detail,
+  .notification-receipt-card,
+  .notification-summary-grid .summary-card,
+  .tournament-hero,
+  .tournament-main-panel,
+  .tournament-side-section,
+  .tournament-table,
+  .tournament-table__head,
+  .tournament-row,
+  .tournament-score-table,
+  .tournament-score-table__head,
+  .tournament-score-row,
+  .tournament-category-group,
+  .tournament-summary-grid .summary-card,
+  .tournament-result-card,
+  .tournament-cost-form,
+  .tournament-cost-form__row,
+  .member-table,
+  .member-table__head,
+  .member-row,
+  .employee-table,
+  .employee-table__head,
+  .employee-row,
+  .ui-action-button,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger
+) {
+  background-image: none !important;
+}
+
+:root:not([data-theme='dark']) :where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(.floating-card, .accounting-primary-panel, .accounting-secondary-panel, .accounting-panel, .tournament-main-panel) {
+  background-color: var(--card-bg) !important;
+}
+
+:root:not([data-theme='dark']) :where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(
+  .summary-card,
+  .accounting-row,
+  .accounting-action-card,
+  .accounting-action-tile,
+  .accounting-hub-card,
+  .accounting-stat-bar,
+  .accounting-chart-card,
+  .accounting-link-button,
+  .accounting-collapsible-card,
+  .accounting-collapsible-trigger,
+  .home-action-tile,
+  .notification-row,
+  .tournament-row,
+  .tournament-score-row,
+  .tournament-category-group,
+  .tournament-result-card,
+  .member-row,
+  .employee-row
+) {
+  background-color: var(--field-bg) !important;
+}
+
+:root:not([data-theme='dark']) :where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(
+  .accounting-operations-bar,
+  .accounting-section-content-slot,
+  .accounting-collapsible-card__body,
+  .accounting-table-wrap,
+  .accounting-data-table thead,
+  .accounting-data-table th,
+  .tournament-table__head,
+  .tournament-score-table__head,
+  .member-table__head,
+  .employee-table__head
+) {
+  background-color: var(--surface-soft) !important;
+}
+
+:root:not([data-theme='dark']) :where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(.ui-action-button--positive, .btn-primary) {
+  background-color: var(--primary) !important;
+  color: #fff;
+}
+
+:root:not([data-theme='dark']) :where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(.ui-action-button--secondary, .btn-secondary) {
+  background-color: rgba(42, 108, 176, 0.12) !important;
+}
+
+:root:not([data-theme='dark']) :where(
+  .accounting-page,
+  .accounting-module-page,
+  .home-accounting-page,
+  .accounting-notifications-page,
+  .tournament-page
+) :is(.ui-action-button--danger, .btn-danger) {
+  background-color: rgba(180, 35, 24, 0.1) !important;
+}
+
+:root[data-theme='dark'] .tournament-page :is(.floating-card, .tournament-main-panel) {
+  border-color: var(--accounting-dark-border-muted);
+  background-color: var(--accounting-dark-panel) !important;
+}
+
+:root[data-theme='dark'] .tournament-page :is(
+  .summary-card,
+  .tournament-row,
+  .tournament-score-row,
+  .tournament-category-group,
+  .tournament-result-card,
+  .tournament-cost-form,
+  .tournament-cost-form__row
+) {
+  border-color: var(--accounting-dark-border-muted);
+  background-color: var(--accounting-dark-row) !important;
+}
+
+:root[data-theme='dark'] .tournament-page :is(.tournament-table__head, .tournament-score-table__head) {
+  border-color: var(--accounting-dark-border-muted);
+  background-color: var(--accounting-dark-panel-muted) !important;
+}

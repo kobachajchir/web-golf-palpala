@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test, { after, before, beforeEach } from 'node:test';
 import { assertFails, assertSucceeds, initializeTestEnvironment, } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
 const projectId = 'demo-web-golf-palpala';
 const rulesPath = path.resolve(process.cwd(), '..', 'rules', 'firestore.rules');
 let testEnv;
@@ -303,6 +303,21 @@ test('user solo lee su propio users/{uid}', async () => {
     await assertSucceeds(getDoc(doc(ownDb, 'users/user-1')));
     await assertFails(getDoc(doc(otherDb, 'users/user-1')));
 });
+test('socio no puede modificar nombre, roles ni tipo de usuario', async () => {
+    const ownDb = testEnv.authenticatedContext('user-1', { socio: true }).firestore();
+    await assertFails(updateDoc(doc(ownDb, 'users/user-1'), {
+        displayName: 'Nombre alterado',
+        updatedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(ownDb, 'users/user-1'), {
+        roleIds: ['socio', 'administrativo'],
+        primaryRoleId: 'administrativo',
+        updatedAt: serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(ownDb, 'members/member-1'), {
+        firstName: 'Nombre alterado',
+    }));
+});
 test('socio vinculado puede leer su member doc', async () => {
     const ownDb = testEnv.authenticatedContext('user-1').firestore();
     const otherDb = testEnv.authenticatedContext('user-2').firestore();
@@ -353,10 +368,10 @@ test('directivo puede modificar financial_configs', async () => {
         updatedBy: 'directivo-1',
     }));
 });
-test('administrativo no puede modificar financial_configs', async () => {
+test('administrativo puede modificar financial_configs', async () => {
     const adminDb = testEnv.authenticatedContext('admin-1', { administrativo: true }).firestore();
     const now = Timestamp.fromDate(new Date('2026-01-02T00:00:00.000Z'));
-    await assertFails(setDoc(doc(adminDb, 'financial_configs/config-2'), {
+    await assertSucceeds(setDoc(doc(adminDb, 'financial_configs/config-2'), {
         version: 2,
         isActive: false,
         effectiveFrom: now,
@@ -383,6 +398,95 @@ test('administrativo no puede modificar financial_configs', async () => {
         updatedBy: 'admin-1',
     }));
 });
+test('administrativo puede crear reglas de comision de medios de pago', async () => {
+    const adminDb = testEnv.authenticatedContext('admin-1', { administrativo: true }).firestore();
+    const employeeDb = testEnv.authenticatedContext('employee-user-1', { empleado: true }).firestore();
+    const now = Timestamp.fromDate(new Date('2026-01-02T00:00:00.000Z'));
+    const commissionRule = {
+        paymentMethodId: 'credit_galicia',
+        percentageBps: 650,
+        isActive: true,
+        validFrom: now,
+        validTo: null,
+        setByUid: 'admin-1',
+        breakdown: [
+            { id: 'merchant', label: 'Arancel tarjeta', percentageBps: 650, isActive: true },
+        ],
+        notes: 'Actualizacion administrativa',
+        createdAt: now,
+        createdBy: 'admin-1',
+        updatedAt: now,
+        updatedBy: 'admin-1',
+    };
+    await assertSucceeds(setDoc(doc(adminDb, 'payment_commission_rules/rule-admin'), commissionRule));
+    await assertFails(setDoc(doc(employeeDb, 'payment_commission_rules/rule-employee'), commissionRule));
+});
+test('administrativo tiene escritura completa sobre recursos contables sensibles', async () => {
+    const adminDb = testEnv.authenticatedContext('admin-1', { administrativo: true }).firestore();
+    const now = Timestamp.fromDate(new Date('2026-01-03T00:00:00.000Z'));
+    const audit = {
+        createdAt: now,
+        createdBy: 'admin-1',
+        updatedAt: now,
+        updatedBy: 'admin-1',
+    };
+    await assertSucceeds(setDoc(doc(adminDb, 'payment_methods/admin-method'), {
+        name: 'Transferencia administrativa',
+        bancarizado: true,
+        active: true,
+        sortOrder: 99,
+        ...audit,
+    }));
+    await assertSucceeds(setDoc(doc(adminDb, 'salary_payments/admin-payment'), {
+        employeeId: 'employee-1',
+        period: '2026-01',
+        salaryConfigurationId: 'salary-config-1',
+        salaryGrossMinor: 26000000,
+        overtimeHours: null,
+        overtimeAmountMinor: null,
+        overtimeBancarizado: false,
+        overtimeImputableImpositivo: false,
+        bankedAmountMinor: 26000000,
+        nonBankedAmountMinor: 0,
+        linkedExternalReferenceIds: [],
+        financialMovementIds: [],
+        status: 'posted',
+        approvedByUid: 'admin-1',
+        ...audit,
+    }));
+    await assertSucceeds(setDoc(doc(adminDb, 'payroll_configs/current'), {
+        paymentDay: 10,
+        prepareReceiptsDaysBefore: 3,
+        effectiveFrom: now,
+        setByUid: 'admin-1',
+        ...audit,
+    }));
+    await assertSucceeds(setDoc(doc(adminDb, 'employee_payroll_cycles/admin-cycle'), {
+        employeeId: 'employee-1',
+        period: '2026-01',
+        salaryGrossMinor: 26000000,
+        overtimeTotalHours: 0,
+        overtimeTotalMinor: 0,
+        bankedAmountMinor: 26000000,
+        nonBankedAmountMinor: 0,
+        linkedReferenceIds: [],
+        linkedCertificateIds: [],
+        financialMovementIds: [],
+        status: 'posted',
+        ...audit,
+    }));
+    await assertSucceeds(setDoc(doc(adminDb, 'accounting_reports/admin-report'), {
+        title: 'Reporte administrativo',
+        status: 'generated',
+        ...audit,
+    }));
+    await assertSucceeds(updateDoc(doc(adminDb, 'financial_movements/movement-1'), {
+        status: 'voided',
+        voidReason: 'Correccion administrativa',
+        updatedAt: now,
+        updatedBy: 'admin-1',
+    }));
+});
 test('directivo puede modificar salary_configurations', async () => {
     const directivoDb = testEnv.authenticatedContext('directivo-1', { directivo: true }).firestore();
     const now = Timestamp.fromDate(new Date('2026-01-02T00:00:00.000Z'));
@@ -402,11 +506,11 @@ test('directivo puede modificar salary_configurations', async () => {
         updatedBy: 'directivo-1',
     }));
 });
-test('administrativo no puede leer ni escribir salary_configurations', async () => {
+test('administrativo puede leer y escribir salary_configurations y empleado no', async () => {
     const adminDb = testEnv.authenticatedContext('admin-1', { administrativo: true }).firestore();
+    const employeeDb = testEnv.authenticatedContext('employee-user-1', { empleado: true }).firestore();
     const now = Timestamp.fromDate(new Date('2026-01-02T00:00:00.000Z'));
-    await assertFails(getDoc(doc(adminDb, 'salary_configurations/salary-config-1')));
-    await assertFails(setDoc(doc(adminDb, 'salary_configurations/salary-config-2'), {
+    const salaryConfiguration = {
         employeeId: 'employee-1',
         contractType: 'monthly',
         baseAmountMinor: 26000000,
@@ -420,7 +524,11 @@ test('administrativo no puede leer ni escribir salary_configurations', async () 
         createdBy: 'admin-1',
         updatedAt: now,
         updatedBy: 'admin-1',
-    }));
+    };
+    await assertSucceeds(getDoc(doc(adminDb, 'salary_configurations/salary-config-1')));
+    await assertSucceeds(setDoc(doc(adminDb, 'salary_configurations/salary-config-admin'), salaryConfiguration));
+    await assertFails(getDoc(doc(employeeDb, 'salary_configurations/salary-config-1')));
+    await assertFails(setDoc(doc(employeeDb, 'salary_configurations/salary-config-employee'), salaryConfiguration));
 });
 test('empleado puede crear su propia expense_submission', async () => {
     const employeeDb = testEnv.authenticatedContext('employee-user-1', { empleado: true }).firestore();
@@ -506,5 +614,24 @@ test('cliente no escribe notificaciones ni consultas de contacto', async () => {
         updatedAt: Timestamp.fromDate(new Date('2026-01-04T00:00:00.000Z')),
         updatedBy: 'admin-1',
     }));
+});
+test('directivo no puede exponer ni asignar el rol interno desarrollador', async () => {
+    const directivoDb = testEnv.authenticatedContext('directivo-1', { directivo: true }).firestore();
+    await assertSucceeds(updateDoc(doc(directivoDb, 'users/user-1'), {
+        roleIds: ['socio', 'administrativo'],
+        primaryRoleId: 'administrativo',
+    }));
+    await assertFails(updateDoc(doc(directivoDb, 'users/user-1'), {
+        roleIds: ['socio', 'administrativo', 'desarrollador'],
+    }));
+    await assertFails(setDoc(doc(directivoDb, 'roles/desarrollador'), {
+        name: 'Desarrollador',
+        description: 'Rol interno',
+        permissionIds: [],
+        system: true,
+        active: true,
+        sortOrder: 999,
+    }));
+    await assertFails(getDoc(doc(directivoDb, 'roles/desarrollador')));
 });
 //# sourceMappingURL=firestore.rules.test.js.map

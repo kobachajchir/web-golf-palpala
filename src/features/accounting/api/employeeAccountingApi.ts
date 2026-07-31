@@ -1,6 +1,6 @@
 import type { AccountingPeriod } from '../../../modules/accounting/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
-import { createExternalAccountingReferencesRepository, createSalaryConfigurationsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
+import { createExternalAccountingReferencesRepository, createPaymentMethodsRepository, createSalaryConfigurationsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
 import { createEmployeesRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import type { EmployeePeriodState } from '../types/employeeAccounting';
 
@@ -10,11 +10,13 @@ export async function getEmployeePeriod(employeeId: string, period: AccountingPe
   const employeesRepository = createEmployeesRepository();
   const externalReferencesRepository = createExternalAccountingReferencesRepository();
   const salaryConfigurationsRepository = createSalaryConfigurationsRepository();
-  const [employee, cycle, externalReferences, salaryConfiguration] = await Promise.all([
+  const paymentMethodsRepository = createPaymentMethodsRepository();
+  const [employee, cycle, externalReferences, salaryConfiguration, paymentMethods] = await Promise.all([
     employeesRepository.getById(employeeId),
     accountingCallables.listEmployeePayrollCycle({ employeeId, period }),
     externalReferencesRepository.listByPeriod(period),
     salaryConfigurationsRepository.getActiveByEmployeeId(employeeId),
+    paymentMethodsRepository.listActiveSorted(),
   ]);
 
   const payrollCycle = cycle.payrollCycle;
@@ -36,6 +38,8 @@ export async function getEmployeePeriod(employeeId: string, period: AccountingPe
     salaryConfiguration,
     payrollCycle,
     salaryPayment,
+    annualBonusPreview: cycle.annualBonusPreview,
+    paymentMethods,
     overtimeItems: cycle.overtimeEntries,
     expenseClaims: [],
     externalAssignments: cycle.accountingLinks,

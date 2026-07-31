@@ -152,6 +152,7 @@ service cloud.firestore {
           'updatedAt'
         ])
         && request.resource.data.displayName is string
+        && (resource.data.profileType != 'member' || request.resource.data.displayName == resource.data.displayName)
         && validQuickActionPreferences()
         && request.resource.data.updatedAt == request.time
         && request.resource.data.email == resource.data.email
@@ -167,6 +168,11 @@ service cloud.firestore {
         && request.resource.data.updatedBy == resource.data.updatedBy;
     }
 
+    function internalRoleIdsUnchanged() {
+      return resource.data.roleIds.hasAny(['desarrollador'])
+        == request.resource.data.roleIds.hasAny(['desarrollador']);
+    }
+
     function postedMovementImmutableFieldsUnchanged() {
       return request.resource.data.grossAmountMinor == resource.data.grossAmountMinor
         && request.resource.data.netAmountMinor == resource.data.netAmountMinor
@@ -179,7 +185,7 @@ service cloud.firestore {
     }
 
     function canDirectivoUpdatePostedMovement() {
-      return isDirectivo()
+      return isAccountingStaff()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'voidReason',
@@ -218,13 +224,13 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isOwnUser(uid) || isStaff();
       allow create: if false;
-      allow update: if isDirectivo() || isOwnUserSelfServiceUpdate(uid);
+      allow update: if (isDirectivo() && internalRoleIdsUnchanged()) || isOwnUserSelfServiceUpdate(uid);
       allow delete: if false;
     }
 
     match /roles/{roleId} {
-      allow read: if isSignedIn();
-      allow write: if isDirectivo();
+      allow read: if isSignedIn() && roleId != 'desarrollador';
+      allow write: if isDirectivo() && roleId != 'desarrollador';
     }
 
     match /permissions/{permissionId} {
@@ -309,31 +315,31 @@ service cloud.firestore {
 
     match /financial_configs/{configId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /payment_methods/{paymentMethodId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /payment_commission_rules/{ruleId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /financial_income_categories/{categoryId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /financial_expense_categories/{categoryId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
@@ -347,23 +353,23 @@ service cloud.firestore {
 
     match /macro_debit_settlements/{settlementId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /salary_configurations/{configurationId} {
-      allow read, create, update: if isDirectivo();
+      allow read, create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /salary_payments/{paymentId} {
-      allow read, create, update: if isDirectivo();
+      allow read, create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /payroll_configs/{configId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
@@ -375,7 +381,8 @@ service cloud.firestore {
     }
 
     match /employee_payroll_cycles/{cycleId} {
-      allow read, create, update: if isDirectivo();
+      allow read: if isAccountingStaff();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
@@ -399,7 +406,7 @@ service cloud.firestore {
 
     match /accounting_reports/{reportId} {
       allow read, create: if isAccountingStaff();
-      allow update: if isDirectivo();
+      allow update: if isAccountingStaff();
       allow delete: if false;
     }
 
@@ -417,13 +424,13 @@ service cloud.firestore {
 
     match /concession_contracts/{contractId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
     match /advertising_contracts/{contractId} {
       allow read: if isAccountingStaff();
-      allow create, update: if isDirectivo();
+      allow create, update: if isAccountingStaff();
       allow delete: if false;
     }
 
@@ -452,19 +459,24 @@ service cloud.firestore {
     }
 
     match /tournaments/{tournamentId} {
-      allow read: if isStaff() || resource.data.status == 'registration_open';
+      allow read: if isStaff()
+        || resource.data.status == 'registration_open'
+        || (hasClaim('socio') && resource.data.status in ['results_review', 'finished']);
       allow create, update: if isStaff();
       allow delete: if false;
     }
 
     match /tournament_registrations/{registrationId} {
       allow read: if isStaff() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'pending_payment'
-        && request.resource.data.paymentStatus == 'unpaid'
-        && request.resource.data.receiptId == null
-        && request.resource.data.financialMovementId == null;
+      allow create: if isStaff()
+        || (
+          isSignedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'pending_payment'
+          && request.resource.data.paymentStatus == 'unpaid'
+          && request.resource.data.receiptId == null
+          && request.resource.data.financialMovementId == null
+        );
       allow update: if isStaff();
       allow delete: if false;
     }

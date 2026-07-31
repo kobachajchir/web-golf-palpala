@@ -8,7 +8,6 @@ test('PaymentComposer renders required manual payment controls', () => {
   const html = renderToStaticMarkup(
     <PaymentComposer
       memberId="mem_123"
-      mode="manual"
       openItems={[{
         id: 'fee_2026_06_mem_123',
         kind: 'member_fee_charge',
@@ -30,7 +29,6 @@ test('PaymentComposer renders required manual payment controls', () => {
         updatedBy: 'test',
       }]}
       onSubmitManual={() => undefined}
-      onCreateCheckout={() => undefined}
     />,
   );
 

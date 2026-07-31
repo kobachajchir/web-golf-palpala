@@ -104,12 +104,14 @@ export const tournamentsRegisterParticipant = onCall(async (request) => {
 export const tournamentsRegisterExternalParticipant = onCall(async (request) => {
   try {
     const input = parseRegisterExternalTournamentParticipantInput(request.data);
+    const actor = await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined);
     const result = await registerExternalTournamentParticipantUseCase({
+      actor,
       input,
       transactions: tournamentTransactions,
       clock,
     });
-    if (!result.duplicate) {
+    if (!result.duplicate && !input.managedByStaff) {
       const phoneText = input.phone?.trim() ? ` Telefono: ${input.phone.trim()}.` : '';
       const licenseText = input.aagLicense?.trim() ? ` Matricula AAG: ${input.aagLicense.trim()}.` : '';
       await safelyEmitTournamentNotification('tournamentsRegisterExternalParticipant', () => emitRoleNotification({

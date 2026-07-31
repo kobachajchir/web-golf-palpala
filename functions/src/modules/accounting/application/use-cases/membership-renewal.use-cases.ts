@@ -6,7 +6,12 @@ import {
 import type { AccountingPeriod, Actor } from '../../domain/models.js';
 import type { AccountingTransactionManager } from '../../domain/ports.js';
 import { generateCuotaUseCase } from './fee.use-cases.js';
-import { ensureStaff, toClubAccountingPeriod } from '../shared.js';
+import {
+  calculateMembershipRenewalDueDateFromPeriod,
+  ensureStaff,
+  toClubAccountingPeriod,
+} from '../shared.js';
+import { reconcileMemberFeeRenewalsUseCase, type ReconcileMemberFeeRenewalsResult } from './member-fee-reconciliation.use-cases.js';
 
 const MEMBERSHIP_EMISSION_PAGE_SIZE = 100;
 
@@ -18,10 +23,15 @@ export interface MarkMembershipRenewalsResult {
   generatedCount: number;
   duplicateCount: number;
   skippedCount: number;
-  failures: Array<{ memberId: string; reason: string }>;
+  failures: Array<{
+    memberId: string;
+    memberName: string;
+    memberNumber: string;
+    reason: string;
+  }>;
 }
 
-function createSystemAccountingActor(): Actor {
+export function createSystemAccountingActor(): Actor {
   const auditTimestamp = Timestamp.fromMillis(0);
   return {
     uid: SYSTEM_ACTOR_UID,
@@ -46,6 +56,7 @@ function createSystemAccountingActor(): Actor {
       empleado: false,
       comision_directiva: false,
       socio: false,
+      desarrollador: false,
       claimsVersion: 1,
     },
   };
@@ -79,13 +90,17 @@ export async function markMembershipRenewalsUseCase(params: {
   let cursorId: string | undefined;
   do {
     const page = await params.transactions.getDataAccess().members.listPage({
-      status: 'active',
       limit: MEMBERSHIP_EMISSION_PAGE_SIZE,
       ...(cursorId ? { cursorId } : {}),
     });
 
     for (const member of page.items) {
+      if (member.status !== 'active' && member.status !== 'license') continue;
       activeMemberCount += 1;
+      if (member.membershipBillingExempt) {
+        skippedCount += 1;
+        continue;
+      }
       const dueAt = member.membershipRenewalDueAt;
       const shouldMark =
         member.membershipRenewalStatus !== 'needs_renewal' &&
@@ -109,7 +124,39 @@ export async function markMembershipRenewalsUseCase(params: {
           generatedCount += 1;
         }
 
-        if (shouldMark) {
+        const renewalIsAlreadySettled = result.status === 'paid' || result.status === 'exempt';
+        if (renewalIsAlreadySettled) {
+          const [pendingCharges, overdueCharges] = await Promise.all([
+            params.transactions.getDataAccess().memberFeeCharges.listPage({
+              memberId: member.id,
+              status: 'pending',
+              limit: 1,
+            }),
+            params.transactions.getDataAccess().memberFeeCharges.listPage({
+              memberId: member.id,
+              status: 'overdue',
+              limit: 1,
+            }),
+          ]);
+          if (pendingCharges.items.length > 0 || overdueCharges.items.length > 0) {
+            continue;
+          }
+          const nextRenewalDueAt = Timestamp.fromDate(calculateMembershipRenewalDueDateFromPeriod(period));
+          if (
+            member.membershipRenewalStatus !== 'current'
+            || !dueAt
+            || dueAt.toMillis() <= renewalDueAt.toMillis()
+          ) {
+            await params.transactions.getDataAccess().members.update(
+              member.id,
+              {
+                membershipRenewalStatus: 'current',
+                membershipRenewalDueAt: nextRenewalDueAt,
+              },
+              actor.uid,
+            );
+          }
+        } else if (shouldMark) {
           await params.transactions.getDataAccess().members.update(
             member.id,
             {
@@ -124,6 +171,8 @@ export async function markMembershipRenewalsUseCase(params: {
         skippedCount += 1;
         failures.push({
           memberId: member.id,
+          memberName: `${member.lastName}, ${member.firstName}`,
+          memberNumber: member.memberNumber,
           reason: getFailureReason(error),
         });
       }
@@ -141,5 +190,30 @@ export async function markMembershipRenewalsUseCase(params: {
     duplicateCount,
     skippedCount,
     failures,
+  };
+}
+
+export interface SyncMembershipRenewalsDailyResult {
+  period: AccountingPeriod;
+  issuance: MarkMembershipRenewalsResult;
+  paymentReconciliation: ReconcileMemberFeeRenewalsResult;
+}
+
+export async function syncMembershipRenewalsDailyUseCase(params: {
+  transactions: AccountingTransactionManager;
+  now?: Date;
+}): Promise<SyncMembershipRenewalsDailyResult> {
+  const now = params.now ?? new Date();
+  const actor = createSystemAccountingActor();
+  const issuance = await markMembershipRenewalsUseCase({ transactions: params.transactions, actor, now });
+  const paymentReconciliation = await reconcileMemberFeeRenewalsUseCase({
+    actor,
+    input: { period: issuance.period, execute: true },
+    transactions: params.transactions,
+  });
+  return {
+    period: issuance.period,
+    issuance,
+    paymentReconciliation,
   };
 }

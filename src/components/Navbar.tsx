@@ -14,10 +14,11 @@ const DEFAULT_MODE_OPTIONS: RoleType[] = [
   ROLES.EMPLEADO,
   ROLES.ADMINISTRATIVO,
   ROLES.DIRECTIVO,
+  ROLES.DESARROLLADOR,
 ];
 const STAFF_MODE_OPTIONS: readonly RoleType[] = [ROLES.ADMINISTRATIVO, ROLES.DIRECTIVO];
 
-type NavIconType = 'home' | 'club' | 'tournaments' | 'members' | 'employees' | 'accounting';
+type NavIconType = 'home' | 'club' | 'tournaments' | 'members' | 'employees' | 'accounting' | 'developer';
 
 function NavIcon({ type }: { type: NavIconType }) {
   const icons: Record<NavIconType, ReactNode> = {
@@ -39,6 +40,9 @@ function NavIcon({ type }: { type: NavIconType }) {
     accounting: (
       <path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm2 4h8V5H8v2Zm0 4h2V9H8v2Zm4 0h4V9h-4v2Zm-4 4h2v-2H8v2Zm4 0h4v-2h-4v2Zm-4 4h2v-2H8v2Zm4 0h4v-2h-4v2Z" />
     ),
+    developer: (
+      <path d="M8.7 6.3a1 1 0 0 1 0 1.4L4.41 12l4.3 4.3a1 1 0 1 1-1.42 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.42 0Zm6.6 0a1 1 0 0 1 1.42 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 1 1-1.42-1.4l4.3-4.3-4.3-4.3a1 1 0 0 1 0-1.4ZM14.05 3.68a1 1 0 0 1 .65 1.26l-4.5 14a1 1 0 1 1-1.9-.62l4.5-14a1 1 0 0 1 1.25-.64Z" />
+    ),
   };
 
   return (
@@ -56,10 +60,16 @@ function BellIcon({ className = 'button-icon margin-left-10px' }: { className?: 
   );
 }
 
-function MenuActionIcon({ type }: { type: 'profile' | 'logout' }) {
-  const icons: Record<'profile' | 'logout', ReactNode> = {
+function MenuActionIcon({ type }: { type: 'profile' | 'receipt' | 'contact' | 'logout' }) {
+  const icons: Record<'profile' | 'receipt' | 'contact' | 'logout', ReactNode> = {
     profile: (
       <path d="M12 12a4.5 4.5 0 1 0-4.5-4.5A4.5 4.5 0 0 0 12 12Zm0 2c-4.14 0-7.5 2.46-7.5 5.5a1 1 0 0 0 2 0c0-1.69 2.42-3.5 5.5-3.5s5.5 1.81 5.5 3.5a1 1 0 0 0 2 0c0-3.04-3.36-5.5-7.5-5.5Z" />
+    ),
+    receipt: (
+      <path d="M6 2h12a1 1 0 0 1 1 1v19l-3-2-2 2-2-2-2 2-2-2-3 2V3a1 1 0 0 1 1-1Zm2 5a1 1 0 0 0 0 2h8a1 1 0 1 0 0-2H8Zm0 4a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2H8Zm0 4a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H8Z" />
+    ),
+    contact: (
+      <path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8.41L5.7 20.7A1 1 0 0 1 4 20V5Zm2 0v12.59l1.3-1.3A1 1 0 0 1 8 16h10V5H6Zm2.5 3.5A1.5 1.5 0 1 1 10 10a1.5 1.5 0 0 1-1.5-1.5Zm4.5.5a1 1 0 1 1 0-2h3a1 1 0 1 1 0 2h-3Zm0 4a1 1 0 1 1 0-2h3a1 1 0 1 1 0 2h-3Z" />
     ),
     logout: (
       <path d="M5 4a2 2 0 0 1 2-2h5a1 1 0 1 1 0 2H7v16h5a1 1 0 1 1 0 2H7a2 2 0 0 1-2-2V4Zm10.3 4.3a1 1 0 0 1 1.4 0l3 3a1 1 0 0 1 0 1.4l-3 3a1 1 0 1 1-1.4-1.4l1.29-1.3H11a1 1 0 1 1 0-2h5.59L15.3 9.7a1 1 0 0 1 0-1.4Z" />
@@ -114,6 +124,9 @@ function ModeIcon({ mode }: { mode: RoleType }) {
     [ROLES.DIRECTIVO]: (
       <path d="M5 18h14a1 1 0 1 1 0 2H5a1 1 0 1 1 0-2Zm.83-3.45 1.57-8.62a1 1 0 0 1 1.53-.64L12 7.2l3.07-1.91a1 1 0 0 1 1.53.64l1.57 8.62a1 1 0 0 1-1.64.92L12 11.94l-4.53 3.53a1 1 0 0 1-1.64-.92Z" />
     ),
+    [ROLES.DESARROLLADOR]: (
+      <path d="M8.7 6.3a1 1 0 0 1 0 1.4L4.41 12l4.3 4.3a1 1 0 1 1-1.42 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.42 0Zm6.6 0a1 1 0 0 1 1.42 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 1 1-1.42-1.4l4.3-4.3-4.3-4.3a1 1 0 0 1 0-1.4Z" />
+    ),
   };
 
   return (
@@ -148,9 +161,13 @@ export function Navbar() {
   const hasRoleSelector = Boolean(user && user.roleIds.length > 1);
   const canManageMembers = STAFF_MODE_OPTIONS.includes(interfaceMode);
   const canViewMembers = canManageMembers || interfaceMode === ROLES.EMPLEADO;
-  const canAccessAccounting = STAFF_MODE_OPTIONS.includes(interfaceMode);
+  const hasAccountingRole = Boolean(user?.roleIds.some((roleId) => STAFF_MODE_OPTIONS.includes(roleId)));
+  const isDeveloperMode = interfaceMode === ROLES.DESARROLLADOR
+    && Boolean(user?.roleIds.includes(ROLES.DESARROLLADOR));
+  const canAccessAccounting = STAFF_MODE_OPTIONS.includes(interfaceMode) || (isDeveloperMode && hasAccountingRole);
   const canAccessEmployees = STAFF_MODE_OPTIONS.includes(interfaceMode);
   const canManageNotifications = STAFF_MODE_OPTIONS.includes(interfaceMode);
+  const canAccessDeveloper = isDeveloperMode;
 
   useEffect(() => {
     setIsOpen(false);
@@ -188,6 +205,16 @@ export function Navbar() {
   const handleProfileClick = () => {
     setIsUserMenuOpen(false);
     navigate('/perfil');
+  };
+
+  const handleReceiptsClick = () => {
+    setIsUserMenuOpen(false);
+    navigate('/mis-recibos');
+  };
+
+  const handleClubContactClick = () => {
+    setIsUserMenuOpen(false);
+    navigate('/contacto-club');
   };
 
   const handleNotificationsPortalClick = () => {
@@ -280,6 +307,12 @@ export function Navbar() {
             <NavLink to="/accounting">
               <NavIcon type="accounting" />
               <span>Contabilidad</span>
+            </NavLink>
+          )}
+          {canAccessDeveloper && (
+            <NavLink to="/desarrollador">
+              <NavIcon type="developer" />
+              <span>Desarrollador</span>
             </NavLink>
           )}
         </nav>
@@ -417,11 +450,6 @@ export function Navbar() {
                 </div>
               )}
 
-              <button type="button" className="nav-menu-item" onClick={handleNotificationsPortalClick}>
-                <BellIcon className="button-icon button-icon--menu" />
-                <span>{canManageNotifications ? 'Administrar notificaciones' : 'Notificaciones'}</span>
-              </button>
-
               <div className="nav-settings-row">
                 <div className="nav-settings-copy">
                   <strong>Tema global</strong>
@@ -445,6 +473,18 @@ export function Navbar() {
               <button type="button" className="nav-menu-item" onClick={handleProfileClick}>
                 <MenuActionIcon type="profile" />
                 <span>Mi perfil</span>
+              </button>
+              <button type="button" className="nav-menu-item" onClick={handleReceiptsClick}>
+                <MenuActionIcon type="receipt" />
+                <span>Mis recibos</span>
+              </button>
+              <button type="button" className="nav-menu-item" onClick={handleNotificationsPortalClick}>
+                <BellIcon className="button-icon button-icon--menu" />
+                <span>{canManageNotifications ? 'Administrar notificaciones' : 'Notificaciones'}</span>
+              </button>
+              <button type="button" className="nav-menu-item" onClick={handleClubContactClick}>
+                <MenuActionIcon type="contact" />
+                <span>Contacto del club</span>
               </button>
               <button type="button" className="nav-menu-item nav-menu-item--danger" onClick={handleLogout}>
                 <MenuActionIcon type="logout" />

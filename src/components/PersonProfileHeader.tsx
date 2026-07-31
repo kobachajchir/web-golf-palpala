@@ -8,7 +8,7 @@ export function PersonProfileHeader({
   badges,
   actions,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   subtitle: ReactNode;
   avatarLabel: string;
@@ -21,7 +21,7 @@ export function PersonProfileHeader({
         {avatarLabel.slice(0, 1).toUpperCase()}
       </div>
       <div className="person-profile-header__copy">
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         <div className="person-profile-header__subtitle">{subtitle}</div>
         {badges && <div className="person-profile-header__badges">{badges}</div>}

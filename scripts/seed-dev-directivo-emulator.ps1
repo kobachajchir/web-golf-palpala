@@ -20,10 +20,6 @@ try {
   $env:GCLOUD_PROJECT = 'demo-web-golf-palpala'
   $env:GOOGLE_CLOUD_PROJECT = 'demo-web-golf-palpala'
 
-  if (-not $env:DEV_DIRECTIVO_PASSWORD) {
-    $env:DEV_DIRECTIVO_PASSWORD = 'Club-Dev-2026'
-  }
-
   & node .\lib\scripts\seed-dev-directivo.js
   if ($LASTEXITCODE -ne 0) {
     throw 'Fallo el seed del usuario dev directivo en emuladores. Revisa que Auth y Firestore Emulator esten activos.'

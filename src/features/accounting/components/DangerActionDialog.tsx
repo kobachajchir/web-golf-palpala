@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { validateReversalReason } from '../utils/accountingValidators';
 
 export function DangerActionDialog({
@@ -7,6 +7,7 @@ export function DangerActionDialog({
   description,
   reason,
   confirmLabel = 'Confirmar',
+  confirmVariant = 'danger',
   loading = false,
   onReasonChange,
   onCancel,
@@ -14,17 +15,28 @@ export function DangerActionDialog({
 }: {
   open: boolean;
   title: string;
-  description: string;
+  description: ReactNode;
   reason: string;
   confirmLabel?: string;
+  confirmVariant?: 'danger' | 'secondary';
   loading?: boolean;
   onReasonChange: (reason: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const dialogRef = useRef<HTMLElement | null>(null);
-  const firstButtonRef = useRef<HTMLButtonElement | null>(null);
+  const reasonTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  const loadingRef = useRef(loading);
+  const onCancelRef = useRef(onCancel);
   const reasonError = validateReversalReason(reason);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
 
   useEffect(() => {
     if (!open) {
@@ -32,11 +44,13 @@ export function DangerActionDialog({
     }
 
     const previousActiveElement = document.activeElement as HTMLElement | null;
-    firstButtonRef.current?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    reasonTextAreaRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !loading) {
-        onCancel();
+      if (event.key === 'Escape' && !loadingRef.current) {
+        onCancelRef.current();
       }
 
       if (event.key !== 'Tab') {
@@ -66,20 +80,17 @@ export function DangerActionDialog({
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
       previousActiveElement?.focus?.();
     };
-  }, [loading, onCancel, open]);
+  }, [open]);
 
   if (!open) {
     return null;
   }
 
   return (
-    <div className="modal-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !loading) {
-        onCancel();
-      }
-    }}>
+    <div className="modal-overlay" role="presentation">
       <section
         ref={dialogRef}
         className="floating-card confirm-dialog-card"
@@ -90,11 +101,12 @@ export function DangerActionDialog({
         <div className="confirm-dialog-card__copy">
           <p className="eyebrow">Confirmacion sensible</p>
           <h2 id="danger-action-title">{title}</h2>
-          <p className="profile-note">{description}</p>
+          <div className="profile-note">{description}</div>
         </div>
         <label className="form-field">
           <span>Motivo obligatorio</span>
           <textarea
+            ref={reasonTextAreaRef}
             value={reason}
             onChange={(event) => onReasonChange(event.target.value)}
             aria-invalid={Boolean(reasonError)}
@@ -103,10 +115,10 @@ export function DangerActionDialog({
           <small id="danger-action-reason-help">{reasonError ?? 'El motivo queda en auditoria.'}</small>
         </label>
         <div className="form-actions confirm-dialog-card__actions">
-          <button ref={firstButtonRef} type="button" className="btn-secondary" disabled={loading} onClick={onCancel}>
+          <button type="button" className="btn-secondary" disabled={loading} onClick={onCancel}>
             Cancelar
           </button>
-          <button type="button" className="btn-danger" disabled={loading || Boolean(reasonError)} onClick={onConfirm}>
+          <button type="button" className={confirmVariant === 'secondary' ? 'btn-secondary' : 'btn-danger'} disabled={loading || Boolean(reasonError)} onClick={onConfirm}>
             {loading ? 'Procesando...' : confirmLabel}
           </button>
         </div>

@@ -541,9 +541,10 @@ test('directivo y administrativo pueden modificar cuotas, pero administrativo no
         advertisingDefaultPeriodicity: 'monthly',
     }, adminAuth)), expectHttpsError('permission-denied'));
 });
-test('directivo puede modificar salary_configurations y administrativo no', async () => {
+test('directivo y administrativo pueden modificar salary_configurations y empleado no', async () => {
     const directivoAuth = auth('directivo-1', { directivo: true, claimsVersion: 1 });
     const adminAuth = auth('admin-1', { administrativo: true, claimsVersion: 1 });
+    const employeeAuth = auth('employee-user-1', { empleado: true, claimsVersion: 1 });
     const directivoResult = await accountingUpsertSalaryConfiguration.run(callableRequest({
         employeeId: 'employee-1',
         contractType: 'monthly',
@@ -553,14 +554,23 @@ test('directivo puede modificar salary_configurations y administrativo no', asyn
         allowOvertime: true,
     }, directivoAuth));
     assert.ok(directivoResult.salaryConfigurationId);
+    const adminResult = await accountingUpsertSalaryConfiguration.run(callableRequest({
+        employeeId: 'employee-1',
+        contractType: 'monthly',
+        baseAmountMinor: 26000000,
+        periodicity: 'monthly',
+        effectiveFrom: '2026-05-01T00:00:00.000Z',
+        allowOvertime: true,
+    }, adminAuth));
+    assert.ok(adminResult.salaryConfigurationId);
     await assert.rejects(() => accountingUpsertSalaryConfiguration.run(callableRequest({
         employeeId: 'employee-1',
         contractType: 'monthly',
-        baseAmountMinor: 25000000,
+        baseAmountMinor: 27000000,
         periodicity: 'monthly',
-        effectiveFrom: '2026-04-01T00:00:00.000Z',
+        effectiveFrom: '2026-06-01T00:00:00.000Z',
         allowOvertime: true,
-    }, adminAuth)), expectHttpsError('permission-denied'));
+    }, employeeAuth)), expectHttpsError('permission-denied'));
 });
 test('empleado puede crear su propia expense_submission y no puede aprobar rendición', async () => {
     const employeeAuth = auth('employee-user-1', { empleado: true, claimsVersion: 1 });

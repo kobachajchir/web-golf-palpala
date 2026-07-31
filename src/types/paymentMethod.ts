@@ -9,7 +9,7 @@ export type payment_method_type = {
   nombre: string;
 
   // Tipo tecnico del medio de pago
-  tipo: 'efectivo' | 'transferencia' | 'mercado_pago' | 'debito' | 'credito' | 'otro';
+  tipo: 'efectivo' | 'transferencia' | 'debito' | 'credito' | 'otro';
 
   // Indica si el medio de pago esta activo
   active: boolean;

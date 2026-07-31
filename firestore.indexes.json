@@ -369,6 +369,27 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "categoryCodeSnapshot",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "thirdPartyType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "thirdPartyId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "operationDate",
+          "order": "DESCENDING"
+        }
+      ]
+    },    {
           "fieldPath": "paymentMethodCodeSnapshot",
           "order": "ASCENDING"
         },
@@ -1625,6 +1646,14 @@
       "fields": [
         { "fieldPath": "notificationId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "financial_movements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "installmentPlanId", "order": "ASCENDING" },
+        { "fieldPath": "operationDate", "order": "ASCENDING" }
       ]
     },
     {

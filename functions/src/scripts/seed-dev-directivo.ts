@@ -2,7 +2,7 @@ import { getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import {
   DEFAULT_MEMBER_TYPES,
   DEFAULT_PERMISSIONS,
@@ -14,7 +14,11 @@ import {
 } from '../modules/users/domain/constants.js';
 import type { UserDocument } from '../modules/users/domain/models.js';
 import { buildCustomClaims, pickPrimaryRoleId } from '../modules/users/application/shared.js';
-import { buildSyntheticAuthEmail, normalizeMemberNumber } from '../modules/auth/member-number-auth.js';
+import {
+  buildSyntheticAuthEmail,
+  generateMemberTemporaryPassword,
+  normalizeMemberNumber,
+} from '../modules/auth/member-number-auth.js';
 
 const DEFAULT_PROJECT_ID = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? 'demo-web-golf-palpala';
 const MEMBER_ID = process.env.DEV_DIRECTIVO_MEMBER_ID ?? 'dev-member-999-koba-chajchir';
@@ -22,7 +26,9 @@ const MEMBER_NUMBER = process.env.DEV_DIRECTIVO_MEMBER_NUMBER ?? '999';
 const FIRST_NAME = process.env.DEV_DIRECTIVO_FIRST_NAME ?? 'Koba';
 const LAST_NAME = process.env.DEV_DIRECTIVO_LAST_NAME ?? 'Chajchir';
 const DNI = process.env.DEV_DIRECTIVO_DNI ?? '41041601';
-const DEFAULT_PASSWORD = process.env.DEV_DIRECTIVO_PASSWORD ?? 'Club-Dev-2026';
+const GENERATED_PASSWORD = generateMemberTemporaryPassword(MEMBER_NUMBER);
+const DEFAULT_PASSWORD = process.env.DEV_DIRECTIVO_PASSWORD ?? GENERATED_PASSWORD.temporaryPassword;
+const PASSWORD_MODE = process.env.DEV_DIRECTIVO_PASSWORD ? 'env-default-password' : 'generated-temporary-password';
 const REPORT_PATH = resolve(
   process.env.DEV_DIRECTIVO_SEED_REPORT_PATH ?? resolve(process.cwd(), 'seed-reports', 'dev-directivo-seed-report.json'),
 );
@@ -158,7 +164,7 @@ async function run() {
   const userRef = firestore.collection(USERS_COLLECTIONS.users).doc(authUserResult.user.uid);
   const userSnapshot = await userRef.get();
   const existingUser = userSnapshot.exists ? (userSnapshot.data() as UserDocument) : null;
-  const roleIds = ['socio', 'comite_ejecutivo', 'administrativo', 'empleado'];
+  const roleIds = ['comite_ejecutivo', 'administrativo', 'empleado'];
   const claimsVersion = (existingUser?.claimsVersion ?? 0) + 1;
   const userPayload = {
     email,
@@ -199,6 +205,9 @@ async function run() {
         typeCodeSnapshot: MEMBER_TYPE_IDS.pleno,
         status: 'active',
         isFamilyHolder: false,
+        membershipBillingExempt: true,
+        membershipBillingExemptReason: 'Usuario operativo 999: no genera cuota societaria ni green fee.',
+        membershipRenewalStatus: 'current',
         joinedAt: FieldValue.serverTimestamp(),
         notes: 'Usuario dev directivo creado por seed local.',
         createdAt: FieldValue.serverTimestamp(),
@@ -237,9 +246,13 @@ async function run() {
     );
   });
 
+
   await getAuth().setCustomUserClaims(
     authUserResult.user.uid,
-    buildCustomClaims(roleIds, claimsVersion, true),
+    {
+      ...buildCustomClaims(roleIds, claimsVersion, true),
+      desarrollador: true,
+    },
   );
 
   const report = {
@@ -255,12 +268,13 @@ async function run() {
     roleIds,
     authEmail: email,
     authUserCreated: authUserResult.created,
-    password: DEFAULT_PASSWORD,
+    passwordMode: PASSWORD_MODE,
+    passwordGeneratedAt: PASSWORD_MODE === 'generated-temporary-password' ? GENERATED_PASSWORD.passwordGeneratedAt : null,
   };
 
-  await mkdir(resolve(REPORT_PATH, '..'), { recursive: true });
+  await mkdir(dirname(REPORT_PATH), { recursive: true });
   await writeFile(REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-  console.log(JSON.stringify(report, null, 2));
+  console.log(JSON.stringify({ ...report, temporaryPassword: DEFAULT_PASSWORD }, null, 2));
 }
 
 void run().catch((error: unknown) => {

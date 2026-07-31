@@ -8,6 +8,7 @@ import {
   ensureAuthenticatedActor,
   ensureStaff,
   parseOptionalAmountMinor,
+  parseOptionalBoolean,
   parseOptionalIsoDate,
   parseOptionalNullableString,
   parseRequiredIsoDate,
@@ -26,11 +27,13 @@ const PUBLIC_TOURNAMENT_REGISTRATION_ACTOR_UID = 'public-tournament-registration
 const PUBLIC_TOURNAMENT_USER_ID = 'external-public';
 
 const TOURNAMENT_PAYMENT_METHOD_IDS = [
-  PAYMENT_METHOD_IDS.debitMacro,
-  PAYMENT_METHOD_IDS.debit,
-  PAYMENT_METHOD_IDS.transfer,
-  PAYMENT_METHOD_IDS.credit,
   PAYMENT_METHOD_IDS.cash,
+  PAYMENT_METHOD_IDS.transferMacro,
+  PAYMENT_METHOD_IDS.qrMacro,
+  PAYMENT_METHOD_IDS.transferGalicia,
+  PAYMENT_METHOD_IDS.qrGalicia,
+  PAYMENT_METHOD_IDS.debitGalicia,
+  PAYMENT_METHOD_IDS.creditGalicia,
 ] as const;
 
 export interface RegisterTournamentParticipantInput {
@@ -48,6 +51,8 @@ export interface RegisterExternalTournamentParticipantInput {
   phone?: string | null | undefined;
   handicap?: number | null | undefined;
   aagLicense?: string | null | undefined;
+  amountMinor?: number | undefined;
+  managedByStaff?: boolean | undefined;
   notes?: string | null | undefined;
 }
 
@@ -247,12 +252,14 @@ export async function registerTournamentParticipantUseCase(params: {
 }
 
 export async function registerExternalTournamentParticipantUseCase(params: {
+  actor?: Actor | null;
   input: RegisterExternalTournamentParticipantInput;
   transactions: TournamentsTransactionManager;
   clock: Clock;
 }): Promise<RegisterTournamentParticipantResult> {
   const participantName = params.input.fullName.trim();
   const participantEmail = normalizeEmail(params.input.email);
+  const staffActor = params.input.managedByStaff ? ensureStaff(params.actor ?? null) : null;
   assertCondition(participantName.length > 0, 'invalid-argument', 'El nombre del participante es obligatorio.');
   assertCondition(participantEmail.length > 0, 'invalid-argument', 'El email del participante es obligatorio.');
 
@@ -261,11 +268,15 @@ export async function registerExternalTournamentParticipantUseCase(params: {
     assertCondition(tournament, 'not-found', `No existe tournaments/${params.input.tournamentId}.`);
     assertCondition(tournament.isDeleted !== true, 'not-found', `No existe tournaments/${params.input.tournamentId}.`);
     assertCondition(
-      tournament.status === 'registration_open',
+      tournament.status === 'registration_open' || (Boolean(staffActor) && !['in_progress', 'results_review', 'finished'].includes(tournament.status)),
       'failed-precondition',
-      'El torneo no tiene la inscripcion abierta.',
+      'El torneo no admite nuevas inscripciones.',
     );
-    assertCondition(!tournament.membersOnly, 'failed-precondition', 'Este torneo es solo para socios.');
+    assertCondition(!tournament.membersOnly || Boolean(staffActor), 'failed-precondition', 'Este torneo es solo para socios.');
+    const registrationAmountMinor = staffActor && params.input.amountMinor !== undefined
+      ? params.input.amountMinor
+      : tournament.registrationFeeMinor;
+    assertCondition(registrationAmountMinor > 0, 'invalid-argument', 'El monto de inscripcion debe ser mayor a cero.');
 
     const duplicate = await dataAccess.registrations.findExternalDuplicate({
       tournamentId: params.input.tournamentId,
@@ -290,28 +301,36 @@ export async function registerExternalTournamentParticipantUseCase(params: {
       participantEmail,
       participantEmailNormalized: participantEmail,
       origin: 'external' as const,
-      approvalStatus: 'pending' as const,
+      approvalStatus: staffActor ? 'approved' as const : 'pending' as const,
       externalPhone: params.input.phone?.trim() || null,
       externalHandicap: params.input.handicap ?? null,
       externalAagLicense: params.input.aagLicense?.trim() || null,
-      amountMinor: tournament.registrationFeeMinor,
-      status: 'pending_approval' as const,
+      amountMinor: registrationAmountMinor,
+      status: staffActor ? 'pending_payment' as const : 'pending_approval' as const,
       paymentStatus: 'unpaid' as const,
       receiptId: null,
       financialMovementId: null,
       registeredAt: Timestamp.fromDate(params.clock.now()),
-      approvedAt: null,
-      approvedByUid: null,
+      approvedAt: staffActor ? Timestamp.fromDate(params.clock.now()) : null,
+      approvedByUid: staffActor?.uid ?? null,
       paidAt: null,
       paymentMethodId: null,
       paymentReference: null,
       notes: params.input.notes ?? null,
     };
 
+    const registrationActorUid = staffActor?.uid ?? PUBLIC_TOURNAMENT_REGISTRATION_ACTOR_UID;
     const registrationId = await dataAccess.registrations.create(
       registrationDocument,
-      PUBLIC_TOURNAMENT_REGISTRATION_ACTOR_UID,
+      registrationActorUid,
     );
+    if (staffActor) {
+      await dataAccess.tournaments.update(
+        tournament.id,
+        { registered: tournament.registered + 1 },
+        registrationActorUid,
+      );
+    }
 
     return buildRegistrationResult({
       registrationId,
@@ -479,7 +498,8 @@ export async function recordTournamentRegistrationPaymentUseCase(params: {
         specialReportingType: paymentMethod.specialReportingType ?? null,
       },
       notes: params.input.notes ?? null,
-      applyPaymentCommission: paymentMethod.id === PAYMENT_METHOD_IDS.credit,
+      applyPaymentCommission: true,
+      paymentCommissionMode: 'add_to_charge',
     });
 
     const receiptId = await dataAccess.receipts.create(
@@ -490,7 +510,7 @@ export async function recordTournamentRegistrationPaymentUseCase(params: {
         memberId: registration.memberId ?? null,
         userId: registration.userId,
         receiptNumber,
-        amountMinor,
+        amountMinor: movement.grossAmountMinor,
         paymentMethodId: paymentMethod.id as TournamentPaymentMethodId,
         paymentReference,
         movementId: movement.movementId,
@@ -557,6 +577,8 @@ export function parseRegisterExternalTournamentParticipantInput(payload: unknown
     phone: parseOptionalNullableString(data, 'phone'),
     handicap: parseOptionalNullableFiniteNumber(data, 'handicap') ?? null,
     aagLicense: parseOptionalNullableString(data, 'aagLicense'),
+    amountMinor: parseOptionalAmountMinor(data, 'amountMinor'),
+    managedByStaff: parseOptionalBoolean(data, 'managedByStaff'),
     notes: parseOptionalNullableString(data, 'notes'),
   };
 }

@@ -17,6 +17,10 @@
     "seed:executive-board": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-executive-board-emulator.ps1",
     "seed:test-employees": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-test-employees-emulator.ps1",
     "seed:requested-family-groups": "powershell -ExecutionPolicy Bypass -File .\\scripts\\seed-requested-family-groups-emulator.ps1",
+    "sync:payment-methods": "powershell -ExecutionPolicy Bypass -File .\\scripts\\sync-payment-methods-production.ps1",
+    "sync:payment-methods:execute": "powershell -ExecutionPolicy Bypass -File .\\scripts\\sync-payment-methods-production.ps1 -Execute",
+    "reset:default-passwords": "powershell -ExecutionPolicy Bypass -File .\\scripts\\reset-default-passwords-production.ps1",
+    "reset:default-passwords:execute": "powershell -ExecutionPolicy Bypass -File .\\scripts\\reset-default-passwords-production.ps1 -Execute",
     "emulators:start:users": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-users-emulators.ps1"
   },
   "dependencies": {

@@ -1,0 +1,349 @@
+{
+  "ok": true,
+  "mode": "dry-run",
+  "projectId": "webgolfclub",
+  "selectedPeriod": "all",
+  "periods": [
+    "2026-07"
+  ],
+  "totals": {
+    "movements": 32,
+    "matchedAllocations": 30,
+    "repairedCharges": 30,
+    "repairedMembers": 30,
+    "ambiguous": 2
+  },
+  "safety": {
+    "financialMovementsWritten": false,
+    "unrelatedCategoriesWritten": false,
+    "writesLimitedToMatchedChargesAndTheirMembers": true,
+    "executionConfirmation": "--execute --yes-membership-renewals-only"
+  },
+  "results": [
+    {
+      "period": "2026-07",
+      "mode": "dry-run",
+      "scannedMovementCount": 251,
+      "feeMovementCount": 32,
+      "scannedPeriodChargeCount": 0,
+      "matchedAllocationCount": 30,
+      "alreadySynchronizedCount": 0,
+      "repairedChargeCount": 30,
+      "repairedMemberCount": 30,
+      "ambiguousCount": 2,
+      "skipped": [
+        {
+          "movementId": "dgpr7oKIBYNSXkBJtOOB",
+          "reason": "El movimiento no tiene un vinculo inequivoco con una renovacion."
+        },
+        {
+          "movementId": "oDXXfXWELco45xgNUFGg",
+          "reason": "El importe del movimiento no es compatible con la cuota reconstruida."
+        }
+      ],
+      "repairs": [
+        {
+          "movementId": "uX047h8e9damNwenmjHT",
+          "chargeId": "reconstructed:legacy-757-74-briones-daniel:2026-07",
+          "memberId": "legacy-757-74-briones-daniel",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "nKzrQbGDkEW4VJHybPOU",
+          "chargeId": "reconstructed:legacy-186-11-pedroso-patricia:2026-07",
+          "memberId": "legacy-186-11-pedroso-patricia",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 4950000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "jyncxUnBuyIEOnRLyJrb",
+          "chargeId": "reconstructed:legacy-322-21-alvaro-musri-lisandro:2026-07",
+          "memberId": "legacy-322-21-alvaro-musri-lisandro",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "jRSNfn87DHb71OQtY4lI",
+          "chargeId": "reconstructed:legacy-140-6-barrera-mariano:2026-07",
+          "memberId": "legacy-140-6-barrera-mariano",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "ZMOiKGzK5lM12c74D5Mf",
+          "chargeId": "reconstructed:legacy-743-67-bracamonte-ricardo:2026-07",
+          "memberId": "legacy-743-67-bracamonte-ricardo",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "WYqUnrVvm9PrDpRpYFO2",
+          "chargeId": "reconstructed:legacy-216-13-castellani-juez-amelio:2026-07",
+          "memberId": "legacy-216-13-castellani-juez-amelio",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 4950000,
+          "remainingAmountMinor": 6050000,
+          "completed": false
+        },
+        {
+          "movementId": "FPbKluoUI9fpZGg1eF1C",
+          "chargeId": "reconstructed:legacy-451-32-ratti-fernando:2026-07",
+          "memberId": "legacy-451-32-ratti-fernando",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "FKqX0TwiKCHuZNE0CUYH",
+          "chargeId": "reconstructed:legacy-216-14-corte-adriana:2026-07",
+          "memberId": "legacy-216-14-corte-adriana",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 4950000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "7N6ugbexM1KfxrKs8GNt",
+          "chargeId": "reconstructed:legacy-721-59-barrera-mario:2026-07",
+          "memberId": "legacy-721-59-barrera-mario",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "ynwCJfZqPZRg1AK9gBvU",
+          "chargeId": "reconstructed:legacy-546-34-saenz-juan:2026-07",
+          "memberId": "legacy-546-34-saenz-juan",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "Y5uxYZAgi78Dd1tGvuQM",
+          "chargeId": "reconstructed:legacy-565-37-alvarado-carlos:2026-07",
+          "memberId": "legacy-565-37-alvarado-carlos",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "SD5kfvslSnssXLJctteY",
+          "chargeId": "reconstructed:legacy-601-40-pantaleon-carlos:2026-07",
+          "memberId": "legacy-601-40-pantaleon-carlos",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "KbW38WZ0Uoacm5ZhqDRv",
+          "chargeId": "reconstructed:legacy-868-105-ripoll-jorge:2026-07",
+          "memberId": "legacy-868-105-ripoll-jorge",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "CkbSbWrpkduw96Aqic1w",
+          "chargeId": "reconstructed:legacy-267-16-pantaleon-diego:2026-07",
+          "memberId": "legacy-267-16-pantaleon-diego",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "4yhc7PMf5UcQUvz7Zvdu",
+          "chargeId": "reconstructed:legacy-621-46-alsina-daniel:2026-07",
+          "memberId": "legacy-621-46-alsina-daniel",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "4KhXDwSDUF4Yah52bvK1",
+          "chargeId": "reconstructed:legacy-294-17-ruiz-ricardo:2026-07",
+          "memberId": "legacy-294-17-ruiz-ricardo",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "zVwkOG0DKgCl8OvBNxI0",
+          "chargeId": "reconstructed:legacy-618-44-ibarra-horacio:2026-07",
+          "memberId": "legacy-618-44-ibarra-horacio",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "p19LOOH1p0TE7SApwr3z",
+          "chargeId": "reconstructed:legacy-190-12-cicero-jorge:2026-07",
+          "memberId": "legacy-190-12-cicero-jorge",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "k7cWuPecoIaJrb3a13ui",
+          "chargeId": "reconstructed:legacy-820-86-nazario-martin:2026-07",
+          "memberId": "legacy-820-86-nazario-martin",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "QpCEfkgQPMGdq3Uvhhta",
+          "chargeId": "reconstructed:legacy-845-92-flores-fernando:2026-07",
+          "memberId": "legacy-845-92-flores-fernando",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "KrTeEDJDFQ2dGbhykBA1",
+          "chargeId": "reconstructed:legacy-773-76-calvo-fernando:2026-07",
+          "memberId": "legacy-773-76-calvo-fernando",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "84Pv5mtQU0iAA4yAcdRW",
+          "chargeId": "reconstructed:legacy-887-120-garcia-german:2026-07",
+          "memberId": "legacy-887-120-garcia-german",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 9900000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "pUJ3QLMfFI8cfzkOjlfK",
+          "chargeId": "reconstructed:legacy-68-2-abraham-oscar:2026-07",
+          "memberId": "legacy-68-2-abraham-oscar",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 5500000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "Gc6GgpSpkrFMnrs6cZaK",
+          "chargeId": "reconstructed:legacy-335-24-ochoa-matias:2026-07",
+          "memberId": "legacy-335-24-ochoa-matias",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "McxvlKWKthhUeIJRvN1c",
+          "chargeId": "reconstructed:legacy-827-88-quintar-hadel:2026-07",
+          "memberId": "legacy-827-88-quintar-hadel",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "jM2zT1jscHHSVdcmgoA6",
+          "chargeId": "reconstructed:legacy-72-3-jimenez-oliver-martin:2026-07",
+          "memberId": "legacy-72-3-jimenez-oliver-martin",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "ztL6KhPd969hZjr7FNmt",
+          "chargeId": "reconstructed:legacy-755-72-monaco-juan:2026-07",
+          "memberId": "legacy-755-72-monaco-juan",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "z3dBdCLB0TGAlCHbuhEE",
+          "chargeId": "reconstructed:legacy-751-71-mignacco-franco:2026-07",
+          "memberId": "legacy-751-71-mignacco-franco",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "V6QMajnSmaIBXAqFMLCc",
+          "chargeId": "reconstructed:legacy-807-82-armatta-martin:2026-07",
+          "memberId": "legacy-807-82-armatta-martin",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        },
+        {
+          "movementId": "SKNYuqUAPPGR7Z1H8jhz",
+          "chargeId": "reconstructed:legacy-700-53-ramos-roque:2026-07",
+          "memberId": "legacy-700-53-ramos-roque",
+          "chargePeriod": "2026-07",
+          "source": "period_member",
+          "appliedAmountMinor": 11000000,
+          "remainingAmountMinor": 0,
+          "completed": true
+        }
+      ]
+    }
+  ],
+  "reportPath": "D:\\WebGolfPalpala\\web-golf-palpala\\migration-reports\\member-fee-renewals-1784668271240.json"
+}

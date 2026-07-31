@@ -5,6 +5,17 @@ export const ACCOUNTING_CALLABLE_NAMES = {
   upsertPayrollConfig: 'accountingUpsertPayrollConfig',
   generateCuota: 'accountingGenerateCuota',
   registerPayment: 'accountingRegisterPayment',
+  registerMemberFeeBatchPayment: 'accountingRegisterMemberFeeBatchPayment',
+  reconcileMemberFeeRenewals: 'accountingReconcileMemberFeeRenewals',
+  createInstallmentPlan: 'accountingCreateInstallmentPlan',
+  registerInstallmentPayment: 'accountingRegisterInstallmentPayment',
+  listMyReceipts: 'accountingListMyReceipts',
+  transferFunds: 'accountingTransferFunds',
+  editInternalTransfer: 'accountingEditInternalTransfer',
+  createHandicapCharge: 'accountingCreateHandicapCharge',
+  transferHandicapToAssociation: 'accountingTransferHandicapToAssociation',
+  transferPendingHandicapToAssociation: 'accountingTransferPendingHandicapToAssociation',
+  registerExpenseMovement: 'accountingRegisterExpenseMovement',
   submitExpense: 'accountingSubmitExpense',
   reviewExpense: 'accountingReviewExpense',
   postExpenseMovement: 'accountingPostExpenseMovement',
@@ -14,15 +25,16 @@ export const ACCOUNTING_CALLABLE_NAMES = {
   reviewOvertimeEntry: 'accountingReviewOvertimeEntry',
   listEmployeePayrollCycle: 'accountingListEmployeePayrollCycle',
   postEmployeePayrollCycle: 'accountingPostEmployeePayrollCycle',
+  postAnnualBonusPayment: 'accountingPostAnnualBonusPayment',
   recordEmployeeCertificate: 'accountingRecordEmployeeCertificate',
   linkExternalReferenceToEmployee: 'accountingLinkExternalReferenceToEmployee',
   createCashClosure: 'accountingCreateCashClosure',
   closeCashClosure: 'accountingCloseCashClosure',
   markMembershipRenewals: 'accountingMarkMembershipRenewals',
   reconcileMacroSettlement: 'accountingReconcileMacroSettlement',
-  createMercadoPagoCheckout: 'accountingCreateMercadoPagoCheckout',
-  getMercadoPagoCheckoutStatus: 'accountingGetMercadoPagoCheckoutStatus',
   voidFinancialMovement: 'accountingVoidFinancialMovement',
+  editFinancialMovement: 'accountingEditFinancialMovement',
+  setFinancialMovementBalanceInclusion: 'accountingSetFinancialMovementBalanceInclusion',
 } as const;
 
 export const ACCOUNTING_COLLECTIONS = {
@@ -45,17 +57,20 @@ export const ACCOUNTING_COLLECTIONS = {
   cashClosures: 'cash_closures',
   handicapCharges: 'handicap_charges',
   memberFeeCharges: 'member_fee_charges',
-  mercadoPagoCheckoutSessions: 'mercado_pago_checkout_sessions',
-  mercadoPagoEvents: 'mercado_pago_events',
 } as const;
 
 export const ACCOUNTING_PAYMENT_METHOD_IDS = {
   debitMacro: 'debit_macro',
+  transferMacro: 'transfer_macro',
+  qrMacro: 'qr_macro',
+  transferGalicia: 'transfer_galicia',
+  qrGalicia: 'qr_galicia',
+  debitGalicia: 'debit_galicia',
+  creditGalicia: 'credit_galicia',
   debit: 'debit',
   transfer: 'transfer',
   credit: 'credit',
   cash: 'cash',
-  mercadoPago: 'mercado_pago',
 } as const;
 
 export const ACCOUNTING_INCOME_CATEGORY_IDS = {
@@ -72,6 +87,7 @@ export const ACCOUNTING_INCOME_CATEGORY_IDS = {
   handicap: 'handicap',
   rentalHall: 'rental_hall',
   rentalGreenSpace: 'rental_green_space',
+  internalTransfer: 'transferencia_interna_ingreso',
 } as const;
 
 export const ACCOUNTING_EXPENSE_CATEGORY_IDS = {
@@ -91,6 +107,12 @@ export const ACCOUNTING_EXPENSE_CATEGORY_IDS = {
   limpieza: 'limpieza',
   insumos: 'insumos',
   servidor: 'servidor',
+  varios: 'varios',
+  internalTransfer: 'transferencia_interna_egreso',
 } as const;
 
 export const ACCOUNTING_REFERENCE_TYPES = ['F931', 'OBRA_SOCIAL', 'ART', 'OTHER'] as const;
+
+export function getAccountingReferenceTypeLabel(referenceType: (typeof ACCOUNTING_REFERENCE_TYPES)[number]) {
+  return referenceType === 'OTHER' ? 'Otro' : referenceType;
+}

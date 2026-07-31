@@ -16,6 +16,7 @@ import {
   parseRequiredIsoDate,
   parseRequiredString,
 } from '../shared.js';
+import { assertCashClosureCanOpen } from '../cash-closure-guards.js';
 
 export interface CreateCashClosureInput {
   period: string;
@@ -89,6 +90,11 @@ export async function createCashClosureUseCase(params: {
   const cashExpectedMinor = expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] ?? 0;
 
   return params.transactions.runInTransaction(async (dataAccess) => {
+    await assertCashClosureCanOpen({
+      dataAccess,
+      closureDate: params.input.closureDate,
+    });
+
     const cashClosureId = await dataAccess.cashClosures.create(
       {
         period: params.input.period,

@@ -2,13 +2,20 @@ export type AmountMinor = number;
 export type DocId = string;
 export type UID = string;
 export type TournamentFormat = 'medal' | 'stableford' | 'scramble' | 'laguneada';
-export type TournamentStatus = 'draft' | 'scheduled' | 'registration_open' | 'registration_closed' | 'in_progress' | 'finished';
+export type TournamentStatus = 'draft' | 'scheduled' | 'registration_open' | 'registration_closed' | 'in_progress' | 'results_review' | 'finished';
 export type TournamentStartType = 'regular' | 'simultaneous';
 export type TournamentRegistrationStatus = 'pending_approval' | 'pending_payment' | 'confirmed' | 'cancelled' | 'waitlisted';
 export type TournamentRegistrationPaymentStatus = 'unpaid' | 'paid' | 'refunded';
 export type TournamentRegistrationOrigin = 'member' | 'external';
 export type TournamentRegistrationApprovalStatus = 'not_required' | 'pending' | 'approved' | 'rejected';
-export type TournamentPaymentMethodId = 'debit_macro' | 'debit' | 'transfer' | 'credit' | 'cash';
+export type TournamentPaymentMethodId =
+  | 'cash'
+  | 'transfer_macro'
+  | 'qr_macro'
+  | 'transfer_galicia'
+  | 'qr_galicia'
+  | 'debit_galicia'
+  | 'credit_galicia';
 
 export type EntityWithId<T extends object> = T & { id: DocId };
 
@@ -25,6 +32,9 @@ export interface TournamentCategory {
 }
 
 export interface TournamentLeaderboardRow {
+  registrationId?: DocId;
+  memberNumber?: string | null;
+  teeOrder?: number | null;
   player: string;
   category: string;
   gross: number;
@@ -62,6 +72,7 @@ export interface TournamentDocument {
   membersOnly: boolean;
   allowNoHandicap: boolean;
   recurring: boolean;
+  recurrencePeriod?: 'weekly' | 'biweekly' | 'monthly' | 'annual' | null;
   registrationOpenAt?: string | null;
   registrationCloseAt?: string | null;
   registrationFeeMinor: AmountMinor;
@@ -95,6 +106,7 @@ export interface TournamentRegistrationDocument {
   origin: TournamentRegistrationOrigin;
   approvalStatus?: TournamentRegistrationApprovalStatus | null;
   externalPhone?: string | null;
+  externalGender?: 'male' | 'female' | 'mixed' | null;
   externalHandicap?: number | null;
   externalAagLicense?: string | null;
   amountMinor: AmountMinor;
@@ -145,6 +157,8 @@ export interface RegisterExternalTournamentParticipantPayload {
   phone?: string | null;
   handicap?: number | null;
   aagLicense?: string | null;
+  amountMinor?: AmountMinor;
+  managedByStaff?: boolean;
   notes?: string | null;
 }
 

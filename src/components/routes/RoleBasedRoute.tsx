@@ -99,7 +99,11 @@ export function AccountingRoute({ children }: RouteProps) {
     return <Navigate to="/cambiar-contrasena" replace />;
   }
 
-  if (!hasAnyRole(ADMIN_ROUTE_MODES) || !(ADMIN_ROUTE_MODES as readonly string[]).includes(interfaceMode)) {
+  const hasAccountingRole = hasAnyRole(ADMIN_ROUTE_MODES);
+  const isAccountingInterfaceMode = (ADMIN_ROUTE_MODES as readonly string[]).includes(interfaceMode)
+    || (interfaceMode === ROLES.DESARROLLADOR && user?.roleIds.includes(ROLES.DESARROLLADOR));
+
+  if (!hasAccountingRole || !isAccountingInterfaceMode) {
     return <Navigate to="/home" replace />;
   }
 
@@ -146,6 +150,29 @@ export function MembersRoute({ children }: RouteProps) {
   }
 
   if (!hasAnyRole(MEMBERS_ROUTE_MODES) || !(MEMBERS_ROUTE_MODES as readonly string[]).includes(interfaceMode)) {
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+}
+
+export function DeveloperRoute({ children }: RouteProps) {
+  const { isAuthenticated, hasRole, interfaceMode, loading, user } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <RouteLoading />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user?.mustChangePassword && location.pathname !== '/cambiar-contrasena') {
+    return <Navigate to="/cambiar-contrasena" replace />;
+  }
+
+  if (!hasRole(ROLES.DESARROLLADOR) || interfaceMode !== ROLES.DESARROLLADOR) {
     return <Navigate to="/home" replace />;
   }
 

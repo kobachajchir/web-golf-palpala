@@ -4,30 +4,45 @@ import { ACCOUNTING_CALLABLE_NAMES } from '../domain/constants';
 import type {
   CloseCashClosurePayload,
   CloseCashClosureResult,
+  CreateInstallmentPlanPayload,
+  CreateInstallmentPlanResult,
+  CreateHandicapChargePayload,
+  CreateHandicapChargeResult,
   CreateCashClosurePayload,
   CreateCashClosureResult,
-  CreateMercadoPagoCheckoutPayload,
-  CreateMercadoPagoCheckoutResult,
   CreateOvertimeEntryPayload,
   CreateOvertimeEntryResult,
+  EditFinancialMovementPayload,
+  EditFinancialMovementResult,
+  EditInternalTransferPayload,
+  EditInternalTransferResult,
   GenerateCuotaPayload,
   GenerateCuotaResult,
-  GetMercadoPagoCheckoutStatusPayload,
-  GetMercadoPagoCheckoutStatusResult,
   LinkExternalReferenceToEmployeePayload,
   LinkExternalReferenceToEmployeeResult,
   ListEmployeePayrollCyclePayload,
   ListEmployeePayrollCycleResult,
+  ListMyReceiptsResult,
   PostExpenseMovementPayload,
   PostExpenseMovementResult,
   PostEmployeePayrollCyclePayload,
+  PostAnnualBonusPaymentPayload,
   PostEmployeePayrollCycleResult,
+  PostAnnualBonusPaymentResult,
   RecordExternalReferencePayload,
   RecordExternalReferenceResult,
   RecordEmployeeCertificatePayload,
   RecordEmployeeCertificateResult,
   ReconcileMacroSettlementPayload,
   ReconcileMacroSettlementResult,
+  RegisterExpenseMovementPayload,
+  RegisterExpenseMovementResult,
+  RegisterInstallmentPaymentPayload,
+  RegisterInstallmentPaymentResult,
+  RegisterMemberFeeBatchPaymentPayload,
+  RegisterMemberFeeBatchPaymentResult,
+  ReconcileMemberFeeRenewalsPayload,
+  ReconcileMemberFeeRenewalsResult,
   RegisterPaymentPayload,
   RegisterPaymentResult,
   ReviewExpensePayload,
@@ -36,8 +51,16 @@ import type {
   ReviewOvertimeEntryResult,
   SetCreditCommissionRulePayload,
   SetCreditCommissionRuleResult,
+  SetFinancialMovementBalanceInclusionPayload,
+  SetFinancialMovementBalanceInclusionResult,
   SubmitExpensePayload,
   SubmitExpenseResult,
+  TransferFundsPayload,
+  TransferFundsResult,
+  TransferHandicapToAssociationPayload,
+  TransferHandicapToAssociationResult,
+  TransferPendingHandicapToAssociationPayload,
+  TransferPendingHandicapToAssociationResult,
   UpsertEmployeeExternalReferencePayload,
   UpsertEmployeeExternalReferenceResult,
   UpsertFinancialConfigPayload,
@@ -94,6 +117,72 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.registerPayment,
       )(payload)).data;
     },
+    async registerMemberFeeBatchPayment(payload: RegisterMemberFeeBatchPaymentPayload) {
+      return (await httpsCallable<RegisterMemberFeeBatchPaymentPayload, RegisterMemberFeeBatchPaymentResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.registerMemberFeeBatchPayment,
+      )(payload)).data;
+    },
+    async reconcileMemberFeeRenewals(payload: ReconcileMemberFeeRenewalsPayload) {
+      return (await httpsCallable<ReconcileMemberFeeRenewalsPayload, ReconcileMemberFeeRenewalsResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.reconcileMemberFeeRenewals,
+      )(payload)).data;
+    },
+    async createInstallmentPlan(payload: CreateInstallmentPlanPayload) {
+      return (await httpsCallable<CreateInstallmentPlanPayload, CreateInstallmentPlanResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.createInstallmentPlan,
+      )(payload)).data;
+    },
+    async registerInstallmentPayment(payload: RegisterInstallmentPaymentPayload) {
+      return (await httpsCallable<RegisterInstallmentPaymentPayload, RegisterInstallmentPaymentResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.registerInstallmentPayment,
+      )(payload)).data;
+    },
+    async listMyReceipts() {
+      return (await httpsCallable<Record<string, never>, ListMyReceiptsResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.listMyReceipts,
+      )({})).data;
+    },
+    async transferFunds(payload: TransferFundsPayload) {
+      return (await httpsCallable<TransferFundsPayload, TransferFundsResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.transferFunds,
+      )(payload)).data;
+    },
+    async editInternalTransfer(payload: EditInternalTransferPayload) {
+      return (await httpsCallable<EditInternalTransferPayload, EditInternalTransferResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.editInternalTransfer,
+      )(payload)).data;
+    },
+    async createHandicapCharge(payload: CreateHandicapChargePayload) {
+      return (await httpsCallable<CreateHandicapChargePayload, CreateHandicapChargeResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.createHandicapCharge,
+      )(payload)).data;
+    },
+    async transferHandicapToAssociation(payload: TransferHandicapToAssociationPayload) {
+      return (await httpsCallable<TransferHandicapToAssociationPayload, TransferHandicapToAssociationResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.transferHandicapToAssociation,
+      )(payload)).data;
+    },
+    async transferPendingHandicapToAssociation(payload: TransferPendingHandicapToAssociationPayload) {
+      return (await httpsCallable<TransferPendingHandicapToAssociationPayload, TransferPendingHandicapToAssociationResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.transferPendingHandicapToAssociation,
+      )(payload)).data;
+    },
+    async registerExpenseMovement(payload: RegisterExpenseMovementPayload) {
+      return (await httpsCallable<RegisterExpenseMovementPayload, RegisterExpenseMovementResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.registerExpenseMovement,
+      )(payload)).data;
+    },
     async submitExpense(payload: SubmitExpensePayload) {
       return (await httpsCallable<SubmitExpensePayload, SubmitExpenseResult>(
         functionsRef,
@@ -148,7 +237,12 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.postEmployeePayrollCycle,
       )(payload)).data;
     },
-    async recordEmployeeCertificate(payload: RecordEmployeeCertificatePayload) {
+    async postAnnualBonusPayment(payload: PostAnnualBonusPaymentPayload) {
+      return (await httpsCallable<PostAnnualBonusPaymentPayload, PostAnnualBonusPaymentResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.postAnnualBonusPayment,
+      )(payload)).data;
+    },    async recordEmployeeCertificate(payload: RecordEmployeeCertificatePayload) {
       return (await httpsCallable<RecordEmployeeCertificatePayload, RecordEmployeeCertificateResult>(
         functionsRef,
         ACCOUNTING_CALLABLE_NAMES.recordEmployeeCertificate,
@@ -178,22 +272,22 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.reconcileMacroSettlement,
       )(payload)).data;
     },
-    async createMercadoPagoCheckout(payload: CreateMercadoPagoCheckoutPayload) {
-      return (await httpsCallable<CreateMercadoPagoCheckoutPayload, CreateMercadoPagoCheckoutResult>(
-        functionsRef,
-        ACCOUNTING_CALLABLE_NAMES.createMercadoPagoCheckout,
-      )(payload)).data;
-    },
-    async getMercadoPagoCheckoutStatus(payload: GetMercadoPagoCheckoutStatusPayload) {
-      return (await httpsCallable<GetMercadoPagoCheckoutStatusPayload, GetMercadoPagoCheckoutStatusResult>(
-        functionsRef,
-        ACCOUNTING_CALLABLE_NAMES.getMercadoPagoCheckoutStatus,
-      )(payload)).data;
-    },
     async voidFinancialMovement(payload: VoidFinancialMovementPayload) {
       return (await httpsCallable<VoidFinancialMovementPayload, VoidFinancialMovementResult>(
         functionsRef,
         ACCOUNTING_CALLABLE_NAMES.voidFinancialMovement,
+      )(payload)).data;
+    },
+    async editFinancialMovement(payload: EditFinancialMovementPayload) {
+      return (await httpsCallable<EditFinancialMovementPayload, EditFinancialMovementResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.editFinancialMovement,
+      )(payload)).data;
+    },
+    async setFinancialMovementBalanceInclusion(payload: SetFinancialMovementBalanceInclusionPayload) {
+      return (await httpsCallable<SetFinancialMovementBalanceInclusionPayload, SetFinancialMovementBalanceInclusionResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.setFinancialMovementBalanceInclusion,
       )(payload)).data;
     },
   };

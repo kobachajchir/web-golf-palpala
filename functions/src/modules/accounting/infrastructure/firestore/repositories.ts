@@ -33,8 +33,6 @@ import type {
   FinancialMovementDocument,
   HandicapChargeDocument,
   MacroDebitSettlementDocument,
-  MercadoPagoCheckoutSessionDocument,
-  MercadoPagoEventDocument,
   MemberFeeChargeDocument,
   OvertimeEntryDocument,
   PayrollConfigDocument,
@@ -81,9 +79,6 @@ import type {
   MemberFeeChargeFilters,
   MemberFeeChargesStore,
   MembersReferenceStore,
-  MercadoPagoCheckoutSessionFilters,
-  MercadoPagoCheckoutSessionsStore,
-  MercadoPagoEventsStore,
   OvertimeEntriesStore,
   OvertimeEntryFilters,
   PayrollConfigsStore,
@@ -531,6 +526,9 @@ class FirestoreFinancialMovementsStore extends FirestoreCollectionStore<Financia
     if (filters.status) {
       query = query.where('status', '==', filters.status);
     }
+    if (filters.installmentPlanId) {
+      query = query.where('installmentPlanId', '==', filters.installmentPlanId);
+    }
     if (filters.settlementId) {
       query = query.where('settlementId', '==', filters.settlementId).orderBy('operationDate', 'asc');
     } else {
@@ -549,6 +547,11 @@ class FirestoreFinancialMovementsStore extends FirestoreCollectionStore<Financia
 
   public async listBySettlementId(settlementId: string): Promise<Array<EntityWithId<FinancialMovementDocument>>> {
     const query = this.collection.where('settlementId', '==', settlementId).orderBy('operationDate', 'asc');
+    return this.listFromQuery(query);
+  }
+
+  public async listByInstallmentPlanId(installmentPlanId: string): Promise<Array<EntityWithId<FinancialMovementDocument>>> {
+    const query = this.collection.where('installmentPlanId', '==', installmentPlanId).orderBy('operationDate', 'asc');
     return this.listFromQuery(query);
   }
 }
@@ -930,6 +933,11 @@ class FirestoreCashClosuresStore extends FirestoreCollectionStore<CashClosureDoc
     query = await this.applyCursor(query, filters.cursorId);
     return this.listPageFromQuery(query, filters.limit);
   }
+
+  public listOpen(): Promise<Array<EntityWithId<CashClosureDocument>>> {
+    return this.listFromQuery(this.collection.where('status', '==', 'open'));
+  }
+
 }
 
 class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStore<ExternalAccountingReferenceDocument> implements ExternalAccountingReferencesStore {
@@ -1147,73 +1155,6 @@ class FirestoreMemberFeeChargesStore extends FirestoreCollectionStore<MemberFeeC
   }
 }
 
-class FirestoreMercadoPagoCheckoutSessionsStore extends FirestoreCollectionStore<MercadoPagoCheckoutSessionDocument> implements MercadoPagoCheckoutSessionsStore {
-  public constructor(db: Firestore, transaction?: Transaction) {
-    super(getCollection<MercadoPagoCheckoutSessionDocument>(db, ACCOUNTING_COLLECTIONS.mercadoPagoCheckoutSessions), transaction);
-  }
-
-  public getById(sessionId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
-    return this.getByIdInternal(sessionId);
-  }
-
-  public async getByExternalReference(externalReference: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
-    const snapshot = await getQuerySnapshot(this.collection.where('externalReference', '==', externalReference).limit(1), this.transaction);
-    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
-  }
-
-  public async getByPaymentId(paymentId: string): Promise<EntityWithId<MercadoPagoCheckoutSessionDocument> | null> {
-    const snapshot = await getQuerySnapshot(this.collection.where('paymentId', '==', paymentId).limit(1), this.transaction);
-    return snapshot.docs[0] ? withId(snapshot.docs[0]) : null;
-  }
-
-  public set(
-    sessionId: string,
-    data: StoreCreate<Omit<MercadoPagoCheckoutSessionDocument, keyof import('../../domain/models.js').AuditFields>>,
-    actorUid: string,
-  ): Promise<void> {
-    return this.setInternal(sessionId, data, actorUid);
-  }
-
-  public update(sessionId: string, patch: StorePatch<MercadoPagoCheckoutSessionDocument>, actorUid: string): Promise<void> {
-    return this.updateInternal(sessionId, patch, actorUid);
-  }
-
-  public async listPage(filters: MercadoPagoCheckoutSessionFilters): Promise<CursorPage<EntityWithId<MercadoPagoCheckoutSessionDocument>>> {
-    let query: Query<MercadoPagoCheckoutSessionDocument> = this.collection;
-    if (filters.status) {
-      query = query.where('status', '==', filters.status);
-    }
-    if (filters.createdByUid) {
-      query = query.where('createdByUid', '==', filters.createdByUid);
-    }
-    query = query.orderBy('updatedAt', 'desc');
-    query = await this.applyCursor(query, filters.cursorId);
-    return this.listPageFromQuery(query, filters.limit);
-  }
-}
-
-class FirestoreMercadoPagoEventsStore extends FirestoreCollectionStore<MercadoPagoEventDocument> implements MercadoPagoEventsStore {
-  public constructor(db: Firestore, transaction?: Transaction) {
-    super(getCollection<MercadoPagoEventDocument>(db, ACCOUNTING_COLLECTIONS.mercadoPagoEvents), transaction);
-  }
-
-  public getById(eventId: string): Promise<EntityWithId<MercadoPagoEventDocument> | null> {
-    return this.getByIdInternal(eventId);
-  }
-
-  public set(
-    eventId: string,
-    data: StoreCreate<Omit<MercadoPagoEventDocument, keyof import('../../domain/models.js').AuditFields>>,
-    actorUid: string,
-  ): Promise<void> {
-    return this.setInternal(eventId, data, actorUid);
-  }
-
-  public update(eventId: string, patch: StorePatch<MercadoPagoEventDocument>, actorUid: string): Promise<void> {
-    return this.updateInternal(eventId, patch, actorUid);
-  }
-}
-
 export function createFirestoreAccountingDataAccess(
   db: Firestore,
   clock: Clock,
@@ -1249,8 +1190,6 @@ export function createFirestoreAccountingDataAccess(
     advertisingContracts: new FirestoreAdvertisingContractsStore(db, transaction),
     handicapCharges: new FirestoreHandicapChargesStore(db, transaction),
     memberFeeCharges: new FirestoreMemberFeeChargesStore(db, transaction),
-    mercadoPagoCheckoutSessions: new FirestoreMercadoPagoCheckoutSessionsStore(db, transaction),
-    mercadoPagoEvents: new FirestoreMercadoPagoEventsStore(db, transaction),
   };
 }
 

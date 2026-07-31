@@ -3,6 +3,7 @@ import { FINANCIAL_EXPENSE_CATEGORY_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import type {
   Actor,
+  AccountingPeriod,
   EmployeeAccountingLinkDocument,
   EmployeeCertificateDocument,
   EmployeePayrollCycleDocument,
@@ -27,7 +28,7 @@ import {
   parseRequiredString,
   parseRequiredStringArray,
 } from '../shared.js';
-import { postSalaryPaymentUseCase } from './salary.use-cases.js';
+import { calculateAnnualBonusPreview, postSalaryPaymentUseCase, type AnnualBonusPreview } from './salary.use-cases.js';
 
 export interface CreateOvertimeEntryInput {
   employeeId: string;
@@ -164,18 +165,20 @@ export async function listEmployeePayrollCycleUseCase(params: {
   overtimeEntries: Array<OvertimeEntryDocument & { id: string }>;
   accountingLinks: Array<EmployeeAccountingLinkDocument & { id: string }>;
   certificates: Array<EmployeeCertificateDocument & { id: string }>;
+  annualBonusPreview: AnnualBonusPreview;
 }> {
   ensureStaff(params.actor);
   const dataAccess = params.transactions.getDataAccess();
   const employee = await dataAccess.employees.getById(params.input.employeeId);
   assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
 
-  const [payrollCycle, salaryPayment, overtimeEntries, accountingLinks, certificates] = await Promise.all([
+  const [payrollCycle, salaryPayment, overtimeEntries, accountingLinks, certificates, annualBonusPreview] = await Promise.all([
     dataAccess.employeePayrollCycles.findByEmployeeAndPeriod(params.input.employeeId, params.input.period),
     dataAccess.salaryPayments.findByEmployeeAndPeriod(params.input.employeeId, params.input.period),
     dataAccess.overtimeEntries.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
     dataAccess.employeeAccountingLinks.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
     dataAccess.employeeCertificates.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
+    calculateAnnualBonusPreview({ dataAccess, employeeId: params.input.employeeId, period: params.input.period as AccountingPeriod }),
   ]);
 
   return {
@@ -184,6 +187,7 @@ export async function listEmployeePayrollCycleUseCase(params: {
     overtimeEntries: overtimeEntries.items,
     accountingLinks: accountingLinks.items,
     certificates: certificates.items,
+    annualBonusPreview,
   };
 }
 

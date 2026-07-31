@@ -1,14 +1,21 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PasswordChangePanel } from '../components/PasswordChangePanel';
 import { useAuth } from '../hooks/useAuth';
 
 export function ChangePassword() {
   const navigate = useNavigate();
-  const { firebaseUser, refreshUser, user } = useAuth();
+  const { firebaseUser, logout, refreshUser, user } = useAuth();
+  const [passwordChanged, setPasswordChanged] = useState(false);
 
   const handleChanged = async () => {
     await refreshUser();
-    navigate('/home', { replace: true });
+    setPasswordChanged(true);
+  };
+
+  const handleStartSession = async () => {
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -24,7 +31,16 @@ export function ChangePassword() {
           </p>
         </div>
 
-        <PasswordChangePanel firebaseUser={firebaseUser} onChanged={handleChanged} />
+        {passwordChanged ? (
+          <div className="auth-form">
+            <div className="accounting-success">Contrasena actualizada.</div>
+            <button type="button" className="btn-primary form-submit" onClick={() => void handleStartSession()}>
+              Iniciar sesion
+            </button>
+          </div>
+        ) : (
+          <PasswordChangePanel firebaseUser={firebaseUser} onChanged={handleChanged} />
+        )}
       </section>
     </div>
   );
