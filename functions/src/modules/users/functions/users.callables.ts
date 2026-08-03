@@ -56,12 +56,48 @@ import {
   normalizeMemberNumber,
 } from '../../auth/member-number-auth.js';
 import { emitRoleNotification } from '../../notifications/notifications.service.js';
+import { ACCOUNTING_COLLECTIONS } from '../../accounting/domain/constants.js';
+import { assertCondition } from '../domain/errors.js';
 
 const transactions = new FirestoreUsersTransactionManager(new SystemClock());
 const authGateway = new FirebaseAuthGateway();
 
 function getOrInitializeApp() {
   return getApps().length > 0 ? getApp() : initializeApp();
+}
+
+const OPEN_RENEWAL_CHARGE_STATUSES = new Set(['pending', 'overdue']);
+
+async function assertInactiveMemberCanReactivate(input: ReturnType<typeof parseUpdateMemberInput>): Promise<void> {
+  if (input.status !== 'active') {
+    return;
+  }
+
+  const db = getFirestore(getOrInitializeApp());
+  const memberSnapshot = await db.collection(USERS_COLLECTIONS.members).doc(input.memberId).get();
+  if (!memberSnapshot.exists || memberSnapshot.get('status') !== 'inactive') {
+    return;
+  }
+
+  const familyGroupId = memberSnapshot.get('familyGroupId');
+  const chargeQueries = [
+    db.collection(ACCOUNTING_COLLECTIONS.memberFeeCharges).where('memberId', '==', input.memberId).get(),
+    db.collection(ACCOUNTING_COLLECTIONS.memberFeeCharges).where('holderMemberId', '==', input.memberId).get(),
+    ...(typeof familyGroupId === 'string' && familyGroupId.trim().length > 0
+      ? [db.collection(ACCOUNTING_COLLECTIONS.memberFeeCharges).where('familyGroupId', '==', familyGroupId).get()]
+      : []),
+  ];
+
+  const chargeSnapshots = await Promise.all(chargeQueries);
+  const hasRenewalDebt = chargeSnapshots.some((snapshot) => snapshot.docs.some((doc) => (
+    OPEN_RENEWAL_CHARGE_STATUSES.has(String(doc.get('status')))
+  )));
+
+  assertCondition(
+    !hasRenewalDebt,
+    'failed-precondition',
+    'El socio tiene deuda de renovacion pendiente. Regulariza todas las cuotas societarias antes de reactivarlo.',
+  );
 }
 
 async function getActorFromCallableRequest(
@@ -551,9 +587,12 @@ export const usersGetNextMemberNumber = onCall(async (request) => {
 export const usersUpdateMember = onCall(async (request) => {
   try {
     const actor = await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined);
+    const staffActor = ensureStaff(actor);
+    const input = parseUpdateMemberInput(request.data);
+    await assertInactiveMemberCanReactivate(input);
     return updateMemberUseCase({
-      actor,
-      input: parseUpdateMemberInput(request.data),
+      actor: staffActor,
+      input,
       transactions,
     });
   } catch (error) {

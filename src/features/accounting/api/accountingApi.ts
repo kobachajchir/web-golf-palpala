@@ -21,7 +21,7 @@ import {
   createPaymentMethodsRepository,
   createSalaryPaymentsRepository,
 } from '../../../modules/accounting/infrastructure/firestore/repositories';
-import type { EntityWithId, MemberFeeChargeDocument } from '../../../modules/accounting/domain/models';
+import type { AccountingPeriod, EntityWithId, MemberFeeChargeDocument } from '../../../modules/accounting/domain/models';
 import { createEmployeesRepository, createMembersRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import type { EntityWithId as UserEntityWithId, MemberDocument } from '../../../modules/users/domain/models';
 import type {
@@ -37,6 +37,7 @@ import { buildChargesByMemberId, estimateMemberFeeAmountMinor, getChargeTargetMe
 import { isVisiblePaymentMethod } from '../utils/paymentMethods';
 
 const ACCOUNTING_REPORTS_COLLECTION = 'accounting_reports';
+export const MEMBER_FEE_RENEWAL_MIN_PERIOD = '2026-07' as AccountingPeriod;
 
 function requireFirestore(): Firestore {
   if (!firestore) {
@@ -46,25 +47,73 @@ function requireFirestore(): Firestore {
   return firestore;
 }
 
+function isOpenFeeCharge(charge: EntityWithId<MemberFeeChargeDocument>) {
+  return charge.status === 'pending' || charge.status === 'overdue';
+}
+
+function dedupeFeeCharges(charges: Array<EntityWithId<MemberFeeChargeDocument>>) {
+  const uniqueCharges = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
+  charges.forEach((charge) => uniqueCharges.set(charge.id, charge));
+  return [...uniqueCharges.values()]
+    .sort((left, right) => right.period.localeCompare(left.period));
+}
+
+function getChargeOutstandingAmountMinor(charge: EntityWithId<MemberFeeChargeDocument>) {
+  const paidClubAmountMinor = charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0;
+  return charge.remainingAmountMinor
+    ?? Math.max((charge.settlementAmountMinor ?? charge.finalAmountMinor) - paidClubAmountMinor, 0);
+}
+
+function getMemberJoinedPeriod(member: UserEntityWithId<MemberDocument>): AccountingPeriod | null {
+  const joinedAt = timestampToDate(member.joinedAt);
+  if (!joinedAt) return null;
+  return `${joinedAt.getFullYear()}-${String(joinedAt.getMonth() + 1).padStart(2, '0')}` as AccountingPeriod;
+}
+
+function hasMemberJoinedByPeriod(member: UserEntityWithId<MemberDocument>, period: AccountingPeriod) {
+  const joinedPeriod = getMemberJoinedPeriod(member);
+  return !joinedPeriod || joinedPeriod <= period;
+}
+
+function canGenerateRenewalForPeriod(member: UserEntityWithId<MemberDocument>, period: AccountingPeriod) {
+  return (member.status === 'active' || member.status === 'license')
+    && !member.membershipBillingExempt
+    && hasMemberJoinedByPeriod(member, period);
+}
+
 export function getMembersWithoutCurrentPeriodPayment({
   members,
+  period,
   periodFeeCharges,
 }: {
   members: Array<UserEntityWithId<MemberDocument>>;
+  period: AccountingPeriod;
   periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
 }) {
   const settledMemberIds = new Set<string>();
-  periodFeeCharges
-    .filter((charge) => charge.status === 'paid' || charge.status === 'exempt')
-    .forEach((charge) => {
-      getChargeTargetMemberIds(charge, members).forEach((memberId) => settledMemberIds.add(memberId));
-    });
+  const openSelectedPeriodMemberIds = new Set<string>();
+  periodFeeCharges.forEach((charge) => {
+    const targetMemberIds = getChargeTargetMemberIds(charge, members);
+    if (charge.status === 'paid' || charge.status === 'exempt') {
+      targetMemberIds.forEach((memberId) => settledMemberIds.add(memberId));
+      return;
+    }
+    if (charge.status === 'pending' || charge.status === 'overdue') {
+      targetMemberIds.forEach((memberId) => openSelectedPeriodMemberIds.add(memberId));
+    }
+  });
 
-  return members.filter((member) => (
-    (member.status === 'active' || member.status === 'license')
-    && !member.membershipBillingExempt
-    && !settledMemberIds.has(member.id)
-  ));
+  return members.filter((member) => {
+    if (member.status === 'active' || member.status === 'license') {
+      return canGenerateRenewalForPeriod(member, period) && !settledMemberIds.has(member.id);
+    }
+
+    if (member.status === 'inactive' || member.status === 'suspended') {
+      return openSelectedPeriodMemberIds.has(member.id);
+    }
+
+    return false;
+  });
 }
 
 function summarizeRenewalPending({
@@ -77,32 +126,41 @@ function summarizeRenewalPending({
 }: {
   renewalMembers: Array<UserEntityWithId<MemberDocument>>;
   members: Array<UserEntityWithId<MemberDocument>>;
-  period: string;
+  period: AccountingPeriod;
   periodFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
   pendingFeeCharges: Array<EntityWithId<MemberFeeChargeDocument>>;
   activeConfig: AccountingSummary['activeConfig'];
 }) {
   const openChargesByMemberId = buildChargesByMemberId(
     members,
-    getOpenFeeCharges([...periodFeeCharges, ...pendingFeeCharges]),
+    dedupeFeeCharges(getOpenFeeCharges([...periodFeeCharges, ...pendingFeeCharges])),
   );
+  const countedChargeIds = new Set<string>();
 
   return renewalMembers.reduce(
     (summary, member) => {
       const charges = openChargesByMemberId.get(member.id) ?? [];
-      const openTotalMinor = charges.reduce((total, charge) => total + charge.finalAmountMinor, 0);
-      const hasCurrentPeriodOpenCharge = charges.some((charge) => charge.period === period);
-      const missingCurrentAmountMinor = hasCurrentPeriodOpenCharge ? 0 : estimateMemberFeeAmountMinor(member, activeConfig);
+      let openConceptCount = 0;
+      let openTotalMinor = 0;
+      charges.forEach((charge) => {
+        if (countedChargeIds.has(charge.id)) return;
+        countedChargeIds.add(charge.id);
+        openConceptCount += 1;
+        openTotalMinor += getChargeOutstandingAmountMinor(charge);
+      });
+      const hasSelectedPeriodOpenCharge = charges.some((charge) => charge.period === period);
+      const missingSelectedAmountMinor = canGenerateRenewalForPeriod(member, period) && !hasSelectedPeriodOpenCharge
+        ? estimateMemberFeeAmountMinor(member, activeConfig)
+        : 0;
 
       return {
-        conceptCount: summary.conceptCount + charges.length + (hasCurrentPeriodOpenCharge || missingCurrentAmountMinor <= 0 ? 0 : 1),
-        totalMinor: summary.totalMinor + openTotalMinor + missingCurrentAmountMinor,
+        conceptCount: summary.conceptCount + openConceptCount + (missingSelectedAmountMinor > 0 ? 1 : 0),
+        totalMinor: summary.totalMinor + openTotalMinor + missingSelectedAmountMinor,
       };
     },
     { conceptCount: 0, totalMinor: 0 },
   );
 }
-
 export async function getAccountingSummary(period = getCurrentAccountingPeriod()): Promise<AccountingSummary> {
   const financialConfigsRepository = createFinancialConfigsRepository();
   const paymentMethodsRepository = createPaymentMethodsRepository();
@@ -123,7 +181,7 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     recentSalaryPayments,
     periodReferences,
     periodFeeCharges,
-    pendingFeeCharges,
+    historicalFeeCharges,
     membersPreview,
     employeesPreview,
     activeMembersCount,
@@ -138,7 +196,7 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     salaryPaymentsRepository.listByPeriod(period),
     externalAccountingReferencesRepository.listByPeriod(period),
     memberFeeChargesRepository.listByPeriod(period),
-    memberFeeChargesRepository.listPending(500),
+    memberFeeChargesRepository.listByPeriodRange(MEMBER_FEE_RENEWAL_MIN_PERIOD, getCurrentAccountingPeriod()),
     membersRepository.listDirectory(),
     employeesRepository.listAlphabetical(10),
     membersRepository.countActive(),
@@ -146,7 +204,8 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
     memberFeeChargesRepository.countPendingByPeriod(period),
   ]);
 
-  const renewalMembers = getMembersWithoutCurrentPeriodPayment({ members: membersPreview, periodFeeCharges });
+  const pendingFeeCharges = dedupeFeeCharges(historicalFeeCharges.filter(isOpenFeeCharge));
+  const renewalMembers = getMembersWithoutCurrentPeriodPayment({ members: membersPreview, period, periodFeeCharges });
   const renewalPending = summarizeRenewalPending({
     renewalMembers,
     members: membersPreview,

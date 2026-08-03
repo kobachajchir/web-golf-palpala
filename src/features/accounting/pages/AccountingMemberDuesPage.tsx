@@ -16,6 +16,7 @@ import { AccountingEmptyState } from '../components/AccountingEmptyState';
 import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
 import { AccountingMonthPicker } from '../components/AccountingMonthPicker';
 import { ManualIncomeForm, type ManualIncomeFormSubmitPayload } from '../components/ManualIncomeForm';
+import { MEMBER_FEE_RENEWAL_MIN_PERIOD } from '../api/accountingApi';
 import { registerManualPayment } from '../api/memberBillingApi';
 import { useAccountingSummary } from '../hooks/useAccountingSummary';
 import type { AccountingNotice } from '../types/accounting';
@@ -28,17 +29,16 @@ import {
   getPersonDisplayName,
   normalizeAccountingPeriod,
   parseAmountInputToMinor,
-  shiftAccountingPeriod,
   timestampToDate,
 } from '../utils/accountingFormatters';
 import { getFallbackIncomeCategories } from '../utils/accountingCategories';
-import { buildChargesByMemberId, estimateMemberFeeAmountMinor, estimateMemberFeeDetails, getOpenFeeCharges } from '../utils/memberFeeEstimates';
+import { buildChargesByMemberId, estimateMemberFeeDetails, getOpenFeeCharges } from '../utils/memberFeeEstimates';
 import { calculateMemberFeeEarlyPaymentPreview } from '../utils/memberFeeDiscounts';
 
 const accountingCallables = createAccountingCallables();
 const DEFAULT_SERVER_MONTHLY_USD_MINOR = 6500;
 const DEFAULT_SERVER_EXPENSE_DUE_DAY = 20;
-const MAX_FUTURE_MEMBER_FEE_PERIOD = shiftAccountingPeriod(getCurrentAccountingPeriod(), 24);
+const RENEWAL_MAX_PERIOD = getCurrentAccountingPeriod();
 function formatHolidayDateForForm(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
@@ -134,6 +134,81 @@ function todayInputValue() {
   }).format(new Date());
 }
 
+function isAccountingPeriodValue(value: string | null | undefined): value is AccountingPeriod {
+  return typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+function clampRenewalPeriod(value: string | null | undefined): AccountingPeriod {
+  const normalized = isAccountingPeriodValue(value)
+    ? normalizeAccountingPeriod(value)
+    : RENEWAL_MAX_PERIOD;
+
+  if (normalized < MEMBER_FEE_RENEWAL_MIN_PERIOD) {
+    return MEMBER_FEE_RENEWAL_MIN_PERIOD;
+  }
+
+  if (normalized > RENEWAL_MAX_PERIOD) {
+    return RENEWAL_MAX_PERIOD;
+  }
+
+  return normalized;
+}
+
+function getMemberJoinedPeriod(member: EntityWithId<MemberDocument>): AccountingPeriod | null {
+  const joinedAt = timestampToDate(member.joinedAt);
+  if (!joinedAt) return null;
+  return (String(joinedAt.getFullYear()) + '-' + String(joinedAt.getMonth() + 1).padStart(2, '0')) as AccountingPeriod;
+}
+
+function hasMemberJoinedByPeriod(member: EntityWithId<MemberDocument>, period: AccountingPeriod) {
+  const joinedPeriod = getMemberJoinedPeriod(member);
+  return !joinedPeriod || joinedPeriod <= period;
+}
+
+function canGenerateSelectedPeriodCharge(member: EntityWithId<MemberDocument>, period: AccountingPeriod) {
+  return (member.status === 'active' || member.status === 'license')
+    && !member.membershipBillingExempt
+    && hasMemberJoinedByPeriod(member, period);
+}
+
+function getOutstandingFeeChargeAmountMinor(charge: EntityWithId<MemberFeeChargeDocument>) {
+  const paidClubAmountMinor = charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0;
+  return charge.remainingAmountMinor
+    ?? Math.max((charge.settlementAmountMinor ?? charge.finalAmountMinor) - paidClubAmountMinor, 0);
+}
+
+function hasFixedFeeSettlement(charge: EntityWithId<MemberFeeChargeDocument>) {
+  if (typeof charge.settlementAmountMinor !== 'number') return false;
+
+  const paidClubAmountMinor = charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0;
+  return paidClubAmountMinor > 0
+    || charge.settlementAmountMinor !== charge.finalAmountMinor
+    || (charge.paymentDiscountAmountMinor ?? 0) > 0;
+}
+
+function getMemberStatusLabel(member: EntityWithId<MemberDocument>) {
+  switch (member.status) {
+    case 'active':
+      return 'Activo';
+    case 'license':
+      return 'Con licencia';
+    case 'inactive':
+      return 'Inactivo';
+    case 'suspended':
+      return 'Suspendido';
+    default:
+      return member.status;
+  }
+}
+
+function canCollectRenewal(member: EntityWithId<MemberDocument>) {
+  return member.status !== 'suspended';
+}
+
+function canCancelAutomaticRenewal(member: EntityWithId<MemberDocument>) {
+  return member.status === 'active' || member.status === 'license';
+}
+
 function toDateInput(config: EntityWithId<FinancialConfigDocument> | null) {
   const date = timestampToDate(config?.effectiveFrom);
   return date ? date.toISOString().slice(0, 10) : todayInputValue();
@@ -191,7 +266,7 @@ function getRenewalState(charges: Array<EntityWithId<MemberFeeChargeDocument>> |
     return {
       filter: 'overdue' as RenewalPaymentFilter,
       label: 'Cuota vencida',
-      helper: 'Pendiente de pago del mes actual',
+      helper: 'Pendiente de pago del mes seleccionado',
     };
   }
 
@@ -199,7 +274,7 @@ function getRenewalState(charges: Array<EntityWithId<MemberFeeChargeDocument>> |
     return {
       filter: 'pending' as RenewalPaymentFilter,
       label: 'Cuota pendiente',
-      helper: 'Pendiente de pago del mes actual',
+      helper: 'Pendiente de pago del mes seleccionado',
     };
   }
 
@@ -208,6 +283,18 @@ function getRenewalState(charges: Array<EntityWithId<MemberFeeChargeDocument>> |
     label: 'Revisar cuota',
     helper: 'La cuota no figura pagada para este mes',
   };
+}
+
+function getRenewalRowStatusLabel(member: EntityWithId<MemberDocument>, state: ReturnType<typeof getRenewalState>) {
+  if (member.status === 'suspended') return 'Solo consulta';
+  if (member.status === 'inactive') return 'Deuda historica';
+  return state.label;
+}
+
+function getRenewalRowStatusClass(member: EntityWithId<MemberDocument>, state: ReturnType<typeof getRenewalState>) {
+  if (member.status === 'suspended') return 'voided';
+  if (member.status === 'inactive') return 'overdue';
+  return state.filter.replace('_', '-');
 }
 
 function getReconciliationSourceDescription(
@@ -335,11 +422,11 @@ function buildPayloadFromForm(
 export function AccountingMemberDuesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { interfaceMode } = useAuth();
+  const rawRenewalPeriodParam = searchParams.get('period');
+  const requestedRenewalPeriod = clampRenewalPeriod(rawRenewalPeriodParam);
   const {
     period: selectedPeriod, setPeriod: setSelectedPeriod, summary, loading, error, reload,
-  } = useAccountingSummary(
-    searchParams.get('period') ? normalizeAccountingPeriod(searchParams.get('period')) : undefined,
-  );
+  } = useAccountingSummary(requestedRenewalPeriod);
   const activeConfig = summary?.activeConfig ?? null;
   const [form, setForm] = useState<FeeConfigFormState>(() => configToForm(null));
   const [pendingPayload, setPendingPayload] = useState<UpsertFinancialConfigPayload | null>(null);
@@ -357,6 +444,8 @@ export function AccountingMemberDuesPage() {
   const [reconciliationResult, setReconciliationResult] = useState<ReconcileMemberFeeRenewalsResult | null>(null);
   const [reconcilingRenewals, setReconcilingRenewals] = useState(false);
   const [reconciliationApplyPending, setReconciliationApplyPending] = useState(false);
+  const [showRepairsList, setShowRepairsList] = useState(false);
+  const [showSkippedList, setShowSkippedList] = useState(false);
   const memberRegistry = useMemo(() => createMemberRegistryService(), []);
   const canConfigure = interfaceMode === ROLES.DIRECTIVO || interfaceMode === ROLES.ADMINISTRATIVO;
   const canConfigureSensitive = interfaceMode === ROLES.DIRECTIVO || interfaceMode === ROLES.ADMINISTRATIVO;
@@ -367,6 +456,20 @@ export function AccountingMemberDuesPage() {
     : tabParam === 'config' || tabParam === 'membership-fee'
       ? 'config'
       : undefined;
+
+  useEffect(() => {
+    if (rawRenewalPeriodParam !== requestedRenewalPeriod) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set('period', requestedRenewalPeriod);
+      setSearchParams(nextParams, { replace: true });
+    }
+
+    if (selectedPeriod !== requestedRenewalPeriod) {
+      setSelectedPeriod(requestedRenewalPeriod);
+      setReconciliationPeriod(requestedRenewalPeriod);
+      setReconciliationResult(null);
+    }
+  }, [rawRenewalPeriodParam, requestedRenewalPeriod, searchParams, selectedPeriod, setSearchParams, setSelectedPeriod]);
 
   useEffect(() => {
     if (activeConfig) {
@@ -416,11 +519,12 @@ export function AccountingMemberDuesPage() {
   );
 
   const handleRenewalPeriodChange = (period: AccountingPeriod) => {
-    setSelectedPeriod(period);
-    setReconciliationPeriod(period);
+    const nextPeriod = clampRenewalPeriod(period);
+    setSelectedPeriod(nextPeriod);
+    setReconciliationPeriod(nextPeriod);
     setReconciliationResult(null);
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('period', period);
+    nextParams.set('period', nextPeriod);
     nextParams.set('tab', 'renewals');
     setSearchParams(nextParams, { replace: true });
   };
@@ -443,15 +547,19 @@ export function AccountingMemberDuesPage() {
     paymentDate = todayInputValue(),
     forceEarlyPaymentDiscount?: boolean,
   ) => {
+    const selectedSummaryPeriod = summary?.period;
     const openCharges = pendingChargesByMemberId.get(member.id) ?? [];
-    const hasCurrentPeriodOpenCharge = openCharges.some((charge) => charge.period === summary?.period);
-    const missingChargeDetails = estimateMemberFeeDetails(member, activeConfig);
-    const estimatedCurrentAmountMinor = hasCurrentPeriodOpenCharge ? 0 : missingChargeDetails.finalAmountMinor;
+    const hasSelectedPeriodOpenCharge = selectedSummaryPeriod
+      ? openCharges.some((charge) => charge.period === selectedSummaryPeriod)
+      : false;
+    const canGenerateSelectedCharge = selectedSummaryPeriod
+      ? canGenerateSelectedPeriodCharge(member, selectedSummaryPeriod)
+      : false;
+    const missingChargeDetails = canGenerateSelectedCharge ? estimateMemberFeeDetails(member, activeConfig) : null;
     const existingLines: RenewalPaymentLine[] = openCharges.map((charge) => {
       const paidClubAmountMinor = charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0;
-      const outstandingAmountMinor = charge.remainingAmountMinor
-        ?? Math.max((charge.settlementAmountMinor ?? charge.finalAmountMinor) - paidClubAmountMinor, 0);
-      const settlementLocked = typeof charge.settlementAmountMinor === 'number' || paidClubAmountMinor > 0;
+      const outstandingAmountMinor = getOutstandingFeeChargeAmountMinor(charge);
+      const settlementLocked = hasFixedFeeSettlement(charge);
       const earlyPayment = settlementLocked
         ? { discountPctBps: 0, discountAmountMinor: 0, payableAmountMinor: outstandingAmountMinor }
         : calculateMemberFeeEarlyPaymentPreview({
@@ -479,21 +587,21 @@ export function AccountingMemberDuesPage() {
           : charge.status === 'overdue' ? 'Vencida' : 'Pendiente',
       };
     });
-    const generatedEarlyPayment = summary?.period
+    const generatedEarlyPayment = selectedSummaryPeriod && missingChargeDetails
       ? calculateMemberFeeEarlyPaymentPreview({
           amountMinor: missingChargeDetails.finalAmountMinor,
-          period: summary.period,
+          period: selectedSummaryPeriod,
           paymentDate,
           config: activeConfig,
           ...(forceEarlyPaymentDiscount !== undefined ? { forceDiscount: forceEarlyPaymentDiscount } : {}),
         })
       : null;
-    const generatedLine: RenewalPaymentLine[] = !hasCurrentPeriodOpenCharge && summary?.period && generatedEarlyPayment
+    const generatedLine: RenewalPaymentLine[] = !hasSelectedPeriodOpenCharge && selectedSummaryPeriod && missingChargeDetails && generatedEarlyPayment
       ? [
           {
-            key: `${member.id}-${summary.period}-generated`,
+            key: member.id + '-' + selectedSummaryPeriod + '-generated',
             isGeneratedCurrentPeriod: true,
-            period: summary.period,
+            period: selectedSummaryPeriod,
             typeLabel: member.typeCodeSnapshot,
             baseAmountMinor: missingChargeDetails.baseAmountMinor,
             appliedPctBps: missingChargeDetails.appliedPctBps,
@@ -509,11 +617,11 @@ export function AccountingMemberDuesPage() {
     const lines = [...existingLines, ...generatedLine];
     return {
       openCharges,
-      needsCurrentPeriodCharge: !hasCurrentPeriodOpenCharge,
+      needsCurrentPeriodCharge: canGenerateSelectedCharge && !hasSelectedPeriodOpenCharge,
       lines,
       conceptCount: lines.length,
       amountMinor: lines.reduce((total, line) => total + line.payableAmountMinor, 0),
-      subtotalMinor: openCharges.reduce((total, charge) => total + charge.finalAmountMinor, 0) + estimatedCurrentAmountMinor,
+      subtotalMinor: lines.reduce((total, line) => total + line.subtotalMinor, 0),
       earlyDiscountTotalMinor: lines.reduce((total, line) => total + line.earlyDiscountAmountMinor, 0),
       typeDiscountTotalMinor: lines.reduce((total, line) => total + line.typeDiscountAmountMinor, 0),
     };
@@ -653,6 +761,11 @@ export function AccountingMemberDuesPage() {
   };
 
   const handleOpenRenewalPayment = (member: EntityWithId<MemberDocument>) => {
+    if (!canCollectRenewal(member)) {
+      setNotice({ kind: 'info', message: 'El socio suspendido queda disponible solo para consulta. No se puede cobrar desde Renovaciones.' });
+      return;
+    }
+
     const today = todayInputValue();
     const currentDay = getPaymentDateDay(today);
     const defaultApplyDiscount = summary?.period === today.slice(0, 7)
@@ -660,10 +773,12 @@ export function AccountingMemberDuesPage() {
       && currentDay <= (activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10);
     const draft = buildRenewalPaymentDraft(member, today, defaultApplyDiscount ? undefined : false);
     setRenewalApplyEarlyPaymentDiscount(defaultApplyDiscount);
-    const selectedPeriodLineKeys = draft.lines
-      .filter((line) => line.period === summary?.period)
-      .map((line) => line.key);
-    setSelectedRenewalLineKeys(selectedPeriodLineKeys.length > 0 ? selectedPeriodLineKeys : draft.lines.map((line) => line.key));
+    const initialLineKeys = member.status === 'inactive'
+      ? draft.lines.map((line) => line.key)
+      : draft.lines
+          .filter((line) => line.period === summary?.period)
+          .map((line) => line.key);
+    setSelectedRenewalLineKeys(initialLineKeys);
     setRenewalSettleAsFinalAmount(true);
     setRenewalPaymentMember(member);
   };
@@ -803,17 +918,18 @@ export function AccountingMemberDuesPage() {
               id: 'renewals',
               title: 'Renovaciones pendientes',
               eyebrow: 'Renovaciones',
-              helper: 'Socios activos pendientes de pago mensual',
+              helper: 'Cuotas societarias pendientes por periodo',
               content: (
                 <div className="accounting-full-width-section accounting-member-dues-renewals-section">
                   <div className="accounting-section-header">
                     <div>
                       <h3>Mes de la cuota</h3>
-                      <p>Se puede revisar y cobrar un mes anterior o futuro aunque todavia no haya comenzado.</p>
+                      <p>Se puede revisar desde julio de 2026 hasta el mes actual.</p>
                     </div>
                     <AccountingMonthPicker
                       period={selectedPeriod}
-                      maxPeriod={MAX_FUTURE_MEMBER_FEE_PERIOD}
+                      minPeriod={MEMBER_FEE_RENEWAL_MIN_PERIOD}
+                      maxPeriod={RENEWAL_MAX_PERIOD}
                       onChange={handleRenewalPeriodChange}
                     />
                   </div>
@@ -851,37 +967,47 @@ export function AccountingMemberDuesPage() {
                       const charges = currentPeriodChargeByMemberId.get(member.id);
                       const draft = buildRenewalPaymentDraft(member);
                       const state = getRenewalState(charges);
+                      const canCollect = canCollectRenewal(member);
+                      const canCancelAutomatic = canCancelAutomaticRenewal(member);
+                      const rowStatusClass = getRenewalRowStatusClass(member, state);
+                      const rowStatusLabel = getRenewalRowStatusLabel(member, state);
 
                       return (
                         <article key={member.id} className="accounting-row accounting-row--actions accounting-renewal-row">
                           <div className="accounting-row__main">
                             <strong>{getPersonDisplayName(member)}</strong>
-                            <small>Socio {member.memberNumber} - {member.typeCodeSnapshot} - {member.status}</small>
+                            <small>Socio {member.memberNumber} - {member.typeCodeSnapshot} - {getMemberStatusLabel(member)}</small>
                             <small>{draft.conceptCount > 0 ? `${draft.conceptCount} cuota${draft.conceptCount === 1 ? '' : 's'} pendiente${draft.conceptCount === 1 ? '' : 's'}` : state.helper}</small>
                           </div>
                           <div className="accounting-row__meta">
-                            <span className={`status-chip status-chip--${state.filter.replace('_', '-')}`}>Pendiente de pago</span>
+                            <span className={'status-chip status-chip--' + rowStatusClass}>{rowStatusLabel}</span>
                             {draft.amountMinor > 0 && <strong>{formatCurrency(draft.amountMinor)}</strong>}
                           </div>
                           <div className="accounting-inline-actions">
-                            <UiActionButton type="button" onClick={() => handleOpenRenewalPayment(member)}>
-                              Cobrar
-                            </UiActionButton>
-                            <button
-                              type="button"
-                              className="icon-button member-icon-button accounting-danger-icon-button"
-                              aria-label={`Eliminar renovacion automatica de ${getPersonDisplayName(member)}`}
-                              disabled={!canCancelSubscription || saving}
-                              onClick={() => setPendingCancelMember(member)}
-                            >
-                              <TrashIcon />
-                            </button>
+                            {canCollect ? (
+                              <UiActionButton type="button" onClick={() => handleOpenRenewalPayment(member)}>
+                                Cobrar
+                              </UiActionButton>
+                            ) : (
+                              <span className="status-chip status-chip--voided">Sin cobro</span>
+                            )}
+                            {canCancelAutomatic && (
+                              <button
+                                type="button"
+                                className="icon-button member-icon-button accounting-danger-icon-button"
+                                aria-label={'Eliminar renovacion automatica de ' + getPersonDisplayName(member)}
+                                disabled={!canCancelSubscription || saving}
+                                onClick={() => setPendingCancelMember(member)}
+                              >
+                                <TrashIcon />
+                              </button>
+                            )}
                           </div>
                         </article>
                       );
                     })}
                     {!loading && filteredRenewalMembers.length === 0 && (
-                      <AccountingEmptyState title="Sin renovaciones pendientes">No hay socios activos sin pago confirmado para este periodo y filtros.</AccountingEmptyState>
+                      <AccountingEmptyState title="Sin renovaciones pendientes">No hay cuotas pendientes para este periodo y filtros.</AccountingEmptyState>
                     )}
                   </div>
                 </div>
@@ -934,35 +1060,88 @@ export function AccountingMemberDuesPage() {
                             <article className="summary-card"><span>Requieren revision</span><strong>{reconciliationResult.ambiguousCount}</strong><small>No se modifican automaticamente</small></article>
                           </div>
                           {reconciliationResult.repairs.length > 0 && (
-                            <div className="accounting-list">
-                              {reconciliationResult.repairs.map((repair) => (
-                                <article key={repair.movementId + '-' + repair.chargeId} className="accounting-row">
-                                  <div className="accounting-row__main">
-                                    <strong>{getDiagnosticMemberName(repair.memberId, repair.memberName, repair.memberNumber)}</strong>
-                                    <small>Cuota {formatPeriod(repair.chargePeriod)} - {repair.completed ? 'queda pagada' : 'queda con saldo pendiente'}</small>
-                                    <small>{getReconciliationSourceDescription(repair.source)}</small>
-                                    <small>Movimiento {repair.movementId} - cuota {repair.chargeId}</small>
-                                  </div>
-                                  <div className="accounting-row__meta">
-                                    <strong>{formatCurrency(repair.appliedAmountMinor)}</strong>
-                                    <small>{repair.completed ? 'Queda pagada' : 'Pago parcial'}</small>
-                                  </div>
-                                </article>
-                              ))}
-                            </div>
+                            <>
+                              <div className="form-actions" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                                <UiActionButton type="button" variant="secondary" onClick={() => setShowRepairsList(!showRepairsList)}>
+                                  {showRepairsList ? 'Ocultar listado de cuotas reparadas' : 'Ver listado de cuotas reparadas'}
+                                </UiActionButton>
+                              </div>
+                              {showRepairsList && (
+                                <div className="accounting-table-wrap">
+                                  <table className="accounting-data-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Socio</th>
+                                        <th>Nro. Socio</th>
+                                        <th>Periodo</th>
+                                        <th>Detalle</th>
+                                        <th>Monto</th>
+                                        <th>Acciones</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {reconciliationResult.repairs.map((repair) => (
+                                        <tr key={repair.movementId + '-' + repair.chargeId}>
+                                          <td><strong>{getDiagnosticMemberName(repair.memberId, repair.memberName, null)}</strong></td>
+                                          <td>{repair.memberNumber ?? '-'}</td>
+                                          <td>{formatPeriod(repair.chargePeriod)}</td>
+                                          <td>
+                                            <small>{getReconciliationSourceDescription(repair.source)}</small><br />
+                                            <small className="status-chip status-chip--success">{repair.completed ? 'Queda pagada' : 'Pago parcial'}</small>
+                                          </td>
+                                          <td><strong>{formatCurrency(repair.appliedAmountMinor)}</strong></td>
+                                          <td>
+                                            <div className="accounting-inline-actions">
+                                              <UiActionButton type="button" variant="secondary" compact onClick={() => { window.alert(`Ver movimiento ${repair.movementId} (Ir a Caja)`); }}>Ver movimiento</UiActionButton>
+                                              <UiActionButton type="button" variant="secondary" compact onClick={() => { window.alert(`Ver recibo de ${repair.movementId}`); }}>Ver recibo</UiActionButton>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </>
                           )}
                           {reconciliationResult.skipped.length > 0 && (
-                            <details className="profile-note">
-                              <summary>{reconciliationResult.skipped.length} movimiento(s) requieren revisión manual</summary>
-                              <ul>
-                                {reconciliationResult.skipped.map((item) => (
-                                  <li key={item.movementId}>
-                                    <strong>{getDiagnosticMemberName(item.memberId, item.memberName, item.memberNumber)}</strong>: {item.reason}
-                                    <small> Movimiento contable {item.movementId}.</small>
-                                  </li>
-                                ))}
-                              </ul>
-                            </details>
+                            <>
+                              <div className="form-actions" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+                                <UiActionButton type="button" variant="secondary" onClick={() => setShowSkippedList(!showSkippedList)}>
+                                  {showSkippedList ? 'Ocultar listado de revision manual' : 'Ver listado para revision manual'}
+                                </UiActionButton>
+                              </div>
+                              {showSkippedList && (
+                                <div className="accounting-table-wrap">
+                                  <table className="accounting-data-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Socio</th>
+                                        <th>Nro. Socio</th>
+                                        <th>Motivo</th>
+                                        <th>Movimiento Contable</th>
+                                        <th>Acciones</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {reconciliationResult.skipped.map((item) => (
+                                        <tr key={item.movementId}>
+                                          <td><strong>{getDiagnosticMemberName(item.memberId, item.memberName, null)}</strong></td>
+                                          <td>{item.memberNumber ?? '-'}</td>
+                                          <td>{item.reason}</td>
+                                          <td>{item.movementId}</td>
+                                          <td>
+                                            <div className="accounting-inline-actions">
+                                              <UiActionButton type="button" variant="secondary" compact onClick={() => { window.alert(`Ver movimiento ${item.movementId} (Ir a Caja)`); }}>Ver movimiento</UiActionButton>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </>
                           )}
                         </>
                       )}

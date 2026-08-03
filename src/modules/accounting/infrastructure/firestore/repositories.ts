@@ -378,6 +378,16 @@ export function createMemberFeeChargesRepository(db: Firestore = requireFirestor
       );
       return sortByPeriodDesc(items);
     },
+    async listByPeriodRange(fromPeriod: string, toPeriod: string) {
+      const items = await repository.listByQuery(
+        query(
+          repository.collectionRef,
+          where('period', '>=', fromPeriod),
+          where('period', '<=', toPeriod),
+        ),
+      );
+      return sortByPeriodDesc(items);
+    },
     async listByMember(memberId: string, pageSize = 12) {
       const items = await repository.listByQuery(
         query(repository.collectionRef, where('memberId', '==', memberId), orderBy('period', 'desc'), limit(pageSize)),

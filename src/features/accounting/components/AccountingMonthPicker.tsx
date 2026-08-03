@@ -20,15 +20,19 @@ export function AccountingMonthPicker({
   period,
   onChange,
   label = 'Periodo',
+  minPeriod,
   maxPeriod = getCurrentAccountingPeriod(),
 }: {
   period: AccountingPeriod;
   onChange: (period: AccountingPeriod) => void;
   label?: string;
+  minPeriod?: AccountingPeriod;
   maxPeriod?: AccountingPeriod;
 }) {
   const { year, month } = splitPeriod(period);
+  const normalizedMinPeriod = minPeriod ? normalizeAccountingPeriod(minPeriod) : null;
   const normalizedMaxPeriod = normalizeAccountingPeriod(maxPeriod);
+  const { year: minYear } = normalizedMinPeriod ? splitPeriod(normalizedMinPeriod) : { year: Number.NEGATIVE_INFINITY };
   const { year: maxYear, month: maxMonth } = splitPeriod(normalizedMaxPeriod);
   const [open, setOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(year);
@@ -36,7 +40,7 @@ export function AccountingMonthPicker({
 
   const selectMonth = (nextMonth: number) => {
     const nextPeriod = normalizeAccountingPeriod(`${visibleYear}-${String(nextMonth).padStart(2, '0')}`);
-    if (nextPeriod > normalizedMaxPeriod) {
+    if ((normalizedMinPeriod && nextPeriod < normalizedMinPeriod) || nextPeriod > normalizedMaxPeriod) {
       return;
     }
     onChange(nextPeriod);
@@ -63,14 +67,17 @@ export function AccountingMonthPicker({
       {open && (
         <div className="accounting-month-picker__panel">
           <div className="accounting-month-picker__year">
-            <button type="button" aria-label="Año anterior" onClick={() => setVisibleYear((current) => current - 1)}>-</button>
+            <button type="button" aria-label="Año anterior" disabled={visibleYear <= minYear} onClick={() => setVisibleYear((current) => current - 1)}>-</button>
             <strong>{visibleYear}</strong>
             <button type="button" aria-label="Año siguiente" disabled={visibleYear >= maxYear} onClick={() => setVisibleYear((current) => current + 1)}>+</button>
           </div>
           <div className="accounting-month-picker__grid">
             {MONTHS.map((entry) => {
               const selected = visibleYear === year && entry === month;
-              const disabled = visibleYear > maxYear || (visibleYear === maxYear && entry > maxMonth);
+              const nextPeriod = normalizeAccountingPeriod(`${visibleYear}-${String(entry).padStart(2, '0')}`);
+              const disabled = (normalizedMinPeriod !== null && nextPeriod < normalizedMinPeriod)
+                || visibleYear > maxYear
+                || (visibleYear === maxYear && entry > maxMonth);
               return (
                 <button
                   key={entry}

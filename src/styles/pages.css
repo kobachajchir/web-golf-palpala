@@ -8713,6 +8713,28 @@ button.accounting-hub-card:hover {
   gap: 12px;
 }
 
+.renewal-payment-discount-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  text-align: left;
+}
+
+.renewal-payment-discount-toggle > input {
+  margin-top: 3px;
+}
+
+.renewal-payment-discount-toggle > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.renewal-payment-discount-toggle > span small {
+  display: block;
+}
+
 .renewal-payment-breakdown__header,
 .renewal-payment-breakdown__total,
 .renewal-payment-line__title,

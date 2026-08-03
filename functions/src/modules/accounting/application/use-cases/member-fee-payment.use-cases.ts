@@ -1,8 +1,8 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import type { AccountingPeriod, Actor, MemberFeeChargeDocument } from '../../domain/models.js';
-import type { AccountingTransactionManager } from '../../domain/ports.js';
+import type { AccountingPeriod, Actor, EntityWithId, MemberFeeChargeDocument, ReferencedMemberDocument } from '../../domain/models.js';
+import type { AccountingDataAccess, AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   calculateAmountFromBps,
@@ -73,12 +73,61 @@ function resolveStoredPaidAmount(charge: MemberFeeChargeDocument, settlementAmou
   return charge.paidAmountMinor ?? 0;
 }
 
+function getStoredSettlementAmount(charge: MemberFeeChargeDocument): number | null {
+  const paidClubAmountMinor = charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0;
+  const isLegacyUnpaidDefault = charge.settlementAmountMinor === charge.finalAmountMinor
+    && paidClubAmountMinor <= 0
+    && (charge.paymentDiscountAmountMinor ?? 0) <= 0;
+
+  return isLegacyUnpaidDefault ? null : charge.settlementAmountMinor ?? null;
+}
+
 function allocationIdentity(allocation: MemberFeePaymentAllocationInput): string {
   return allocation.chargeId ?? `${allocation.memberId ?? ''}:${allocation.period ?? ''}`;
 }
 
 function getMembershipPeriodStart(period: AccountingPeriod): Date {
-  return new Date(`${period}-01T00:00:00-03:00`);
+  return new Date(period + '-01T00:00:00-03:00');
+}
+
+function isOpenMemberFeeCharge(charge: EntityWithId<MemberFeeChargeDocument>) {
+  return charge.status === 'pending' || charge.status === 'overdue';
+}
+
+async function listOpenMemberFeeChargesByFilter(
+  dataAccess: AccountingDataAccess,
+  filters: { memberId?: string; familyGroupId?: string },
+) {
+  const charges: Array<EntityWithId<MemberFeeChargeDocument>> = [];
+  let cursorId: string | undefined;
+
+  do {
+    const page = await dataAccess.memberFeeCharges.listPage({
+      ...filters,
+      limit: 100,
+      ...(cursorId ? { cursorId } : {}),
+    });
+    charges.push(...page.items.filter(isOpenMemberFeeCharge));
+    cursorId = page.nextCursorId;
+  } while (cursorId);
+
+  return charges;
+}
+
+async function listOpenRenewalChargesForMember(
+  dataAccess: AccountingDataAccess,
+  member: EntityWithId<ReferencedMemberDocument>,
+) {
+  const chargeGroups = await Promise.all([
+    listOpenMemberFeeChargesByFilter(dataAccess, { memberId: member.id }),
+    ...(member.familyGroupId
+      ? [listOpenMemberFeeChargesByFilter(dataAccess, { familyGroupId: member.familyGroupId })]
+      : []),
+  ]);
+
+  const uniqueCharges = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
+  chargeGroups.flat().forEach((charge) => uniqueCharges.set(charge.id, charge));
+  return [...uniqueCharges.values()];
 }
 
 export async function registerMemberFeeBatchPaymentUseCase(params: {
@@ -165,9 +214,10 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
       assertCondition(memberId, 'failed-precondition', 'La cuota no tiene socio asociado.');
       const member = await dataAccess.members.getById(memberId);
       assertCondition(member, 'not-found', `No existe members/${memberId}.`);
+      assertCondition(member.status !== 'suspended', 'failed-precondition', 'No se pueden cobrar cuotas societarias de socios suspendidos.');
       assertCondition(!member.membershipBillingExempt, 'failed-precondition', 'El socio esta exento de cuota societaria.');
 
-      let settlementAmountMinor = charge.settlementAmountMinor ?? null;
+      let settlementAmountMinor = getStoredSettlementAmount(charge);
       let discountPctBps = charge.paymentDiscountPctBps ?? 0;
       let discountAmountMinor = charge.paymentDiscountAmountMinor ?? 0;
       let discountMode = charge.paymentDiscountMode ?? 'none';
@@ -227,7 +277,9 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
     const memberIds = new Set(prepared.map((allocation) => allocation.memberId));
     assertCondition(memberIds.size === 1, 'invalid-argument', 'Un cobro multiple solo puede corresponder a un mismo socio.');
     const memberId = prepared[0]!.memberId;
-    const openChargesBeforePayment = await dataAccess.memberFeeCharges.listPage({ memberId, limit: 100 });
+    const paymentMember = await dataAccess.members.getById(memberId);
+    assertCondition(paymentMember, 'not-found', `No existe members/${memberId}.`);
+    const openChargesBeforePayment = await listOpenRenewalChargesForMember(dataAccess, paymentMember);
     for (const allocation of prepared) {
       if (!allocation.createData) continue;
       const memberFeeChargeId = await dataAccess.memberFeeCharges.create(allocation.createData, actor.uid);
@@ -315,10 +367,9 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
 
     const selectedIds = new Set(prepared.map((allocation) => allocation.charge.id));
     const keepsOpenDebt = prepared.some((allocation) => allocation.remainingAmountMinor > 0)
-      || openChargesBeforePayment.items.some((charge) => {
-      if (charge.status !== 'pending' && charge.status !== 'overdue') return false;
-      const selected = prepared.find((allocation) => allocation.charge.id === charge.id);
-      return !selectedIds.has(charge.id) || Boolean(selected && selected.remainingAmountMinor > 0);
+      || openChargesBeforePayment.some((charge) => {
+        const selected = prepared.find((allocation) => allocation.charge.id === charge.id);
+        return !selectedIds.has(charge.id) || Boolean(selected && selected.remainingAmountMinor > 0);
       });
     const latestPaidPeriod = prepared
       .map((allocation) => allocation.charge.period)
