@@ -265,7 +265,9 @@ export interface EmployeeAccountingLinksStore {
     actorUid: string,
   ): Promise<string>;
   update(linkId: string, patch: StorePatch<EmployeeAccountingLinkDocument>, actorUid: string): Promise<void>;
+  delete(linkId: string, actorUid: string): Promise<void>;
   listPage(filters: EmployeeAccountingLinkFilters): Promise<CursorPage<EntityWithId<EmployeeAccountingLinkDocument>>>;
+  listByReferenceAndPeriod(referenceId: string, period: AccountingPeriod): Promise<EntityWithId<EmployeeAccountingLinkDocument>[]>;
 }
 
 export interface EmployeeCertificateFilters extends PageInput {
@@ -303,6 +305,11 @@ export interface CashClosuresStore {
 
 export interface ExternalAccountingReferencesStore {
   getById(referenceId: string): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null>;
+  createWithId(
+    referenceId: string,
+    data: StoreCreate<Omit<ExternalAccountingReferenceDocument, keyof import('./models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void>;
   findByEmployeePeriodAndReferenceType(params: {
     employeeId: string;
     period: AccountingPeriod;
@@ -313,6 +320,7 @@ export interface ExternalAccountingReferencesStore {
     actorUid: string,
   ): Promise<string>;
   update(referenceId: string, patch: StorePatch<ExternalAccountingReferenceDocument>, actorUid: string): Promise<void>;
+  delete(referenceId: string, actorUid: string): Promise<void>;
 }
 
 export interface ExpenseSubmissionFilters extends PageInput {

@@ -1,8 +1,11 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { assertCondition } from '../domain/errors.js';
 import type {
+  EntityWithId,
   FinancialMovementDocument,
   FinancialMovementType,
+  PaymentCommissionRuleDocument,
+  PaymentMethodDocument,
   ThirdPartyType,
 } from '../domain/models.js';
 import type { AccountingDataAccess } from '../domain/ports.js';
@@ -22,6 +25,8 @@ export interface CreatePostedMovementParams {
   thirdPartyType?: ThirdPartyType | null;
   thirdPartyId?: string | null;
   paymentMethodId?: string | null;
+  prefetchedPaymentMethod?: EntityWithId<PaymentMethodDocument> | null;
+  prefetchedActiveCommissionRule?: EntityWithId<PaymentCommissionRuleDocument> | null;
   bancarizado: boolean;
   imputableImpositivo: boolean;
   metadata?: Record<string, unknown>;
@@ -46,9 +51,11 @@ export interface CreatedMovementResult {
 }
 
 export async function createPostedMovement(params: CreatePostedMovementParams): Promise<CreatedMovementResult> {
-  const paymentMethod = params.paymentMethodId
-    ? await params.dataAccess.paymentMethods.getById(params.paymentMethodId)
-    : null;
+  const paymentMethod = params.prefetchedPaymentMethod !== undefined
+    ? params.prefetchedPaymentMethod
+    : (params.paymentMethodId
+        ? await params.dataAccess.paymentMethods.getById(params.paymentMethodId)
+        : null);
 
   if (params.paymentMethodId) {
     assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.paymentMethodId}.`);
@@ -62,7 +69,9 @@ export async function createPostedMovement(params: CreatePostedMovementParams): 
   let paymentCommissionBreakdown: unknown[] = [];
 
   if (params.applyPaymentCommission === true && paymentMethod) {
-    const activeRule = await params.dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
+    const activeRule = params.prefetchedActiveCommissionRule !== undefined
+      ? params.prefetchedActiveCommissionRule
+      : await params.dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
     if (activeRule) {
       appliedCommissionPctBps = activeRule.percentageBps;
       appliedCommissionAmountMinor = calculateAmountFromBps(params.grossAmountMinor, activeRule.percentageBps);

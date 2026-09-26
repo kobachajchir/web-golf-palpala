@@ -12,6 +12,8 @@ import type {
   CreateCashClosureResult,
   CreateOvertimeEntryPayload,
   CreateOvertimeEntryResult,
+  DeleteExternalReferencePayload,
+  DeleteExternalReferenceResult,
   EditFinancialMovementPayload,
   EditFinancialMovementResult,
   EditInternalTransferPayload,
@@ -205,6 +207,12 @@ export function createAccountingCallables(functionsInstance?: Functions) {
       return (await httpsCallable<RecordExternalReferencePayload, RecordExternalReferenceResult>(
         functionsRef,
         ACCOUNTING_CALLABLE_NAMES.recordExternalReference,
+      )(payload)).data;
+    },
+    async deleteExternalReference(payload: DeleteExternalReferencePayload) {
+      return (await httpsCallable<DeleteExternalReferencePayload, DeleteExternalReferenceResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.deleteExternalReference,
       )(payload)).data;
     },
     async upsertEmployeeExternalReference(payload: UpsertEmployeeExternalReferencePayload) {

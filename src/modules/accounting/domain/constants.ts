@@ -20,6 +20,7 @@ export const ACCOUNTING_CALLABLE_NAMES = {
   reviewExpense: 'accountingReviewExpense',
   postExpenseMovement: 'accountingPostExpenseMovement',
   recordExternalReference: 'accountingRecordExternalReference',
+  deleteExternalReference: 'accountingDeleteExternalReference',
   upsertEmployeeExternalReference: 'accountingUpsertEmployeeExternalReference',
   createOvertimeEntry: 'accountingCreateOvertimeEntry',
   reviewOvertimeEntry: 'accountingReviewOvertimeEntry',

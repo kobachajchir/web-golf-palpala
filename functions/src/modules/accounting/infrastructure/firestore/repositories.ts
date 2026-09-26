@@ -258,6 +258,14 @@ abstract class FirestoreCollectionStore<T extends DocumentData> {
     await writeUpdate(this.collection.doc(id), createAuditedPatch(patch, actorUid), this.transaction);
   }
 
+  protected async deleteInternal(id: string): Promise<void> {
+    if (this.transaction) {
+      this.transaction.delete(this.collection.doc(id));
+    } else {
+      await this.collection.doc(id).delete();
+    }
+  }
+
   protected async applyCursor(query: Query<T>, cursorId?: string): Promise<Query<T>> {
     if (!cursorId) {
       return query;
@@ -841,6 +849,10 @@ class FirestoreEmployeeAccountingLinksStore extends FirestoreCollectionStore<Emp
     return this.updateInternal(linkId, patch, actorUid);
   }
 
+  public delete(linkId: string, actorUid: string): Promise<void> {
+    return this.deleteInternal(linkId);
+  }
+
   public async listPage(filters: EmployeeAccountingLinkFilters): Promise<CursorPage<EntityWithId<EmployeeAccountingLinkDocument>>> {
     let query: Query<EmployeeAccountingLinkDocument> = this.collection;
     if (filters.employeeId) {
@@ -858,6 +870,16 @@ class FirestoreEmployeeAccountingLinksStore extends FirestoreCollectionStore<Emp
     query = query.orderBy('period', 'desc');
     query = await this.applyCursor(query, filters.cursorId);
     return this.listPageFromQuery(query, filters.limit);
+  }
+
+  public async listByReferenceAndPeriod(referenceId: string, period: string): Promise<EntityWithId<EmployeeAccountingLinkDocument>[]> {
+    const snapshot = await getQuerySnapshot(
+      this.collection
+        .where('referenceId', '==', referenceId)
+        .where('period', '==', period),
+      this.transaction,
+    );
+    return snapshot.docs.map((doc) => withId(doc));
   }
 }
 
@@ -949,6 +971,20 @@ class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStor
     return this.getByIdInternal(referenceId);
   }
 
+  public async createWithId(
+    referenceId: string,
+    data: StoreCreate<Omit<ExternalAccountingReferenceDocument, keyof import('../../domain/models.js').AuditFields>>,
+    actorUid: string,
+  ): Promise<void> {
+    const ref = this.collection.doc(referenceId);
+    const document = createAuditedDocument(data as DocumentData, actorUid);
+    if (this.transaction) {
+      this.transaction.create(ref, document as never);
+    } else {
+      await ref.create(document as never);
+    }
+  }
+
   public async findByEmployeePeriodAndReferenceType(params: {
     employeeId: string;
     period: string;
@@ -974,6 +1010,10 @@ class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStor
 
   public update(referenceId: string, patch: StorePatch<ExternalAccountingReferenceDocument>, actorUid: string): Promise<void> {
     return this.updateInternal(referenceId, patch, actorUid);
+  }
+
+  public delete(referenceId: string, actorUid: string): Promise<void> {
+    return this.deleteInternal(referenceId);
   }
 }
 

@@ -42,6 +42,7 @@ export {
   accountingRegisterExpenseMovement,
   accountingRegisterInstallmentPayment,
   accountingRecordExternalReference,
+  accountingDeleteExternalReference,
   accountingRecordEmployeeCertificate,
   accountingRegisterPayment,
   accountingRegisterMemberFeeBatchPayment,

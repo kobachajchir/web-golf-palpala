@@ -748,6 +748,7 @@ export interface PostExpenseMovementResult {
 }
 
 export interface RecordExternalReferencePayload {
+  requestId?: string;
   employeeId?: DocId | null;
   referenceType: ExternalReferenceType;
   period: AccountingPeriod;
@@ -760,12 +761,16 @@ export interface RecordExternalReferencePayload {
   attachmentUrl?: string | null;
   linkedMovementId?: DocId | null;
   paidAt?: string | null;
+  operationDate?: string | null;
+  paymentMethodId?: DocId | null;
   notes?: string | null;
 }
 
 export interface RecordExternalReferenceResult {
   referenceId: DocId;
-  status: 'recorded' | 'linked' | 'paid';
+  movementId: DocId;
+  status: 'paid';
+  duplicate: boolean;
 }
 
 export interface UpsertEmployeeExternalReferencePayload extends RecordExternalReferencePayload {
@@ -987,4 +992,12 @@ export interface CloseCashClosureResult {
   cashClosureId: DocId;
   status: CashClosureStatus;
   differenceMinor: AmountMinor;
+}
+
+export interface DeleteExternalReferencePayload {
+  referenceId: DocId;
+}
+
+export interface DeleteExternalReferenceResult {
+  success: boolean;
 }

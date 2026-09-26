@@ -40,8 +40,10 @@ import {
 import {
   parseRecordExternalReferenceInput,
   parseUpsertEmployeeExternalReferenceInput,
+  parseDeleteExternalReferenceInput,
   recordExternalReferenceUseCase,
   upsertEmployeeExternalReferenceUseCase,
+  deleteExternalReferenceUseCase,
 } from '../application/use-cases/external-reference.use-cases.js';
 import {
   createHandicapChargeUseCase,
@@ -520,6 +522,19 @@ export const accountingRecordExternalReference = onCall(async (request) => {
     });
   } catch (error) {
     withCallableLogging('accountingRecordExternalReference', error);
+  }
+});
+
+export const accountingDeleteExternalReference = onCall(async (request) => {
+  try {
+    const actor = await getActorFromCallableRequest(request.auth as { uid?: string; token?: Record<string, unknown> } | undefined);
+    return deleteExternalReferenceUseCase({
+      actor,
+      input: parseDeleteExternalReferenceInput(request.data),
+      transactions,
+    });
+  } catch (error) {
+    withCallableLogging('accountingDeleteExternalReference', error);
   }
 });
 

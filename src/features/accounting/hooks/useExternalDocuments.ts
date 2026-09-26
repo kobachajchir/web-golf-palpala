@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccountingPeriod, ExternalAccountingReferenceDocument } from '../../../modules/accounting/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
 import { createExternalAccountingReferencesRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
@@ -10,24 +10,36 @@ export function useExternalDocuments(period: AccountingPeriod) {
   const [documents, setDocuments] = useState<Array<EntityWithId<ExternalAccountingReferenceDocument>>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const requestSequence = useRef(0);
+  const loadedPeriod = useRef<AccountingPeriod | null>(null);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (targetPeriod: AccountingPeriod = period) => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError('');
 
     try {
       const repository = createExternalAccountingReferencesRepository();
-      setDocuments(await repository.listByPeriod(period));
+      const result = await repository.listByPeriod(targetPeriod);
+      if (requestId === requestSequence.current) {
+        setDocuments(result);
+        loadedPeriod.current = targetPeriod;
+      }
+      return result;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'No pudimos cargar documentos externos.');
+      if (requestId === requestSequence.current) {
+        setError(loadError instanceof Error ? loadError.message : 'No pudimos cargar documentos externos.');
+        loadedPeriod.current = targetPeriod;
+      }
+      throw loadError;
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, [period]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (loadedPeriod.current !== period) void reload().catch(() => undefined);
+  }, [period, reload]);
 
   return {
     documents,
@@ -35,6 +47,7 @@ export function useExternalDocuments(period: AccountingPeriod) {
     error,
     reload,
     recordExternalReference: accountingCallables.recordExternalReference,
+    deleteExternalReference: accountingCallables.deleteExternalReference,
     linkExternalReferenceToEmployee: accountingCallables.linkExternalReferenceToEmployee,
   };
 }

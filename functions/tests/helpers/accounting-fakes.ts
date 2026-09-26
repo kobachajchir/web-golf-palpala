@@ -726,6 +726,16 @@ class InMemoryEmployeeAccountingLinksStore implements EmployeeAccountingLinksSto
     ) ?? null;
   }
 
+  public async listByReferenceAndPeriod(referenceId: string, period: string): Promise<EntityWithId<EmployeeAccountingLinkDocument>[]> {
+    return Array.from(this.items.values()).filter((item) =>
+      item.referenceId === referenceId && item.period === period,
+    );
+  }
+
+  public async delete(linkId: string): Promise<void> {
+    this.items.delete(linkId);
+  }
+
   public async create(
     data: Omit<EmployeeAccountingLinkDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
     actorUid: string,
@@ -875,6 +885,19 @@ class InMemoryExternalAccountingReferencesStore implements ExternalAccountingRef
 
   public async getById(referenceId: string): Promise<EntityWithId<ExternalAccountingReferenceDocument> | null> {
     return this.items.get(referenceId) ?? null;
+  }
+
+  public async createWithId(
+    referenceId: string,
+    data: Omit<ExternalAccountingReferenceDocument, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>,
+    actorUid: string,
+  ): Promise<void> {
+    if (this.items.has(referenceId)) throw new Error(`Ya existe external_accounting_references/${referenceId}.`);
+    this.items.set(referenceId, { id: referenceId, ...data, ...createAudit(actorUid) });
+  }
+
+  public async delete(id: string): Promise<void> {
+    this.items.delete(id);
   }
 
   public async findByEmployeePeriodAndReferenceType(params: {
