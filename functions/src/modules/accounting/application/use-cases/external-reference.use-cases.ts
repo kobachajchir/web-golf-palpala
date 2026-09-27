@@ -246,10 +246,13 @@ export async function deleteExternalReferenceUseCase(params: {
   return params.transactions.runInTransaction(async (dataAccess) => {
     const reference = await dataAccess.externalAccountingReferences.getById(params.input.referenceId);
     assertCondition(reference, 'not-found', `No existe el documento laboral con ID ${params.input.referenceId}.`);
+    const [movement, links] = await Promise.all([
+      reference.linkedMovementId ? dataAccess.financialMovements.getById(reference.linkedMovementId) : Promise.resolve(null),
+      dataAccess.employeeAccountingLinks.listByReferenceAndPeriod(reference.id, reference.period),
+    ]);
 
     let reversalMovementId: string | null = null;
     if (reference.linkedMovementId) {
-      const movement = await dataAccess.financialMovements.getById(reference.linkedMovementId);
       if (movement && movement.status === 'posted') {
         const reversalDate = new Date();
         reversalMovementId = await dataAccess.financialMovements.create(
@@ -302,7 +305,6 @@ export async function deleteExternalReferenceUseCase(params: {
       }
     }
 
-    const links = await dataAccess.employeeAccountingLinks.listByReferenceAndPeriod(reference.id, reference.period);
     for (const link of links) {
       await dataAccess.employeeAccountingLinks.delete(link.id, actor.uid);
     }

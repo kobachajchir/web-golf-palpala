@@ -26,6 +26,10 @@ function getLaborCreditor(referenceType: ExternalReferenceType) {
   return LABOR_CREDITORS[referenceType] ?? '';
 }
 
+function getExternalReferenceStatusLabel(status: 'recorded' | 'linked' | 'paid') {
+  return { recorded: 'Registrado', linked: 'Vinculado', paid: 'Pagado' }[status];
+}
+
 function getArgentinaToday() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Argentina/Buenos_Aires',
@@ -57,6 +61,7 @@ export function AccountingExternalDocsPage() {
   const externalDocs = useExternalDocuments(period);
   const [employees, setEmployees] = useState<Array<EntityWithId<EmployeeDocument>>>([]);
   const [notice, setNotice] = useState<AccountingNotice>(null);
+  const [feedbackDismissed, setFeedbackDismissed] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<(typeof externalDocs.documents)[number] | null>(null);
   const [documentToDelete, setDocumentToDelete] = useState<(typeof externalDocs.documents)[number] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -91,6 +96,10 @@ export function AccountingExternalDocsPage() {
       setForm((current) => ({ ...current, paymentMethodId: current.paymentMethodId || methods[0]?.id || '' }));
     });
   }, []);
+
+  useEffect(() => {
+    setFeedbackDismissed(false);
+  }, [notice, externalDocs.error]);
 
   useEffect(() => {
     if (selectedDocument) {
@@ -138,7 +147,6 @@ export function AccountingExternalDocsPage() {
       employeeId,
       period: targetPeriod,
       referenceId,
-      allocatedAmountMinor: null,
       notes: `Documento laboral vinculado automaticamente al periodo ${targetPeriod}.`,
     })));
     return employeeIds.filter((_, index) => results[index]?.status === 'rejected');
@@ -283,19 +291,26 @@ export function AccountingExternalDocsPage() {
         </div>
       </section>
 
-      {(notice || externalDocs.error) && (
+      {!feedbackDismissed && (notice || externalDocs.error) && (
         <div className="accounting-external-docs-feedback">
+          <button className="accounting-external-docs-feedback__close" type="button" aria-label="Cerrar notificacion" title="Cerrar" onClick={() => setFeedbackDismissed(true)}>×</button>
           <AccountingInlineNotice notice={notice ?? { kind: 'error', message: externalDocs.error }} />
-          {pendingLinks.map((pending) => (
-            <UiActionButton key={pending.referenceId} type="button" variant="secondary" compact disabled={isRelinking} onClick={() => void handleRetryLinks(pending)}>
-              {isRelinking ? 'Vinculando...' : `Reintentar ${pending.employeeIds.length} vinculos de ${formatPeriod(pending.period)}`}
-            </UiActionButton>
-          ))}
           {externalDocs.error && (
             <UiActionButton type="button" variant="secondary" compact disabled={externalDocs.loading} onClick={() => void handleRefreshList()}>
               Actualizar listado
             </UiActionButton>
           )}
+        </div>
+      )}
+
+      {pendingLinks.length > 0 && (
+        <div className="accounting-external-docs-pending">
+          <strong>Vinculos con empleados pendientes</strong>
+          {pendingLinks.map((pending) => (
+            <UiActionButton key={pending.referenceId} type="button" variant="secondary" compact disabled={isRelinking} onClick={() => void handleRetryLinks(pending)}>
+              {isRelinking ? 'Vinculando...' : `Reintentar ${pending.employeeIds.length} vinculos de ${formatPeriod(pending.period)}`}
+            </UiActionButton>
+          ))}
         </div>
       )}
 
@@ -410,7 +425,7 @@ export function AccountingExternalDocsPage() {
                           <small>{document.providerName ?? 'Sin proveedor'} - {document.referenceNumber ?? 'Sin numero'} - {formatTimestamp(document.documentDate)}</small>
                         </div>
                         <div className="accounting-row__meta">
-                          <span className={`status-chip status-chip--${document.status}`}>{document.status}</span>
+                          <span className={`status-chip status-chip--${document.status}`}>{getExternalReferenceStatusLabel(document.status)}</span>
                           <strong>{formatCurrency(document.amountMinor)}</strong>
                         </div>
                         <div className="accounting-inline-actions">
@@ -457,7 +472,7 @@ export function AccountingExternalDocsPage() {
           <div className="accounting-full-width-section">
             <div className="summary-grid accounting-summary-grid">
               <article className="summary-card"><span>Acreedor</span><strong>{selectedDocument.providerName ?? 'Sin acreedor'}</strong><small>{selectedDocument.referenceNumber ?? 'Sin numero'}</small></article>
-              <article className="summary-card"><span>Monto</span><strong>{formatCurrency(selectedDocument.amountMinor)}</strong><small>{selectedDocument.status}</small></article>
+              <article className="summary-card"><span>Monto</span><strong>{formatCurrency(selectedDocument.amountMinor)}</strong><small>{getExternalReferenceStatusLabel(selectedDocument.status)}</small></article>
               <article className="summary-card"><span>Documento</span><strong>{formatTimestamp(selectedDocument.documentDate)}</strong><small>Vence {formatTimestamp(selectedDocument.dueDate)}</small></article>
               <article className="summary-card"><span>Empleados vinculados</span><strong>{linkedEmployees.length}</strong><small>En periodo {formatPeriod(selectedDocument.period)}</small></article>
             </div>

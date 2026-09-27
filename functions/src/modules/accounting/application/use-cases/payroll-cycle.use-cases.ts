@@ -435,7 +435,7 @@ export function parseLinkExternalReferenceToEmployeeInput(payload: unknown): Lin
     employeeId: parseRequiredString(data, 'employeeId'),
     period: parseOptionalAccountingPeriod(data, 'period') ?? parseRequiredAccountingPeriod(data, 'period'),
     referenceId: parseRequiredString(data, 'referenceId'),
-    allocatedAmountMinor: parseOptionalAmountMinor(data, 'allocatedAmountMinor') ?? null,
+    allocatedAmountMinor: data.allocatedAmountMinor === null ? null : parseOptionalAmountMinor(data, 'allocatedAmountMinor') ?? null,
     paidAt: parseOptionalIsoDate(data, 'paidAt') ?? null,
     notes: parseOptionalNullableString(data, 'notes'),
   };
