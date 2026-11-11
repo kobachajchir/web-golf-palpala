@@ -10,7 +10,7 @@ import { AccountingExternalDocsPage } from '../pages/AccountingExternalDocsPage'
 import { AccountingMemberDuesPage } from '../pages/AccountingMemberDuesPage';
 import { AccountingOverviewPage } from '../pages/AccountingOverviewPage';
 import { AccountingPaymentMethodsPage } from '../pages/AccountingPaymentMethodsPage';
-import { AccountingReportsPage } from '../pages/AccountingReportsPage';
+import { AccountingReportsV2Page } from '../pages/AccountingReportsV2Page';
 import { LegacyAccountingRedirect } from './LegacyAccountingRedirect';
 
 export function AccountingRoutes() {
@@ -35,8 +35,8 @@ export function AccountingRoutes() {
       <Route path="payment-methods" element={<AccountingPaymentMethodsPage />} />
       <Route path="bank-settlements" element={<AccountingBankSettlementsPage />} />
       <Route path="settings" element={<Navigate to="/accounting/member-dues?tab=config" replace />} />
-      <Route path="reports" element={<AccountingReportsPage />} />
-      <Route path="reports/:reportId" element={<AccountingReportsPage />} />
+      <Route path="reports" element={<AccountingReportsV2Page />} />
+      <Route path="reports/:reportId" element={<AccountingReportsV2Page />} />
       <Route path="cash-closures" element={<Navigate to="/accounting/caja?tab=caja" replace />} />
       <Route path="stats" element={<Navigate to="/accounting/reports?tab=stats" replace />} />
     </Route>

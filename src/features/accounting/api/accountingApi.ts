@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   doc,
   getDoc,
@@ -7,7 +6,6 @@ import {
   limit,
   orderBy,
   query,
-  serverTimestamp,
   where,
   type Firestore,
 } from 'firebase/firestore';
@@ -21,10 +19,12 @@ import {
   createPaymentMethodsRepository,
   createSalaryPaymentsRepository,
 } from '../../../modules/accounting/infrastructure/firestore/repositories';
-import type { AccountingPeriod, EntityWithId, MemberFeeChargeDocument } from '../../../modules/accounting/domain/models';
+import type { AccountingPeriod, EntityWithId, GenerateAccountingReportPayload, MemberFeeChargeDocument } from '../../../modules/accounting/domain/models';
+import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
 import { createEmployeesRepository, createMembersRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import type { EntityWithId as UserEntityWithId, MemberDocument } from '../../../modules/users/domain/models';
 import type {
+  AccountingReportDetailRow,
   AccountingReportHistoryDocument,
   AccountingReportSummary,
   AccountingSummary,
@@ -37,6 +37,7 @@ import { buildChargesByMemberId, estimateMemberFeeAmountMinor, getChargeTargetMe
 import { isVisiblePaymentMethod } from '../utils/paymentMethods';
 
 const ACCOUNTING_REPORTS_COLLECTION = 'accounting_reports';
+const accountingCallables = createAccountingCallables();
 export const MEMBER_FEE_RENEWAL_MIN_PERIOD = '2026-07' as AccountingPeriod;
 
 function requireFirestore(): Firestore {
@@ -48,7 +49,8 @@ function requireFirestore(): Firestore {
 }
 
 function isOpenFeeCharge(charge: EntityWithId<MemberFeeChargeDocument>) {
-  return charge.status === 'pending' || charge.status === 'overdue';
+  return (charge.status === 'pending' || charge.status === 'overdue')
+    && getChargeOutstandingAmountMinor(charge) > 0;
 }
 
 function dedupeFeeCharges(charges: Array<EntityWithId<MemberFeeChargeDocument>>) {
@@ -94,7 +96,7 @@ export function getMembersWithoutCurrentPeriodPayment({
   const openSelectedPeriodMemberIds = new Set<string>();
   periodFeeCharges.forEach((charge) => {
     const targetMemberIds = getChargeTargetMemberIds(charge, members);
-    if (charge.status === 'paid' || charge.status === 'exempt') {
+    if (charge.status === 'paid' || charge.status === 'exempt' || getChargeOutstandingAmountMinor(charge) <= 0) {
       targetMemberIds.forEach((memberId) => settledMemberIds.add(memberId));
       return;
     }
@@ -190,15 +192,15 @@ export async function getAccountingSummary(period = getCurrentAccountingPeriod()
   ] = await Promise.all([
     financialConfigsRepository.getActive(),
     paymentMethodsRepository.listActiveWithCommissions(),
-    financialMovementsRepository.listRecent(10),
+    financialMovementsRepository.listRecent(10).catch(() => []),
     financialMovementsRepository.listByAccountingPeriod(period),
-    macroDebitSettlementsRepository.listRecent(6),
-    salaryPaymentsRepository.listByPeriod(period),
-    externalAccountingReferencesRepository.listByPeriod(period),
+    macroDebitSettlementsRepository.listRecent(6).catch(() => []),
+    salaryPaymentsRepository.listByPeriod(period).catch(() => []),
+    externalAccountingReferencesRepository.listByPeriod(period).catch(() => []),
     memberFeeChargesRepository.listByPeriod(period),
     memberFeeChargesRepository.listByPeriodRange(MEMBER_FEE_RENEWAL_MIN_PERIOD, getCurrentAccountingPeriod()),
     membersRepository.listDirectory(),
-    employeesRepository.listAlphabetical(10),
+    employeesRepository.listAlphabetical(10).catch(() => []),
     membersRepository.countActive(),
     employeesRepository.countActive(),
     memberFeeChargesRepository.countPendingByPeriod(period),
@@ -269,7 +271,8 @@ export async function summarizeReportData({
     .flat()
     .filter((movement) => scope === 'period' || isMovementInsideRange(movement.operationDate, dateFrom ?? '', dateTo ?? ''));
   const visibleMovements = movements.filter((movement) => (
-    movement.status !== 'voided'
+    movement.status === 'posted'
+    && movement.installmentRole !== 'charge'
     && !isMovementExcludedFromBalance(movement)
   ));
   const feeCharges = feeGroups.flat();
@@ -291,17 +294,7 @@ export async function summarizeReportData({
   };
 }
 
-export async function generateReport({
-  title,
-  scope,
-  period,
-  dateFrom,
-  dateTo,
-  includes,
-  notes,
-  generatedBy,
-  generatedByRole,
-}: {
+export async function generateReport(payload: GenerateAccountingReportPayload | {
   title: string;
   scope: ReportScope;
   period: string;
@@ -312,41 +305,25 @@ export async function generateReport({
   generatedBy: string;
   generatedByRole: string;
 }) {
-  const db = requireFirestore();
-  const summary = await summarizeReportData({
-    scope,
-    period,
-    includes,
-    ...(dateFrom ? { dateFrom } : {}),
-    ...(dateTo ? { dateTo } : {}),
-  });
-  const payload = {
-    title,
-    kind: 'accounting_summary',
-    scope,
-    period: scope === 'period' ? normalizeAccountingPeriod(period) : null,
-    dateFrom: scope === 'date_range' ? dateFrom ?? null : null,
-    dateTo: scope === 'date_range' ? dateTo ?? null : null,
-    includes,
-    filters: {
-      scope,
-      period,
-      dateFrom: dateFrom ?? null,
-      dateTo: dateTo ?? null,
-      includes,
-    },
-    format: 'screen',
-    generatedAt: serverTimestamp(),
-    generatedBy,
-    generatedByRole,
-    status: 'generated',
-    downloadUrl: null,
-    notes: notes?.trim() || null,
-    summary,
-  };
-
-  const reportRef = await addDoc(collection(db, ACCOUNTING_REPORTS_COLLECTION), payload);
-  return reportRef.id;
+  const normalizedPayload: GenerateAccountingReportPayload = 'template' in payload
+    ? payload
+    : {
+        requestId: crypto.randomUUID(),
+        title: payload.title,
+        template: 'custom',
+        scope: payload.scope,
+        period: normalizeAccountingPeriod(payload.period),
+        dateFrom: payload.dateFrom ?? null,
+        dateTo: payload.dateTo ?? null,
+        movementTypes: ['income', 'expense'],
+        categoryIds: [],
+        includePaidDues: payload.includes.includes('fees'),
+        includeUnpaidPeriod: payload.includes.includes('fees'),
+        includeUnpaidAccumulated: payload.includes.includes('fees'),
+        notes: payload.notes ?? null,
+      };
+  const result = await accountingCallables.generateReport(normalizedPayload);
+  return result.reportId;
 }
 
 export async function listReportHistory() {
@@ -364,12 +341,15 @@ export async function listReportHistory() {
 export async function getReportHistoryItem(reportId: string) {
   const db = requireFirestore();
   const snapshot = await getDoc(doc(db, ACCOUNTING_REPORTS_COLLECTION, reportId));
-  return snapshot.exists()
-    ? {
-        id: snapshot.id,
-        ...(snapshot.data() as AccountingReportHistoryDocument),
-      }
+  if (!snapshot.exists()) return null;
+  const report = snapshot.data() as AccountingReportHistoryDocument;
+  const chunkSnapshot = report.schemaVersion === 2
+    ? await getDocs(query(collection(db, ACCOUNTING_REPORTS_COLLECTION, reportId, 'chunks'), orderBy('index', 'asc')))
     : null;
+  const detailRows = chunkSnapshot?.docs.flatMap((entry) => (
+    (entry.data().rows ?? []) as AccountingReportDetailRow[]
+  )) ?? [];
+  return { id: snapshot.id, ...report, detailRows };
 }
 
 export async function listCashMovements(period: string) {

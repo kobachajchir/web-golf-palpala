@@ -58,7 +58,7 @@ export type AccountingSummary = {
 
 export type ReportInclude = 'movements' | 'cash_flow' | 'payment_methods' | 'categories' | 'fees' | 'salaries';
 export type ReportScope = 'period' | 'date_range';
-export type ReportStatus = 'generated' | 'failed';
+export type ReportStatus = 'generating' | 'generated' | 'failed';
 
 export type AccountingReportSummary = {
   incomeTotalMinor: number;
@@ -67,25 +67,69 @@ export type AccountingReportSummary = {
   movementCount: number;
   feePendingMinor: number;
   salaryTotalMinor: number;
+  paidDuesMinor?: number;
+  unpaidPeriodMinor?: number;
+  unpaidAccumulatedMinor?: number;
+};
+
+export type AccountingReportSection = {
+  key: string;
+  label: string;
+  count: number;
+  grossAmountMinor: number;
+  commissionAmountMinor: number;
+  netAmountMinor: number;
+  outstandingAmountMinor: number;
+};
+
+export type AccountingReportDetailRow = {
+  id: string;
+  section: 'movements' | 'green_fee' | 'dues_paid' | 'dues_unpaid_period' | 'dues_unpaid_accumulated';
+  date: string | null;
+  label: string;
+  categoryId: string | null;
+  categoryLabel: string | null;
+  groupKey: string | null;
+  groupLabel: string | null;
+  movementType: 'income' | 'expense' | null;
+  memberId: string | null;
+  memberName: string | null;
+  period: string | null;
+  paymentMethodId: string | null;
+  paymentMethodLabel: string | null;
+  grossAmountMinor: number;
+  commissionAmountMinor: number;
+  netAmountMinor: number;
+  outstandingAmountMinor: number;
+  status: string;
 };
 
 export type AccountingReportHistoryDocument = {
+  schemaVersion?: number;
   title: string;
-  kind: 'accounting_summary';
+  kind: 'accounting_summary' | 'accounting_snapshot';
+  template?: 'categories' | 'green_fee' | 'member_dues' | 'custom';
   scope: ReportScope;
   period?: AccountingPeriod | null;
   dateFrom?: string | null;
   dateTo?: string | null;
   includes: ReportInclude[];
   filters: Record<string, unknown>;
-  format: 'screen';
+  format: 'screen' | Array<'screen' | 'pdf' | 'excel'>;
   generatedAt: Timestamp;
+  sourceCutoffAt?: Timestamp;
+  completedAt?: Timestamp;
   generatedBy: string;
-  generatedByRole: string;
+  generatedByRole: string | string[];
   status: ReportStatus;
   downloadUrl?: string | null;
   notes?: string | null;
+  errorMessage?: string | null;
   summary: AccountingReportSummary;
+  sections?: AccountingReportSection[];
+  detailRowCount?: number;
+  chunkCount?: number;
+  detailRows?: AccountingReportDetailRow[];
 };
 
 export type CashClosureSnapshot = {
