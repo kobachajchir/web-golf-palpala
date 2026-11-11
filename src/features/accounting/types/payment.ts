@@ -31,6 +31,7 @@ export type ManualPaymentRequest = {
   allocationAmountsByChargeId?: Record<string, number>;
   settlementAmountsByChargeId?: Record<string, number>;
   periodAllocations?: Array<{
+    expectedAvailableMinor?: number;
     period: AccountingPeriod;
     amountMinor: number;
     settlementAmountMinor?: number;

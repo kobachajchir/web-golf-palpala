@@ -24,5 +24,5 @@ export async function prepareMemberFeeStatus(dataAccess: AccountingDataAccess, m
   for (let count = 0; count < 12000 && rows.some((row) => row.period === next && (row.status === 'paid' || row.status === 'exempt')); count++) {
     next = toClubAccountingPeriod(calculateMembershipRenewalDueDateFromPeriod(next));
   }
-  return { membershipRenewalStatus: debt.length ? 'needs_renewal' as const : 'current' as const, membershipRenewalDueAt: Timestamp.fromDate(new Date(`${debt[0]?.period ?? next}-01T00:00:00-03:00`)) };
+  return { membershipRenewalStatus: debt.length || next === current ? 'needs_renewal' as const : 'current' as const, membershipRenewalDueAt: Timestamp.fromDate(new Date(`${debt[0]?.period ?? next}-01T00:00:00-03:00`)) };
 }

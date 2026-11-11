@@ -28,6 +28,7 @@ import {
 } from './fee.use-cases.js';
 
 export interface MemberFeePaymentAllocationInput {
+  expectedAvailableMinor?: number | undefined;
   chargeId?: string | undefined;
   memberId?: string | undefined;
   period?: AccountingPeriod | undefined;
@@ -270,6 +271,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
 
       const previouslyPaidMinor = resolveStoredPaidAmount(charge, settlementAmountMinor);
       const availableMinor = Math.max(settlementAmountMinor - previouslyPaidMinor, 0);
+      assertCondition(inputAllocation.expectedAvailableMinor === undefined || inputAllocation.expectedAvailableMinor === availableMinor, 'failed-precondition', 'El importe de la cuota cambio. Actualiza la vista previa antes de confirmar.');
       assertCondition(availableMinor > 0, 'failed-precondition', `La cuota ${charge.period} no tiene saldo pendiente.`);
       const appliedAmountMinor = inputAllocation.amountMinor ?? availableMinor;
       assertCondition(appliedAmountMinor > 0, 'invalid-argument', 'El importe parcial debe ser mayor a cero.');
@@ -425,6 +427,7 @@ export function parseRegisterMemberFeeBatchPaymentInput(payload: unknown): Regis
   const allocations = data.allocations.map((rawAllocation) => {
     const allocation = assertIsRecord(rawAllocation);
     return {
+      expectedAvailableMinor: allocation.expectedAvailableMinor === undefined ? undefined : parseRequiredAmountMinor(allocation, 'expectedAvailableMinor'),
       chargeId: parseOptionalString(allocation, 'chargeId'),
       memberId: parseOptionalString(allocation, 'memberId'),
       period: parseOptionalAccountingPeriod(allocation, 'period'),

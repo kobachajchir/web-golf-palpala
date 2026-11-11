@@ -306,6 +306,7 @@ export function ManualIncomeForm({
     if (!selectedMember || !shouldManageMemberFeeRenewals) return;
     let active = true;
     setAdvanceQuote(null);
+    setRenewalsError('');
     accountingCallables.previewMemberFeePayment({ memberId: selectedMember.id, periods: [...new Set([...advancePeriods, memberFeePeriod])], operationDate: buildArgentinaDateIso(operationDate) }).then((quote) => { if (active) setAdvanceQuote(quote); }).catch((error) => { if (active) setRenewalsError(error instanceof Error ? error.message : 'No pudimos calcular el adelanto.'); });
     return () => { active = false; };
   }, [selectedMember?.id, shouldManageMemberFeeRenewals, advancePeriods, memberFeePeriod, operationDate]);
@@ -835,7 +836,7 @@ export function ManualIncomeForm({
         let remainingPaymentMinor = amountMinor;
         const allocationAmountsByChargeId: Record<string, number> = {};
         const settlementAmountsByChargeId: Record<string, number> = {};
-        const periodAllocations: Array<{ period: AccountingPeriod; amountMinor: number; settlementAmountMinor?: number }> = [];
+        const periodAllocations: Array<{ period: AccountingPeriod; amountMinor: number; expectedAvailableMinor?: number; settlementAmountMinor?: number }> = [];
         if (settlesAsFinalAmount) {
           const renewal = selectedPendingRenewalLines[0]!;
           if (renewal.isGenerated && renewal.period) {
@@ -855,7 +856,7 @@ export function ManualIncomeForm({
             const allocatedAmountMinor = Math.min(remainingPaymentMinor, renewal.payableAmountMinor);
             if (allocatedAmountMinor <= 0) continue;
             if (renewal.isGenerated && renewal.period) {
-              periodAllocations.push({ period: renewal.period, amountMinor: allocatedAmountMinor });
+              periodAllocations.push({ period: renewal.period, amountMinor: allocatedAmountMinor, expectedAvailableMinor: renewal.payableAmountMinor });
             } else {
               allocationAmountsByChargeId[renewal.id] = allocatedAmountMinor;
             }

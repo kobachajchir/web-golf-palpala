@@ -79,6 +79,7 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
     }), ...periodAllocations.map((allocation) => ({
       memberId: request.memberId,
       period: allocation.period,
+      ...(allocation.expectedAvailableMinor !== undefined ? { expectedAvailableMinor: allocation.expectedAvailableMinor } : {}),
       amountMinor: allocation.amountMinor,
       ...(allocation.settlementAmountMinor !== undefined
         ? { settlementAmountMinor: allocation.settlementAmountMinor }
