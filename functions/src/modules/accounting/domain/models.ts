@@ -413,6 +413,8 @@ export interface MemberFeeChargeDocument extends AuditFields {
   paymentDiscountPctBps?: Bps | null;
   paymentDiscountAmountMinor?: AmountMinor | null;
   paymentDiscountMode?: 'automatic' | 'manual' | 'none' | null;
+  /** Plan de pagos parciales pendiente que tiene reservada esta cuota. */
+  activePartialPlanId?: DocId | null;
   notes?: string | null;
 }
 

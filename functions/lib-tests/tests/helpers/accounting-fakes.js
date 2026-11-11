@@ -561,6 +561,12 @@ class InMemoryEmployeeAccountingLinksStore {
     async findByEmployeePeriodAndReferenceType(params) {
         return Array.from(this.items.values()).find((item) => item.employeeId === params.employeeId && item.period === params.period && item.referenceType === params.referenceType) ?? null;
     }
+    async listByReferenceAndPeriod(referenceId, period) {
+        return Array.from(this.items.values()).filter((item) => item.referenceId === referenceId && item.period === period);
+    }
+    async delete(linkId) {
+        this.items.delete(linkId);
+    }
     async create(data, actorUid) {
         const id = this.nextId();
         this.items.set(id, { id, ...data, ...createAudit(actorUid) });
@@ -692,6 +698,14 @@ class InMemoryExternalAccountingReferencesStore {
     }
     async getById(referenceId) {
         return this.items.get(referenceId) ?? null;
+    }
+    async createWithId(referenceId, data, actorUid) {
+        if (this.items.has(referenceId))
+            throw new Error(`Ya existe external_accounting_references/${referenceId}.`);
+        this.items.set(referenceId, { id: referenceId, ...data, ...createAudit(actorUid) });
+    }
+    async delete(id) {
+        this.items.delete(id);
     }
     async findByEmployeePeriodAndReferenceType(params) {
         return Array.from(this.items.values()).find((item) => item.employeeId === params.employeeId && item.period === params.period && item.referenceType === params.referenceType) ?? null;

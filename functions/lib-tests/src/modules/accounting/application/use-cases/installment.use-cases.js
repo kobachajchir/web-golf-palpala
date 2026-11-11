@@ -1,9 +1,249 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { ACCOUNTING_COLLECTIONS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
+import { createHash } from 'node:crypto';
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
+import { ACCOUNTING_COLLECTIONS, FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import { assertIsRecord, calculateAmountFromBps, ensureAuthenticatedActor, ensureStaff, parseOptionalNullableString, parseOptionalRecord, parseRequiredAmountMinor, parseRequiredBps, parseRequiredInteger, parseRequiredIsoDate, parseRequiredString, toClubAccountingPeriod, } from '../shared.js';
 import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 import { createPostedMovement } from '../movement-helpers.js';
+import { assertChargeNotLockedByPartialPlan } from '../member-fee-plan-lock.js';
+import { buildMemberFeeChargeCreateData, computeFeePreviewInternal } from './fee.use-cases.js';
+function isAccountingPeriod(value) {
+    return typeof value === 'string' && /^\d{4}-\d{2}$/.test(value);
+}
+function readMemberFeePlanAllocations(metadata) {
+    const value = metadata?.memberFeeRenewalAllocations;
+    if (!Array.isArray(value))
+        return [];
+    return value.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object')
+            return [];
+        const record = entry;
+        if (!isAccountingPeriod(record.period)
+            || typeof record.settlementAmountMinor !== 'number'
+            || !Number.isInteger(record.settlementAmountMinor)
+            || record.settlementAmountMinor <= 0) {
+            return [];
+        }
+        const discountMode = record.discountMode === 'automatic' || record.discountMode === 'manual'
+            ? record.discountMode
+            : 'none';
+        return [{
+                chargeId: typeof record.chargeId === 'string' && record.chargeId.trim() ? record.chargeId : null,
+                period: record.period,
+                settlementAmountMinor: record.settlementAmountMinor,
+                discountPctBps: typeof record.discountPctBps === 'number' ? record.discountPctBps : 0,
+                discountAmountMinor: typeof record.discountAmountMinor === 'number' ? record.discountAmountMinor : 0,
+                discountMode,
+            }];
+    });
+}
+function isOpenMemberFeeCharge(charge) {
+    return charge.status === 'pending' || charge.status === 'overdue';
+}
+async function resolveLegacyMemberFeeAllocation(dataAccess, root) {
+    const memberId = root.thirdPartyType === 'member' ? root.thirdPartyId : null;
+    const period = root.metadata?.periodMonth;
+    if (!memberId || !isAccountingPeriod(period))
+        return [];
+    const member = await dataAccess.members.getById(memberId);
+    if (!member)
+        return [];
+    const pages = await Promise.all([
+        dataAccess.memberFeeCharges.listPage({ memberId, period, limit: 100 }),
+        ...(member.familyGroupId
+            ? [dataAccess.memberFeeCharges.listPage({ familyGroupId: member.familyGroupId, period, limit: 100 })]
+            : []),
+    ]);
+    const candidates = new Map();
+    pages.flatMap((page) => page.items)
+        .filter(isOpenMemberFeeCharge)
+        .forEach((charge) => candidates.set(charge.id, charge));
+    if (candidates.size !== 1)
+        return [];
+    const charge = [...candidates.values()][0];
+    return [{
+            chargeId: charge.id,
+            period,
+            settlementAmountMinor: charge.settlementAmountMinor ?? charge.finalAmountMinor,
+            discountPctBps: charge.paymentDiscountPctBps ?? 0,
+            discountAmountMinor: charge.paymentDiscountAmountMinor ?? 0,
+            discountMode: charge.paymentDiscountMode ?? 'none',
+        }];
+}
+async function prepareCompletedMemberFeeRenewals(params) {
+    const actions = [];
+    if (params.root.categoryId !== FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
+        && params.root.categoryCodeSnapshot !== FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria) {
+        return actions;
+    }
+    const memberId = typeof params.root.metadata?.memberFeeMemberId === 'string'
+        ? params.root.metadata.memberFeeMemberId
+        : params.root.thirdPartyType === 'member'
+            ? params.root.thirdPartyId
+            : null;
+    if (!memberId)
+        return actions;
+    const member = await params.dataAccess.members.getById(memberId);
+    if (!member)
+        return actions;
+    const storedAllocations = readMemberFeePlanAllocations(params.root.metadata);
+    const allocations = storedAllocations.length > 0
+        ? storedAllocations
+        : await resolveLegacyMemberFeeAllocation(params.dataAccess, params.root);
+    for (const allocation of allocations) {
+        let charge = allocation.chargeId
+            ? await params.dataAccess.memberFeeCharges.getById(allocation.chargeId)
+            : null;
+        let createData = null;
+        if (!charge) {
+            const preview = await computeFeePreviewInternal({
+                dataAccess: params.dataAccess,
+                memberId,
+                period: allocation.period,
+            });
+            charge = await params.dataAccess.memberFeeCharges.findDuplicate({
+                memberId: preview.billingMode === 'per_member' ? preview.memberId : preview.holderMemberId ?? null,
+                familyGroupId: preview.billingMode === 'single_group_charge' ? preview.familyGroupId ?? null : null,
+                period: preview.period,
+                billingMode: preview.billingMode,
+            });
+            if (!charge) {
+                createData = buildMemberFeeChargeCreateData({
+                    preview,
+                    actorUid: params.actorUid,
+                    dueDate: new Date(allocation.period + '-01T00:00:00-03:00'),
+                    notes: 'Cuota creada al completar un plan de pagos parciales.',
+                });
+                charge = { ...createData, id: 'temp-id' };
+            }
+        }
+        const resolvedCharge = charge;
+        const belongsToMember = resolvedCharge.memberId === memberId
+            || Boolean(member.familyGroupId && resolvedCharge.familyGroupId === member.familyGroupId);
+        assertCondition(belongsToMember && resolvedCharge.period === allocation.period, 'failed-precondition', 'La renovacion vinculada al plan no corresponde al socio y periodo seleccionados.');
+        assertCondition(resolvedCharge.status !== 'paid' && resolvedCharge.status !== 'exempt', 'failed-precondition', `La cuota ${resolvedCharge.period} ya fue cobrada por otra via. No se registran mas abonos en este plan para evitar un cobro duplicado.`);
+        if (resolvedCharge.activePartialPlanId && resolvedCharge.activePartialPlanId !== params.root.id) {
+            await assertChargeNotLockedByPartialPlan(params.dataAccess, resolvedCharge, params.root.id);
+        }
+        const paidFromRemaining = typeof resolvedCharge.remainingAmountMinor === 'number'
+            ? (resolvedCharge.settlementAmountMinor ?? resolvedCharge.finalAmountMinor) - resolvedCharge.remainingAmountMinor
+            : 0;
+        const previouslyPaidMinor = Math.max(resolvedCharge.paidClubAmountMinor ?? 0, resolvedCharge.paidAmountMinor ?? 0, paidFromRemaining, 0);
+        const usesLegacyUnpaidSettlement = resolvedCharge.settlementAmountMinor === resolvedCharge.finalAmountMinor
+            && previouslyPaidMinor === 0
+            && (resolvedCharge.paymentDiscountAmountMinor ?? 0) === 0;
+        const settlementAmountMinor = usesLegacyUnpaidSettlement
+            ? allocation.settlementAmountMinor
+            : resolvedCharge.settlementAmountMinor ?? allocation.settlementAmountMinor;
+        const paidAmountMinor = Math.min(previouslyPaidMinor + allocation.settlementAmountMinor, settlementAmountMinor);
+        const completed = paidAmountMinor >= settlementAmountMinor;
+        const updatePayload = {
+            status: completed ? 'paid' : resolvedCharge.status,
+            paidAt: completed ? Timestamp.fromDate(params.paidAt) : resolvedCharge.paidAt ?? null,
+            paidAmountMinor,
+            settlementAmountMinor,
+            paidClubAmountMinor: paidAmountMinor,
+            remainingAmountMinor: Math.max(settlementAmountMinor - paidAmountMinor, 0),
+            paymentDiscountPctBps: allocation.discountPctBps,
+            paymentDiscountAmountMinor: allocation.discountAmountMinor,
+            paymentDiscountMode: allocation.discountMode,
+            activePartialPlanId: null,
+            _completed: completed,
+            _previousPaymentMovementIds: resolvedCharge.paymentMovementIds ?? [],
+            _previousPaidMovementId: resolvedCharge.paidMovementId ?? null,
+        };
+        if (createData) {
+            actions.push({ type: 'create', data: { ...createData, ...updatePayload } });
+        }
+        else {
+            actions.push({ type: 'update', id: resolvedCharge.id, data: updatePayload });
+        }
+    }
+    return actions;
+}
+async function applyCompletedMemberFeeRenewals(params) {
+    for (const action of params.actions) {
+        const { _completed, _previousPaymentMovementIds, _previousPaidMovementId, ...payload } = action.data;
+        const finalPayload = {
+            ...payload,
+            paidMovementId: _completed ? params.paymentMovementId : _previousPaidMovementId,
+            paymentMovementIds: [...new Set([..._previousPaymentMovementIds, ...params.paymentMovementIds])],
+        };
+        if (action.type === 'create') {
+            await params.dataAccess.memberFeeCharges.create(finalPayload, params.actorUid);
+        }
+        else {
+            await params.dataAccess.memberFeeCharges.update(action.id, finalPayload, params.actorUid);
+        }
+    }
+}
+function isMemberFeePlan(root) {
+    return root.categoryId === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
+        || root.categoryCodeSnapshot === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria;
+}
+/**
+ * Resuelve (y si hace falta prepara la emision de) las cuotas que cubre un plan de pagos
+ * parciales para poder reservarlas. Solo lee: las escrituras se hacen despues de crear el plan.
+ */
+async function resolvePlanAllocationsForLock(params) {
+    const member = await params.dataAccess.members.getById(params.memberId);
+    assertCondition(member, 'not-found', `No existe members/${params.memberId}.`);
+    const resolved = [];
+    const seen = new Set();
+    for (const allocation of params.allocations) {
+        let charge = allocation.chargeId
+            ? await params.dataAccess.memberFeeCharges.getById(allocation.chargeId)
+            : null;
+        let createData = null;
+        if (!charge) {
+            const preview = await computeFeePreviewInternal({ dataAccess: params.dataAccess, memberId: params.memberId, period: allocation.period });
+            charge = await params.dataAccess.memberFeeCharges.findDuplicate({
+                memberId: preview.billingMode === 'per_member' ? preview.memberId : preview.holderMemberId ?? null,
+                familyGroupId: preview.billingMode === 'single_group_charge' ? preview.familyGroupId ?? null : null,
+                period: preview.period,
+                billingMode: preview.billingMode,
+            });
+            if (!charge) {
+                const periodKey = `new:${allocation.period}`;
+                assertCondition(!seen.has(periodKey), 'invalid-argument', 'El mismo mes no puede incluirse dos veces en el plan.');
+                seen.add(periodKey);
+                createData = buildMemberFeeChargeCreateData({
+                    preview,
+                    actorUid: params.actorUid,
+                    dueDate: new Date(allocation.period + '-01T00:00:00-03:00'),
+                    notes: 'Cuota emitida al crear un plan de pagos parciales.',
+                });
+            }
+        }
+        if (charge) {
+            const belongsToMember = charge.memberId === params.memberId
+                || charge.holderMemberId === params.memberId
+                || Boolean(member.familyGroupId && charge.familyGroupId === member.familyGroupId && charge.billingMode === 'single_group_charge');
+            assertCondition(belongsToMember && charge.period === allocation.period, 'failed-precondition', 'La cuota seleccionada no corresponde al socio y periodo del plan.');
+            assertCondition(charge.status === 'pending' || charge.status === 'overdue', 'failed-precondition', `La cuota ${charge.period} ya no admite pagos.`);
+            await assertChargeNotLockedByPartialPlan(params.dataAccess, charge);
+            assertCondition(!seen.has(charge.id), 'invalid-argument', 'La misma cuota no puede incluirse dos veces en el plan.');
+            seen.add(charge.id);
+        }
+        resolved.push({ allocation, existingChargeId: charge?.id ?? null, createData });
+    }
+    return resolved;
+}
+/** Antes de aceptar un abono, verifica que las cuotas del plan no se hayan cobrado por otra via. */
+async function assertPlanChargesStillOpen(dataAccess, root) {
+    if (!isMemberFeePlan(root))
+        return;
+    for (const allocation of readMemberFeePlanAllocations(root.metadata)) {
+        if (!allocation.chargeId)
+            continue;
+        const charge = await dataAccess.memberFeeCharges.getById(allocation.chargeId);
+        if (!charge)
+            continue;
+        assertCondition(charge.status !== 'paid' && charge.status !== 'exempt', 'failed-precondition', `La cuota ${charge.period} ya fue cobrada por otra via. No se registran mas abonos en este plan para evitar un cobro duplicado; revisa el caso con administracion.`);
+        await assertChargeNotLockedByPartialPlan(dataAccess, charge, root.id);
+    }
+}
 function splitAmount(amountMinor, count) {
     const base = Math.floor(amountMinor / count);
     const remainder = amountMinor - base * count;
@@ -43,6 +283,16 @@ export async function createInstallmentPlanUseCase(params) {
         const category = incomeCategory ?? expenseCategory;
         assertCondition(category, 'not-found', `No existe la categoria ${params.input.categoryId}.`);
         assertCondition(category.active, 'failed-precondition', `La categoria ${params.input.categoryId} esta inactiva.`);
+        const requestedAllocations = params.input.movementType === 'income' && category.id === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
+            ? readMemberFeePlanAllocations(params.input.metadata)
+            : [];
+        const allocationMemberId = typeof params.input.metadata?.memberFeeMemberId === 'string'
+            ? params.input.metadata.memberFeeMemberId
+            : params.input.thirdPartyType === 'member' ? params.input.thirdPartyId ?? null : null;
+        assertCondition(requestedAllocations.length === 0 || Boolean(allocationMemberId), 'invalid-argument', 'El plan de cuotas societarias debe indicar el socio.');
+        const resolvedAllocations = requestedAllocations.length > 0
+            ? await resolvePlanAllocationsForLock({ dataAccess, actorUid: actor.uid, memberId: allocationMemberId, allocations: requestedAllocations })
+            : [];
         const interestAmountMinor = calculateAmountFromBps(params.input.baseAmountMinor, params.input.interestPctBps);
         const totalAmountMinor = params.input.baseAmountMinor + interestAmountMinor;
         const principalAmountsMinor = isFlexiblePartialPlan
@@ -115,11 +365,23 @@ export async function createInstallmentPlanUseCase(params) {
             },
             notes: params.input.notes ?? null,
         }, actor.uid);
+        const lockedAllocations = [];
+        for (const entry of resolvedAllocations) {
+            let chargeId = entry.existingChargeId;
+            if (entry.createData) {
+                chargeId = await dataAccess.memberFeeCharges.create({ ...entry.createData, activePartialPlanId: movementId }, actor.uid);
+            }
+            else if (chargeId) {
+                await dataAccess.memberFeeCharges.update(chargeId, { activePartialPlanId: movementId }, actor.uid);
+            }
+            lockedAllocations.push({ ...entry.allocation, chargeId });
+        }
         await dataAccess.financialMovements.update(movementId, {
             installmentPlanId: movementId,
             originId: movementId,
             metadata: {
                 ...(params.input.metadata ?? {}),
+                ...(resolvedAllocations.length > 0 ? { memberFeeRenewalAllocations: lockedAllocations } : {}),
                 installmentPlanId: movementId,
                 partialPaymentMode: isFlexiblePartialPlan ? 'flexible' : 'scheduled',
                 installmentSchedule: schedule,
@@ -143,11 +405,20 @@ export async function createInstallmentPlanUseCase(params) {
 export async function registerInstallmentPaymentUseCase(params) {
     const actor = ensureStaff(params.actor);
     return params.transactions.runInTransaction(async (dataAccess) => {
+        const operationKey = params.input.idempotencyKey ? createHash('sha256').update(actor.uid + ':partial:' + params.input.idempotencyKey).digest('hex') : null;
+        const fingerprint = createHash('sha256').update(JSON.stringify(params.input)).digest('hex');
+        const previous = operationKey ? await dataAccess.operations?.get(operationKey) : null;
+        if (previous) {
+            assertCondition(previous.fingerprint === fingerprint, 'already-exists', 'Ya se registro un abono con esta operacion (posiblemente tras un corte o una demora). Revisa el detalle del plan antes de volver a cobrar.', { movementId: previous.result?.movementId ?? null });
+            return { ...previous.result, duplicate: true };
+        }
         await assertCashOperationDateAllowed({ dataAccess, operationDate: params.input.operationDate });
         const root = await dataAccess.financialMovements.getById(params.input.installmentPlanId);
         assertCondition(root, 'not-found', `No existe la carga ${params.input.installmentPlanId}.`);
         assertCondition(root.installmentRole === 'charge', 'failed-precondition', 'El movimiento no es una carga en cuotas.');
         assertCondition(root.status !== 'voided' && root.status !== 'reversed', 'failed-precondition', 'La carga esta anulada.');
+        assertCondition(root.status === 'pending', 'failed-precondition', 'El plan ya esta completo.');
+        await assertPlanChargesStillOpen(dataAccess, root);
         const linkedMovements = await dataAccess.financialMovements.listByInstallmentPlanId(root.id);
         const postedPayments = linkedMovements
             .filter((movement) => movement.installmentRole === 'payment' && movement.status === 'posted')
@@ -173,6 +444,21 @@ export async function registerInstallmentPaymentUseCase(params) {
         assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.input.paymentMethodId} esta inactivo.`);
         const paymentReference = params.input.paymentReference?.trim() || null;
         assertCondition(paymentMethod.id === PAYMENT_METHOD_IDS.cash || Boolean(paymentReference), 'invalid-argument', 'La referencia es obligatoria para medios distintos de efectivo.');
+        const activeCommissionRule = await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
+        const paidAmountMinor = currentPaidAmountMinor + scheduledAmountMinor;
+        const paidCount = postedPayments.length + 1;
+        const completed = paidAmountMinor >= totalAmountMinor;
+        let memberFeeActions = [];
+        if (completed) {
+            memberFeeActions = await prepareCompletedMemberFeeRenewals({
+                dataAccess,
+                actorUid: actor.uid,
+                root,
+                paidAt: params.input.operationDate,
+            });
+        }
+        const membershipStatus = completed && root.thirdPartyType === 'member' && root.thirdPartyId
+            ? await prepareMemberFeeStatus(dataAccess, root.thirdPartyId, memberFeeActions.map((action) => ({ id: action.type === 'update' ? action.id : undefined, period: action.data.period, status: action.data.status }))) : null;
         const movement = await createPostedMovement({
             dataAccess,
             actorUid: actor.uid,
@@ -187,6 +473,8 @@ export async function registerInstallmentPaymentUseCase(params) {
             thirdPartyType: root.thirdPartyType ?? null,
             thirdPartyId: root.thirdPartyId ?? null,
             paymentMethodId: paymentMethod.id,
+            prefetchedPaymentMethod: paymentMethod,
+            prefetchedActiveCommissionRule: activeCommissionRule,
             bancarizado: paymentMethod.bancarizado,
             imputableImpositivo: root.imputableImpositivo,
             metadata: {
@@ -206,9 +494,6 @@ export async function registerInstallmentPaymentUseCase(params) {
         const receiptNumber = root.movementType === 'income'
             ? buildReceiptNumber(params.input.operationDate, movement.movementId)
             : null;
-        const paidAmountMinor = currentPaidAmountMinor + scheduledAmountMinor;
-        const paidCount = postedPayments.length + 1;
-        const completed = paidAmountMinor >= totalAmountMinor;
         await dataAccess.financialMovements.update(movement.movementId, {
             installmentPlanId: root.id,
             installmentRole: 'payment',
@@ -246,7 +531,19 @@ export async function registerInstallmentPaymentUseCase(params) {
             installmentPaidAmountMinor: paidAmountMinor,
             installmentPaidCount: paidCount,
         }, actor.uid);
-        return {
+        if (completed) {
+            await applyCompletedMemberFeeRenewals({
+                dataAccess,
+                actorUid: actor.uid,
+                actions: memberFeeActions,
+                paymentMovementId: movement.movementId,
+                paymentMovementIds: [...postedPayments.map((payment) => payment.id), movement.movementId],
+            });
+        }
+        if (membershipStatus && root.thirdPartyId)
+            await dataAccess.members.update(root.thirdPartyId, membershipStatus, actor.uid);
+        const result = {
+            duplicate: false,
             movementId: movement.movementId,
             installmentPlanId: root.id,
             installmentNumber: nextInstallmentNumber,
@@ -259,6 +556,9 @@ export async function registerInstallmentPaymentUseCase(params) {
             completed,
             receiptNumber,
         };
+        if (operationKey)
+            await dataAccess.operations?.set(operationKey, fingerprint, result);
+        return result;
     });
 }
 export async function listMyReceiptsUseCase(params) {
@@ -340,6 +640,7 @@ export function parseRegisterInstallmentPaymentInput(payload) {
     const notes = parseOptionalNullableString(data, 'notes');
     return {
         installmentPlanId: parseRequiredString(data, 'installmentPlanId'),
+        idempotencyKey: typeof data.idempotencyKey === 'string' ? data.idempotencyKey : undefined,
         paymentMethodId: parseRequiredString(data, 'paymentMethodId'),
         operationDate: parseRequiredIsoDate(data, 'operationDate'),
         amountMinor: data.amountMinor === undefined ? undefined : parseRequiredAmountMinor(data, 'amountMinor'),

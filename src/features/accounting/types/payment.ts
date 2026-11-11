@@ -30,6 +30,10 @@ export type ManualPaymentRequest = {
   amount: number;
   allocationAmountsByChargeId?: Record<string, number>;
   settlementAmountsByChargeId?: Record<string, number>;
+  /** Saldo que la vista previa del servidor mostro para cada cuota; el servidor rechaza si cambio. */
+  expectedAvailableByChargeId?: Record<string, number>;
+  /** Operacion a la que pertenece la clave de idempotencia (por defecto, cobro de cuotas del socio). */
+  operationScope?: string;
   periodAllocations?: Array<{
     expectedAvailableMinor?: number;
     period: AccountingPeriod;
@@ -45,6 +49,8 @@ export type ManualPaymentReceipt = {
   receiptNumbers: string[];
   totalAmountMinor: number;
   duplicate: boolean;
+  operationScope: string;
+  operationKey: string;
 };
 
 export type PaymentComposerState = {

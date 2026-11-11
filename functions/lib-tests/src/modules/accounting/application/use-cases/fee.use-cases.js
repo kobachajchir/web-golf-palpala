@@ -10,9 +10,19 @@ async function validateLicenseIfNeeded(member, config) {
     assertCondition(member.licenseEndAt, 'failed-precondition', 'La licencia debe tener licenseEndAt.');
     validateLicenseRange(member.licenseStartAt.toDate(), member.licenseEndAt.toDate(), config.maxLicenseMonths);
 }
+function getMemberJoinedPeriod(member) {
+    const joinedAt = member.joinedAt?.toDate?.();
+    if (!joinedAt)
+        return null;
+    return String(joinedAt.getFullYear()) + '-' + String(joinedAt.getMonth() + 1).padStart(2, '0');
+}
 async function buildPreviewForSingleMember(params) {
     const config = await params.dataAccess.financialConfigs.getActive();
     assertCondition(config, 'failed-precondition', 'No existe una configuración financiera activa.');
+    const joinedPeriod = getMemberJoinedPeriod(params.member);
+    assertCondition(!joinedPeriod || params.period >= joinedPeriod, 'failed-precondition', joinedPeriod
+        ? 'No se puede generar cuota ' + params.period + ' porque el socio ingreso en ' + joinedPeriod + '.'
+        : 'No se puede generar una cuota anterior al ingreso del socio.');
     if (params.member.membershipBillingExempt) {
         const preview = buildFeePreview({
             member: params.member,
@@ -104,7 +114,7 @@ export function buildMemberFeeChargeCreateData(params) {
         paymentMovementIds: [],
         paidAt: null,
         paidAmountMinor: 0,
-        settlementAmountMinor: params.preview.finalAmountMinor,
+        settlementAmountMinor: null,
         paidClubAmountMinor: 0,
         remainingAmountMinor: params.preview.finalAmountMinor,
         paymentDiscountPctBps: 0,

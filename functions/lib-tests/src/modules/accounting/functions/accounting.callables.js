@@ -1,4 +1,6 @@
 import { logger } from 'firebase-functions';
+import { previewMemberFeePaymentUseCase } from '../application/use-cases/member-fee-payment.use-cases.js';
+import { assertIsRecord, parseRequiredString, parseRequiredStringArray, parseRequiredIsoDate } from '../application/shared.js';
 import { onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { ACCOUNTING_TIME_ZONE, DEFAULT_FINANCIAL_EXPENSE_CATEGORIES, DEFAULT_FINANCIAL_INCOME_CATEGORIES, FINANCIAL_EXPENSE_CATEGORY_IDS, FINANCIAL_INCOME_CATEGORY_IDS, } from '../domain/constants.js';
@@ -8,16 +10,17 @@ import { editInternalTransferUseCase, parseEditInternalTransferInput, parseRegis
 import { createMacroDebitSettlementUseCase, parseCreateMacroDebitSettlementInput, parseReconcileMacroSettlementInput, reconcileMacroSettlementUseCase } from '../application/use-cases/settlement.use-cases.js';
 import { parsePostExpenseMovementInput, parseRegisterExpenseMovementInput, parseReviewExpenseInput, parseSubmitExpenseInput, postExpenseMovementUseCase, registerExpenseMovementUseCase, reviewExpenseUseCase, submitExpenseUseCase, } from '../application/use-cases/expense.use-cases.js';
 import { parsePostAnnualBonusPaymentInput, parsePostSalaryPaymentInput, parseUpsertSalaryConfigurationInput, postAnnualBonusPaymentUseCase, postSalaryPaymentUseCase, upsertSalaryConfigurationUseCase, } from '../application/use-cases/salary.use-cases.js';
-import { parseRecordExternalReferenceInput, parseUpsertEmployeeExternalReferenceInput, recordExternalReferenceUseCase, upsertEmployeeExternalReferenceUseCase, } from '../application/use-cases/external-reference.use-cases.js';
+import { parseRecordExternalReferenceInput, parseUpsertEmployeeExternalReferenceInput, parseDeleteExternalReferenceInput, recordExternalReferenceUseCase, upsertEmployeeExternalReferenceUseCase, deleteExternalReferenceUseCase, } from '../application/use-cases/external-reference.use-cases.js';
 import { createHandicapChargeUseCase, parseCreateHandicapChargeInput, parseTransferHandicapToAssociationInput, parseTransferPendingHandicapToAssociationInput, transferHandicapToAssociationUseCase, transferPendingHandicapToAssociationUseCase, } from '../application/use-cases/handicap.use-cases.js';
 import { editFinancialMovementUseCase, parseEditFinancialMovementInput, parseSetFinancialMovementBalanceInclusionInput, parseVoidFinancialMovementInput, setFinancialMovementBalanceInclusionUseCase, voidFinancialMovementUseCase, } from '../application/use-cases/movement.use-cases.js';
 import { createCashClosureUseCase, closeCashClosureUseCase, parseCloseCashClosureInput, parseCreateCashClosureInput, } from '../application/use-cases/cash-closure.use-cases.js';
-import { createOvertimeEntryUseCase, linkExternalReferenceToEmployeeUseCase, listEmployeePayrollCycleUseCase, parseCreateOvertimeEntryInput, parseLinkExternalReferenceToEmployeeInput, parseListEmployeePayrollCycleInput, parsePostEmployeePayrollCycleInput, parseRecordEmployeeCertificateInput, parseReviewOvertimeEntryInput, postEmployeePayrollCycleUseCase, recordEmployeeCertificateUseCase, reviewOvertimeEntryUseCase, } from '../application/use-cases/payroll-cycle.use-cases.js';
+import { createOvertimeEntryUseCase, linkExternalReferenceToEmployeeUseCase, listEmployeePayrollCycleUseCase, parseCreateOvertimeEntryInput, parseLinkExternalReferenceToEmployeeInput, parseListEmployeePayrollCycleInput, parsePostEmployeePayrollCycleInput, parseRecordEmployeeCertificateInput, parseReviewOvertimeEntryInput, parsePayOvertimeEntryInput, payOvertimeEntryUseCase, postEmployeePayrollCycleUseCase, recordEmployeeCertificateUseCase, reviewOvertimeEntryUseCase, } from '../application/use-cases/payroll-cycle.use-cases.js';
 import { markMembershipRenewalsUseCase, syncMembershipRenewalsDailyUseCase } from '../application/use-cases/membership-renewal.use-cases.js';
 import { parseRegisterMemberFeeBatchPaymentInput, registerMemberFeeBatchPaymentUseCase, } from '../application/use-cases/member-fee-payment.use-cases.js';
 import { parseReconcileMemberFeeRenewalsInput, reconcileMemberFeeRenewalsUseCase, } from '../application/use-cases/member-fee-reconciliation.use-cases.js';
 import { createInstallmentPlanUseCase, listMyReceiptsUseCase, parseCreateInstallmentPlanInput, parseRegisterInstallmentPaymentInput, registerInstallmentPaymentUseCase, } from '../application/use-cases/installment.use-cases.js';
 import { parseUpsertPayrollConfigInput, upsertPayrollConfigUseCase } from '../application/use-cases/payroll-config.use-cases.js';
+import { generateAccountingReportUseCase, parseGenerateAccountingReportInput } from '../application/use-cases/report.use-cases.js';
 import { ensureStaff, getClubDayOfMonth, resolveActor, toClubAccountingPeriod, toHttpsError } from '../application/shared.js';
 import { FirestoreAccountingTransactionManager, SystemClock } from '../infrastructure/firestore/repositories.js';
 import { emitMemberPaymentNotification, emitRoleNotification } from '../../notifications/notifications.service.js';
@@ -73,7 +76,7 @@ function withCallableLogging(functionName, error) {
 export const accountingUpsertFinancialConfig = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return upsertFinancialConfigUseCase({
+        return await upsertFinancialConfigUseCase({
             actor,
             input: parseUpsertFinancialConfigInput(request.data),
             transactions,
@@ -86,7 +89,7 @@ export const accountingUpsertFinancialConfig = onCall(async (request) => {
 export const accountingSetCreditCommissionRule = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return setCreditCommissionRuleUseCase({
+        return await setCreditCommissionRuleUseCase({
             actor,
             input: parseSetCreditCommissionRuleInput(request.data),
             transactions,
@@ -99,7 +102,7 @@ export const accountingSetCreditCommissionRule = onCall(async (request) => {
 export const accountingGenerateFeePreview = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return generateFeePreviewUseCase({
+        return await generateFeePreviewUseCase({
             actor,
             input: parseGenerateFeePreviewInput(request.data),
             transactions,
@@ -112,7 +115,7 @@ export const accountingGenerateFeePreview = onCall(async (request) => {
 export const accountingGenerateCuota = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return generateCuotaUseCase({
+        return await generateCuotaUseCase({
             actor,
             input: parseGenerateCuotaInput(request.data),
             transactions,
@@ -183,7 +186,7 @@ export const accountingRegisterMemberFeeBatchPayment = onCall(async (request) =>
 export const accountingReconcileMemberFeeRenewals = onCall({ timeoutSeconds: 120 }, async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return reconcileMemberFeeRenewalsUseCase({
+        return await reconcileMemberFeeRenewalsUseCase({
             actor,
             input: parseReconcileMemberFeeRenewalsInput(request.data),
             transactions,
@@ -196,7 +199,7 @@ export const accountingReconcileMemberFeeRenewals = onCall({ timeoutSeconds: 120
 export const accountingCreateMacroDebitSettlement = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return createMacroDebitSettlementUseCase({
+        return await createMacroDebitSettlementUseCase({
             actor,
             input: parseCreateMacroDebitSettlementInput(request.data),
             transactions,
@@ -209,7 +212,7 @@ export const accountingCreateMacroDebitSettlement = onCall(async (request) => {
 export const accountingReconcileMacroSettlement = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return reconcileMacroSettlementUseCase({
+        return await reconcileMacroSettlementUseCase({
             actor,
             input: parseReconcileMacroSettlementInput(request.data),
             transactions,
@@ -222,7 +225,7 @@ export const accountingReconcileMacroSettlement = onCall(async (request) => {
 export const accountingSubmitExpense = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return submitExpenseUseCase({
+        return await submitExpenseUseCase({
             actor,
             input: parseSubmitExpenseInput(request.data),
             transactions,
@@ -240,7 +243,7 @@ export const accountingCreateInstallmentPlan = onCall(async (request) => {
             const staffActor = ensureStaff(actor);
             await ensureDefaultExpenseCategory(input.categoryId, staffActor.uid);
         }
-        return createInstallmentPlanUseCase({ actor, input, transactions });
+        return await createInstallmentPlanUseCase({ actor, input, transactions });
     }
     catch (error) {
         withCallableLogging('accountingCreateInstallmentPlan', error);
@@ -280,7 +283,7 @@ export const accountingRegisterInstallmentPayment = onCall(async (request) => {
 export const accountingListMyReceipts = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return listMyReceiptsUseCase({ actor, transactions });
+        return await listMyReceiptsUseCase({ actor, transactions });
     }
     catch (error) {
         withCallableLogging('accountingListMyReceipts', error);
@@ -291,7 +294,7 @@ export const accountingTransferFunds = onCall(async (request) => {
         const actor = await getActorFromCallableRequest(request.auth);
         const staffActor = ensureStaff(actor);
         await ensureInternalTransferCategories(staffActor.uid);
-        return transferFundsUseCase({
+        return await transferFundsUseCase({
             actor: staffActor,
             input: parseTransferFundsInput(request.data),
             transactions,
@@ -306,7 +309,7 @@ export const accountingEditInternalTransfer = onCall(async (request) => {
         const actor = await getActorFromCallableRequest(request.auth);
         const staffActor = ensureStaff(actor);
         await ensureInternalTransferCategories(staffActor.uid);
-        return editInternalTransferUseCase({
+        return await editInternalTransferUseCase({
             actor: staffActor,
             input: parseEditInternalTransferInput(request.data),
             transactions,
@@ -324,7 +327,7 @@ export const accountingRegisterExpenseMovement = onCall(async (request) => {
         if (ON_DEMAND_EXPENSE_CATEGORY_IDS.has(input.categoryId)) {
             await ensureDefaultExpenseCategory(input.categoryId, staffActor.uid);
         }
-        return registerExpenseMovementUseCase({
+        return await registerExpenseMovementUseCase({
             actor: staffActor,
             input,
             transactions,
@@ -337,7 +340,7 @@ export const accountingRegisterExpenseMovement = onCall(async (request) => {
 export const accountingReviewExpense = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return reviewExpenseUseCase({
+        return await reviewExpenseUseCase({
             actor,
             input: parseReviewExpenseInput(request.data),
             transactions,
@@ -350,7 +353,7 @@ export const accountingReviewExpense = onCall(async (request) => {
 export const accountingPostExpenseMovement = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return postExpenseMovementUseCase({
+        return await postExpenseMovementUseCase({
             actor,
             input: parsePostExpenseMovementInput(request.data),
             transactions,
@@ -363,7 +366,7 @@ export const accountingPostExpenseMovement = onCall(async (request) => {
 export const accountingUpsertSalaryConfiguration = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return upsertSalaryConfigurationUseCase({
+        return await upsertSalaryConfigurationUseCase({
             actor,
             input: parseUpsertSalaryConfigurationInput(request.data),
             transactions,
@@ -376,7 +379,7 @@ export const accountingUpsertSalaryConfiguration = onCall(async (request) => {
 export const accountingUpsertPayrollConfig = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return upsertPayrollConfigUseCase({
+        return await upsertPayrollConfigUseCase({
             actor,
             input: parseUpsertPayrollConfigInput(request.data),
             transactions,
@@ -389,7 +392,7 @@ export const accountingUpsertPayrollConfig = onCall(async (request) => {
 export const accountingPostSalaryPayment = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return postSalaryPaymentUseCase({
+        return await postSalaryPaymentUseCase({
             actor,
             input: parsePostSalaryPaymentInput(request.data),
             transactions,
@@ -402,7 +405,7 @@ export const accountingPostSalaryPayment = onCall(async (request) => {
 export const accountingPostAnnualBonusPayment = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return postAnnualBonusPaymentUseCase({
+        return await postAnnualBonusPaymentUseCase({
             actor,
             input: parsePostAnnualBonusPaymentInput(request.data),
             transactions,
@@ -415,7 +418,7 @@ export const accountingPostAnnualBonusPayment = onCall(async (request) => {
 export const accountingRecordExternalReference = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return recordExternalReferenceUseCase({
+        return await recordExternalReferenceUseCase({
             actor,
             input: parseRecordExternalReferenceInput(request.data),
             transactions,
@@ -425,10 +428,23 @@ export const accountingRecordExternalReference = onCall(async (request) => {
         withCallableLogging('accountingRecordExternalReference', error);
     }
 });
+export const accountingDeleteExternalReference = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return await deleteExternalReferenceUseCase({
+            actor,
+            input: parseDeleteExternalReferenceInput(request.data),
+            transactions,
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingDeleteExternalReference', error);
+    }
+});
 export const accountingUpsertEmployeeExternalReference = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return upsertEmployeeExternalReferenceUseCase({
+        return await upsertEmployeeExternalReferenceUseCase({
             actor,
             input: parseUpsertEmployeeExternalReferenceInput(request.data),
             transactions,
@@ -470,7 +486,7 @@ export const accountingCreateHandicapCharge = onCall(async (request) => {
 export const accountingTransferHandicapToAssociation = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return transferHandicapToAssociationUseCase({
+        return await transferHandicapToAssociationUseCase({
             actor,
             input: parseTransferHandicapToAssociationInput(request.data),
             transactions,
@@ -483,7 +499,7 @@ export const accountingTransferHandicapToAssociation = onCall(async (request) =>
 export const accountingTransferPendingHandicapToAssociation = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return transferPendingHandicapToAssociationUseCase({
+        return await transferPendingHandicapToAssociationUseCase({
             actor,
             input: parseTransferPendingHandicapToAssociationInput(request.data),
             transactions,
@@ -496,7 +512,7 @@ export const accountingTransferPendingHandicapToAssociation = onCall(async (requ
 export const accountingVoidFinancialMovement = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return voidFinancialMovementUseCase({
+        return await voidFinancialMovementUseCase({
             actor,
             input: parseVoidFinancialMovementInput(request.data),
             transactions,
@@ -509,7 +525,7 @@ export const accountingVoidFinancialMovement = onCall(async (request) => {
 export const accountingEditFinancialMovement = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return editFinancialMovementUseCase({
+        return await editFinancialMovementUseCase({
             actor,
             input: parseEditFinancialMovementInput(request.data),
             transactions,
@@ -522,7 +538,7 @@ export const accountingEditFinancialMovement = onCall(async (request) => {
 export const accountingSetFinancialMovementBalanceInclusion = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return setFinancialMovementBalanceInclusionUseCase({
+        return await setFinancialMovementBalanceInclusionUseCase({
             actor,
             input: parseSetFinancialMovementBalanceInclusionInput(request.data),
             transactions,
@@ -535,7 +551,7 @@ export const accountingSetFinancialMovementBalanceInclusion = onCall(async (requ
 export const accountingCreateOvertimeEntry = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return createOvertimeEntryUseCase({
+        return await createOvertimeEntryUseCase({
             actor,
             input: parseCreateOvertimeEntryInput(request.data),
             transactions,
@@ -548,7 +564,7 @@ export const accountingCreateOvertimeEntry = onCall(async (request) => {
 export const accountingReviewOvertimeEntry = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return reviewOvertimeEntryUseCase({
+        return await reviewOvertimeEntryUseCase({
             actor,
             input: parseReviewOvertimeEntryInput(request.data),
             transactions,
@@ -558,10 +574,19 @@ export const accountingReviewOvertimeEntry = onCall(async (request) => {
         withCallableLogging('accountingReviewOvertimeEntry', error);
     }
 });
+export const accountingPayOvertimeEntry = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return await payOvertimeEntryUseCase({ actor, input: parsePayOvertimeEntryInput(request.data), transactions });
+    }
+    catch (error) {
+        withCallableLogging('accountingPayOvertimeEntry', error);
+    }
+});
 export const accountingListEmployeePayrollCycle = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return listEmployeePayrollCycleUseCase({
+        return await listEmployeePayrollCycleUseCase({
             actor,
             input: parseListEmployeePayrollCycleInput(request.data),
             transactions,
@@ -574,7 +599,7 @@ export const accountingListEmployeePayrollCycle = onCall(async (request) => {
 export const accountingPostEmployeePayrollCycle = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return postEmployeePayrollCycleUseCase({
+        return await postEmployeePayrollCycleUseCase({
             actor,
             input: parsePostEmployeePayrollCycleInput(request.data),
             transactions,
@@ -587,7 +612,7 @@ export const accountingPostEmployeePayrollCycle = onCall(async (request) => {
 export const accountingRecordEmployeeCertificate = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return recordEmployeeCertificateUseCase({
+        return await recordEmployeeCertificateUseCase({
             actor,
             input: parseRecordEmployeeCertificateInput(request.data),
             transactions,
@@ -600,7 +625,7 @@ export const accountingRecordEmployeeCertificate = onCall(async (request) => {
 export const accountingLinkExternalReferenceToEmployee = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return linkExternalReferenceToEmployeeUseCase({
+        return await linkExternalReferenceToEmployeeUseCase({
             actor,
             input: parseLinkExternalReferenceToEmployeeInput(request.data),
             transactions,
@@ -613,7 +638,7 @@ export const accountingLinkExternalReferenceToEmployee = onCall(async (request) 
 export const accountingCreateCashClosure = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return createCashClosureUseCase({
+        return await createCashClosureUseCase({
             actor,
             input: parseCreateCashClosureInput(request.data),
             transactions,
@@ -626,7 +651,7 @@ export const accountingCreateCashClosure = onCall(async (request) => {
 export const accountingCloseCashClosure = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
-        return closeCashClosureUseCase({
+        return await closeCashClosureUseCase({
             actor,
             input: parseCloseCashClosureInput(request.data),
             transactions,
@@ -636,11 +661,23 @@ export const accountingCloseCashClosure = onCall(async (request) => {
         withCallableLogging('accountingCloseCashClosure', error);
     }
 });
+export const accountingGenerateReport = onCall({ timeoutSeconds: 540, memory: '1GiB' }, async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        return await generateAccountingReportUseCase({
+            actor,
+            input: parseGenerateAccountingReportInput(request.data),
+        });
+    }
+    catch (error) {
+        withCallableLogging('accountingGenerateReport', error);
+    }
+});
 export const accountingMarkMembershipRenewals = onCall(async (request) => {
     try {
         const actor = await getActorFromCallableRequest(request.auth);
         ensureStaff(actor);
-        return markMembershipRenewalsUseCase({ transactions, actor });
+        return await markMembershipRenewalsUseCase({ transactions, actor });
     }
     catch (error) {
         withCallableLogging('accountingMarkMembershipRenewals', error);
@@ -718,7 +755,18 @@ export const accountingCheckServerExpenseDue = onSchedule({
         logger.warn('accountingCheckServerExpenseDue notification skipped', { period, error });
     }
 });
+export const accountingPreviewMemberFeePayment = onCall(async (request) => {
+    try {
+        const actor = await getActorFromCallableRequest(request.auth);
+        const data = assertIsRecord(request.data);
+        return await previewMemberFeePaymentUseCase({ actor, input: { memberId: parseRequiredString(data, 'memberId'), periods: parseRequiredStringArray(data, 'periods'), operationDate: parseRequiredIsoDate(data, 'operationDate'), applyEarlyPaymentDiscount: typeof data.applyEarlyPaymentDiscount === 'boolean' ? data.applyEarlyPaymentDiscount : undefined }, transactions });
+    }
+    catch (error) {
+        withCallableLogging('accountingPreviewMemberFeePayment', error);
+    }
+});
 export const accounting = {
+    previewMemberFeePayment: accountingPreviewMemberFeePayment,
     upsertFinancialConfig: accountingUpsertFinancialConfig,
     setCreditCommissionRule: accountingSetCreditCommissionRule,
     generateFeePreview: accountingGenerateFeePreview,
@@ -745,12 +793,14 @@ export const accounting = {
     upsertEmployeeExternalReference: accountingUpsertEmployeeExternalReference,
     createOvertimeEntry: accountingCreateOvertimeEntry,
     reviewOvertimeEntry: accountingReviewOvertimeEntry,
+    payOvertimeEntry: accountingPayOvertimeEntry,
     listEmployeePayrollCycle: accountingListEmployeePayrollCycle,
     postEmployeePayrollCycle: accountingPostEmployeePayrollCycle,
     recordEmployeeCertificate: accountingRecordEmployeeCertificate,
     linkExternalReferenceToEmployee: accountingLinkExternalReferenceToEmployee,
     createCashClosure: accountingCreateCashClosure,
     closeCashClosure: accountingCloseCashClosure,
+    generateReport: accountingGenerateReport,
     markMembershipRenewals: accountingMarkMembershipRenewals,
     checkServerExpenseDue: accountingCheckServerExpenseDue,
     createHandicapCharge: accountingCreateHandicapCharge,

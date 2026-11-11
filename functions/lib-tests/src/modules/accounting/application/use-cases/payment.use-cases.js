@@ -3,6 +3,7 @@ import { DEFAULT_FINANCIAL_EXPENSE_CATEGORIES, DEFAULT_FINANCIAL_INCOME_CATEGORI
 import { assertCondition } from '../../domain/errors.js';
 import { assertIsRecord, calculateEarlyPaymentDiscount, calculateMembershipRenewalDueDate, ensureStaff, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalRecord, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, toClubAccountingPeriod, } from '../shared.js';
 import { createPostedMovement } from '../movement-helpers.js';
+import { assertChargeNotLockedByPartialPlan } from '../member-fee-plan-lock.js';
 import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 function getMovementMetadataString(movement, key) {
     const value = movement.metadata?.[key];
@@ -50,6 +51,7 @@ export async function registerPaymentUseCase(params) {
         assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.input.paymentMethodId}.`);
         assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.input.paymentMethodId} está inactivo.`);
         assertPaymentMethodAllowedForIncomeCategory(paymentMethod.id, category.id);
+        const activeCommissionRule = await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
         const paymentReference = params.input.paymentReference?.trim() || null;
         const paymentReferenceRequired = params.input.sourceType !== 'manual_income' && paymentMethod.id !== PAYMENT_METHOD_IDS.cash;
         assertCondition(!paymentReferenceRequired || Boolean(paymentReference), 'invalid-argument', 'La referencia de pago es obligatoria para medios distintos de efectivo.');
@@ -68,6 +70,9 @@ export async function registerPaymentUseCase(params) {
             const memberFeeCharge = await dataAccess.memberFeeCharges.getById(params.input.sourceId);
             assertCondition(memberFeeCharge, 'not-found', `No existe member_fee_charges/${params.input.sourceId}.`);
             memberFeeChargeToPay = memberFeeCharge;
+            if (memberFeeCharge.status === 'pending' || memberFeeCharge.status === 'overdue') {
+                await assertChargeNotLockedByPartialPlan(dataAccess, memberFeeCharge);
+            }
             if (memberFeeCharge.status === 'paid' && memberFeeCharge.paidMovementId) {
                 const existingMovement = await dataAccess.financialMovements.getById(memberFeeCharge.paidMovementId);
                 assertCondition(existingMovement, 'failed-precondition', 'La cuota ya fue pagada y el movimiento vinculado no existe.');
@@ -183,6 +188,8 @@ export async function registerPaymentUseCase(params) {
             thirdPartyType,
             thirdPartyId,
             paymentMethodId: paymentMethod.id,
+            prefetchedPaymentMethod: paymentMethod,
+            prefetchedActiveCommissionRule: activeCommissionRule,
             bancarizado: paymentMethod.bancarizado,
             imputableImpositivo: true,
             metadata: {
@@ -350,6 +357,7 @@ export async function transferFundsUseCase(params) {
             thirdPartyType: null,
             thirdPartyId: null,
             paymentMethodId: sourceMethod.id,
+            prefetchedPaymentMethod: sourceMethod,
             bancarizado: sourceMethod.bancarizado,
             imputableImpositivo: false,
             metadata: {
@@ -358,6 +366,7 @@ export async function transferFundsUseCase(params) {
             },
             notes: params.input.notes ?? `Transferencia interna a ${destinationMethod.name}`,
         });
+        const receiptNumber = buildReceiptNumber(params.input.operationDate, outgoing.movementId);
         const incoming = await createPostedMovement({
             dataAccess,
             actorUid: actor.uid,
@@ -372,12 +381,14 @@ export async function transferFundsUseCase(params) {
             thirdPartyType: null,
             thirdPartyId: null,
             paymentMethodId: destinationMethod.id,
+            prefetchedPaymentMethod: destinationMethod,
             bancarizado: destinationMethod.bancarizado,
             imputableImpositivo: false,
             metadata: {
                 ...commonMetadata,
                 transferDirection: 'in',
                 counterpartMovementId: outgoing.movementId,
+                receiptNumber,
             },
             notes: params.input.notes ?? `Transferencia interna desde ${sourceMethod.name}`,
         });
@@ -387,6 +398,7 @@ export async function transferFundsUseCase(params) {
                 ...commonMetadata,
                 transferDirection: 'out',
                 counterpartMovementId: incoming.movementId,
+                receiptNumber,
             },
         }, actor.uid);
         return {

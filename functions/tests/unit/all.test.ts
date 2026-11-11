@@ -19,3 +19,4 @@ import './accounting.member-fee-batch-payment.use-case.test.js';
 import './accounting.payroll-cycle.use-case.test.js';
 import './accounting.salary.use-case.test.js';
 import './tournament.registration.use-case.test.js';
+import './accounting.member-fee-safeguards.use-case.test.js';

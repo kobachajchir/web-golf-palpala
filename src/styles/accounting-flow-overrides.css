@@ -2378,3 +2378,19 @@
   border-color: var(--accounting-dark-border-muted);
   background-color: var(--accounting-dark-panel-muted) !important;
 }
+
+button.summary-card.is-selected {
+  border-color: rgba(13, 92, 67, 0.34);
+  background: linear-gradient(135deg, rgba(234, 243, 238, 0.98), rgba(245, 250, 246, 0.88)), var(--field-bg);
+  box-shadow: 0 16px 32px rgba(20, 63, 73, 0.1);
+  color: var(--primary-dark);
+}
+
+button.summary-card.is-selected strong {
+  color: var(--primary-dark);
+}
+
+:root[data-theme='dark'] button.summary-card.is-selected {
+  border-color: var(--primary-dark);
+  background: var(--accounting-dark-panel-active) !important;
+}

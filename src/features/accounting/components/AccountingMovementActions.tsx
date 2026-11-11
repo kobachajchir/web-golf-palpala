@@ -12,6 +12,7 @@ import {
   buildArgentinaDateIso,
   formatCurrency,
   parseAmountInputToMinor,
+  parseNumberInputToMinor,
   timestampToDate,
 } from '../utils/accountingFormatters';
 import { calculatePaymentCommission, getPaymentMethodDisplayName } from '../utils/paymentMethods';
@@ -113,7 +114,7 @@ function MovementEditModal({
     notes: movement.notes ?? '',
     reason: '',
   }));
-  const parsedAmountMinor = parseAmountInputToMinor(form.amount);
+  const parsedAmountMinor = parseNumberInputToMinor(form.amount);
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === form.paymentMethodId) ?? null;
   const paymentCommission = calculatePaymentCommission(parsedAmountMinor, selectedPaymentMethod);
   const canSubmit =
@@ -483,6 +484,9 @@ export function AccountingMovementActions({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const isInternalTransfer = movement.originType === 'internal_transfer';
+  const isReversal = movement.originType === 'movement_reversal';
+  const isVoidedOrReversed = movement.status === 'voided' || movement.status === 'reversed';
+  const canEditOrDelete = !isReversal && !isVoidedOrReversed && movement.status === 'posted';
   const movementDescription = useMemo<ReactNode>(() => (
     <>
       Estás por eliminar contablemente el {movement.movementType === 'income' ? 'ingreso' : 'egreso'} de{' '}
@@ -596,43 +600,40 @@ export function AccountingMovementActions({
         onToggle={() => setMenuOpen((current) => !current)}
         items={isInternalTransfer
           ? [
-              {
+              ...(canEditOrDelete ? [{
                 id: 'edit-transfer',
                 label: 'Editar cuentas',
                 accent: true,
-                disabled: movement.status !== 'posted',
                 onSelect: () => {
                   setMenuOpen(false);
                   setError('');
                   setEditOpen(true);
                 },
-              },
+              }] : []),
               balanceInclusionMenuItem,
             ]
           : [
-              {
+              ...(canEditOrDelete ? [{
                 id: 'edit',
                 label: 'Editar movimiento',
                 accent: true,
-                disabled: movement.status !== 'posted',
                 onSelect: () => {
                   setMenuOpen(false);
                   setError('');
                   setEditOpen(true);
                 },
-              },
+              }] : []),
               balanceInclusionMenuItem,
-              {
+              ...(canEditOrDelete ? [{
                 id: 'delete',
                 label: 'Eliminar movimiento',
                 danger: true,
-                disabled: movement.status === 'voided' || movement.status === 'reversed',
                 onSelect: () => {
                   setMenuOpen(false);
                   setError('');
                   setDeleteOpen(true);
                 },
-              },
+              }] : []),
             ]}
       />
       {editOpen && isInternalTransfer && (

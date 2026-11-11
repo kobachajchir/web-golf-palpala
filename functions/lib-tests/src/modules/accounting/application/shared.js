@@ -268,7 +268,8 @@ export function calculateEarlyPaymentDiscount(params) {
     const operationDay = getClubDayOfMonth(params.operationDate);
     const operationPeriod = toClubAccountingPeriod(params.operationDate);
     const isSameChargePeriod = !params.chargePeriod || params.chargePeriod === operationPeriod;
-    const qualifies = discountPctBps > 0 && isSameChargePeriod && operationDay >= 1 && operationDay <= discountDayOfMonth;
+    const isAdvance = Boolean(params.chargePeriod && params.chargePeriod > operationPeriod);
+    const qualifies = discountPctBps > 0 && (isAdvance || (isSameChargePeriod && operationDay >= 1 && operationDay <= discountDayOfMonth));
     const discountAmountMinor = qualifies ? calculateAmountFromBps(params.chargeAmountMinor, discountPctBps) : 0;
     return {
         paidAmountMinor: Math.max(params.chargeAmountMinor - discountAmountMinor, 0),
@@ -395,5 +396,13 @@ export async function resolveActor(dataAccess, authContext) {
         },
         user,
     };
+}
+/**
+ * Un movimiento anulado con contraasiento queda en estado `reversed` y su reverso en `posted`.
+ * Ambos deben contar en los saldos para compensarse; si solo contara el reverso, un ingreso
+ * de $100 anulado terminaria aportando -$100.
+ */
+export function movementCountsTowardBalance(movement) {
+    return movement.status === 'posted' || (movement.status === 'reversed' && Boolean(movement.reversalOfMovementId));
 }
 //# sourceMappingURL=shared.js.map

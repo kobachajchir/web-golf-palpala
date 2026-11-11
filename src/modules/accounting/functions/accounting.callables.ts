@@ -83,7 +83,22 @@ function getAccountingFunctions(functionsInstance?: Functions): Functions {
   return getFirebaseFunctions(functionsInstance);
 }
 
-const pendingInstallmentKeys = new Map<string, string>();
+
+export type MemberFeePaymentQuoteLine = {
+  period: string;
+  chargeId: string | null;
+  status: string;
+  activePartialPlanId: string | null;
+  baseAmountMinor: number;
+  settlementAmountMinor: number;
+  discountPctBps: number;
+  discountAmountMinor: number;
+  discountMode: 'automatic' | 'manual' | 'none';
+  paidAmountMinor: number;
+  payableAmountMinor: number;
+};
+
+export type MemberFeePaymentQuote = { lines: MemberFeePaymentQuoteLine[]; totalAmountMinor: number };
 
 export function createAccountingCallables(functionsInstance?: Functions) {
   const functionsRef = getAccountingFunctions(functionsInstance);
@@ -119,8 +134,8 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.generateCuota,
       )(payload)).data;
     },
-    async previewMemberFeePayment(payload: { memberId: string; periods: string[]; operationDate: string }) {
-      return (await httpsCallable<typeof payload, { lines: Array<{ period: string; chargeId: string | null; status: string; baseAmountMinor: number; discountAmountMinor: number; paidAmountMinor: number; payableAmountMinor: number }>; totalAmountMinor: number }>(functionsRef, 'accountingPreviewMemberFeePayment')(payload)).data;
+    async previewMemberFeePayment(payload: { memberId: string; periods: string[]; operationDate: string; applyEarlyPaymentDiscount?: boolean }) {
+      return (await httpsCallable<typeof payload, MemberFeePaymentQuote>(functionsRef, 'accountingPreviewMemberFeePayment')(payload)).data;
     },
     async generateReport(payload: GenerateAccountingReportPayload) {
       return (await httpsCallable<GenerateAccountingReportPayload, GenerateAccountingReportResult>(
@@ -154,15 +169,15 @@ export function createAccountingCallables(functionsInstance?: Functions) {
       )(payload)).data;
     },
     async registerInstallmentPayment(payload: RegisterInstallmentPaymentPayload) {
-      const fingerprint = JSON.stringify(payload);
-      const key = pendingInstallmentKeys.get(fingerprint) ?? crypto.randomUUID();
-      pendingInstallmentKeys.set(fingerprint, key);
-      const result = (await httpsCallable<RegisterInstallmentPaymentPayload, RegisterInstallmentPaymentResult>(
+      // La clave la administra la pantalla (pendingOperationKeys) para que sobreviva a recargas
+      // y a respuestas tardias; aca solo se exige que venga informada.
+      if (!payload.idempotencyKey) {
+        throw new Error('Falta la clave de operacion del abono.');
+      }
+      return (await httpsCallable<RegisterInstallmentPaymentPayload, RegisterInstallmentPaymentResult>(
         functionsRef,
         ACCOUNTING_CALLABLE_NAMES.registerInstallmentPayment,
-      )({ ...payload, idempotencyKey: key } as RegisterInstallmentPaymentPayload)).data;
-      pendingInstallmentKeys.delete(fingerprint);
-      return result;
+      )(payload)).data;
     },
     async listMyReceipts() {
       return (await httpsCallable<Record<string, never>, ListMyReceiptsResult>(

@@ -26,9 +26,34 @@ export function formatCurrency(amountMinor: number): string {
   }).format(amountMinor / 100);
 }
 
+/**
+ * Lee importes escritos en formato argentino ("1.500", "1.500,50", "100,5").
+ * Si no hay coma y el punto va seguido de 1 o 2 digitos ("100.50"), se trata como
+ * separador decimal: es el formato que entregan los campos numericos del navegador.
+ */
 export function parseAmountInputToMinor(value: string): number {
-  const normalized = value.trim().replaceAll('.', '').replace(',', '.');
+  const trimmed = value.trim().replace(/[\s$]/g, '');
+  if (!trimmed) {
+    return Number.NaN;
+  }
+  if (!trimmed.includes(',') && /^-?\d+\.\d{1,2}$/.test(trimmed)) {
+    return parseNumberInputToMinor(trimmed);
+  }
+  const normalized = trimmed.replaceAll('.', '').replace(',', '.');
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return Number.NaN;
+  }
   const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NaN;
+}
+
+/** Lee el valor de un <input type="number">: punto decimal, sin separador de miles. */
+export function parseNumberInputToMinor(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed || !/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return Number.NaN;
+  }
+  const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NaN;
 }
 

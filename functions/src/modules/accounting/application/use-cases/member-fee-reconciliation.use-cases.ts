@@ -26,7 +26,7 @@ import {
 const PAGE_SIZE = 200;
 const MAX_REPAIR_WRITES = 350;
 
-type ReconciliationSource = 'payment_allocation' | 'origin_charge' | 'period_member';
+type ReconciliationSource = 'payment_allocation' | 'origin_charge' | 'period_member' | 'fully_paid_total';
 
 type MovementAllocation = {
   movement: EntityWithId<FinancialMovementDocument>;
@@ -56,6 +56,7 @@ type PlannedCharge = {
 export interface ReconcileMemberFeeRenewalsInput {
   period: AccountingPeriod;
   execute: boolean;
+  markFullyPaidOnly: boolean;
 }
 
 export interface ReconcileMemberFeeRenewalsResult {
@@ -69,6 +70,18 @@ export interface ReconcileMemberFeeRenewalsResult {
   repairedChargeCount: number;
   repairedMemberCount: number;
   ambiguousCount: number;
+  fullyPaidCandidateCount: number;
+  fullyPaidCandidates: Array<{
+    chargeId: string;
+    memberId: string;
+    memberName: string | null;
+    memberNumber: string | null;
+    chargePeriod: AccountingPeriod;
+    paidAmountMinor: number;
+    settlementAmountMinor: number;
+    movementCount: number;
+    lastMovementId: string;
+  }>;
   skipped: Array<{
     movementId: string;
     memberId: string | null;
@@ -280,9 +293,16 @@ function parsePaymentAllocations(movement: EntityWithId<FinancialMovementDocumen
 }
 
 function getStoredPaidAmount(charge: MemberFeeChargeDocument, settlementAmountMinor: number) {
-  if (typeof charge.paidClubAmountMinor === 'number') return charge.paidClubAmountMinor;
-  if (typeof charge.paidAmountMinor === 'number') return charge.paidAmountMinor;
-  return charge.status === 'paid' ? settlementAmountMinor : 0;
+  const paidFromRemaining = typeof charge.remainingAmountMinor === 'number'
+    ? settlementAmountMinor - charge.remainingAmountMinor
+    : 0;
+  return Math.min(Math.max(
+    charge.paidClubAmountMinor ?? 0,
+    charge.paidAmountMinor ?? 0,
+    paidFromRemaining,
+    charge.status === 'paid' ? settlementAmountMinor : 0,
+    0,
+  ), settlementAmountMinor);
 }
 
 function isOpenChargeStatus(status: MemberFeeChargeDocument['status']) {
@@ -307,8 +327,10 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
       .filter((movement) =>
         movement.movementType === 'income'
         && movement.categoryCodeSnapshot === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
-        && movement.status === 'posted')
+        && movement.status === 'posted'
+        && movement.installmentRole !== 'payment')
       .sort((left, right) => left.operationDate.toMillis() - right.operationDate.toMillis());
+    const feeMovementById = new Map(feeMovements.map((movement) => [movement.id, movement]));
     const chargeCache = new Map(periodCharges.map((charge) => [charge.id, charge]));
     const periodChargesByMemberId = new Map<string, Array<EntityWithId<MemberFeeChargeDocument>>>();
     periodCharges.forEach((charge) => {
@@ -341,6 +363,43 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
           }
           allocations.push({ movement, charge, source: 'payment_allocation', ...allocation });
         }
+        continue;
+      }
+
+      if (movement.installmentRole === 'charge' && movement.installmentPlanId === movement.id) {
+        const totalAmountMinor = movement.installmentTotalAmountMinor ?? movement.netAmountMinor;
+        const paidAmountMinor = movement.installmentPaidAmountMinor ?? 0;
+        const planPeriod = isRecord(movement.metadata) && typeof movement.metadata.periodMonth === 'string'
+          ? movement.metadata.periodMonth
+          : null;
+        if (paidAmountMinor < totalAmountMinor || !movement.thirdPartyId || planPeriod !== params.input.period) {
+          skipped.push({ movementId: movement.id, reason: 'El plan parcial no esta completo o no identifica el periodo de la renovacion.' });
+          continue;
+        }
+
+        const memberCharges = await listChargesForMember(dataAccess, movement.thirdPartyId);
+        const openCandidates = memberCharges.filter((charge) =>
+          charge.period === planPeriod && isOpenChargeStatus(charge.status));
+        if (openCandidates.length !== 1) {
+          skipped.push({
+            movementId: movement.id,
+            reason: openCandidates.length > 1
+              ? 'Hay mas de una cuota candidata para el socio y periodo del plan parcial.'
+              : 'No existe una cuota pendiente para el socio y periodo del plan parcial.',
+          });
+          continue;
+        }
+        const charge = openCandidates[0]!;
+        allocations.push({
+          movement,
+          charge,
+          source: 'fully_paid_total',
+          appliedAmountMinor: Math.min(paidAmountMinor, charge.settlementAmountMinor ?? charge.finalAmountMinor),
+          settlementAmountMinor: charge.settlementAmountMinor ?? charge.finalAmountMinor,
+          discountPctBps: charge.paymentDiscountPctBps ?? 0,
+          discountAmountMinor: charge.paymentDiscountAmountMinor ?? 0,
+          discountMode: charge.paymentDiscountMode ?? 'none',
+        });
         continue;
       }
 
@@ -502,8 +561,101 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
       });
     }
 
+    const allocationsByChargeId = new Map<string, MovementAllocation[]>();
+    allocations.forEach((allocation) => {
+      const current = allocationsByChargeId.get(allocation.charge.id) ?? [];
+      current.push(allocation);
+      allocationsByChargeId.set(allocation.charge.id, current);
+    });
+    for (const charge of periodCharges) {
+      if (!isOpenChargeStatus(charge.status)) continue;
+      const relatedAllocations = [...(allocationsByChargeId.get(charge.id) ?? [])];
+      const knownMovementIds = new Set(relatedAllocations.map((allocation) => allocation.movement.id));
+      const linkedMovementIds = [...new Set([
+        ...(charge.paymentMovementIds ?? []),
+        ...(charge.paidMovementId ? [charge.paidMovementId] : []),
+      ])].filter((movementId) => !knownMovementIds.has(movementId));
+      const linkedMovements = await Promise.all(
+        linkedMovementIds.map((movementId) => dataAccess.financialMovements.getById(movementId)),
+      );
+      linkedMovements.forEach((movement) => {
+        if (!movement
+          || movement.status !== 'posted'
+          || movement.movementType !== 'income'
+          || movement.categoryCodeSnapshot !== FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria) return;
+        feeMovementById.set(movement.id, movement);
+        const explicitAllocation = parsePaymentAllocations(movement)
+          .find((allocation) => allocation.chargeId === charge.id);
+        if (explicitAllocation) {
+          relatedAllocations.push({ movement, charge, source: 'payment_allocation', ...explicitAllocation });
+          return;
+        }
+        relatedAllocations.push({
+          movement,
+          charge,
+          source: 'origin_charge',
+          appliedAmountMinor: movementClubAmountMinor(movement),
+          ...inferSettlementFromMovement(movement, charge, activeConfig),
+        });
+      });
+      if (relatedAllocations.length === 0) continue;
+      const uniqueAllocationByMovementId = new Map<string, MovementAllocation>();
+      relatedAllocations.forEach((allocation) => uniqueAllocationByMovementId.set(allocation.movement.id, allocation));
+      const uniqueAllocations = [...uniqueAllocationByMovementId.values()];
+      const currentPlan = planned.get(charge.id);
+      const settlementAmountMinor = currentPlan?.settlementAmountMinor
+        ?? charge.settlementAmountMinor
+        ?? uniqueAllocations.find((allocation) => allocation.settlementAmountMinor !== undefined)?.settlementAmountMinor
+        ?? charge.finalAmountMinor;
+      if (settlementAmountMinor <= 0) continue;
+      const paidFromMovements = uniqueAllocations.reduce((total, allocation) => total + allocation.appliedAmountMinor, 0);
+      const paidClubAmountMinor = Math.min(
+        Math.max(currentPlan?.paidClubAmountMinor ?? 0, getStoredPaidAmount(charge, settlementAmountMinor), paidFromMovements),
+        settlementAmountMinor,
+      );
+      if (paidClubAmountMinor < settlementAmountMinor) continue;
+      const latestAllocation = [...uniqueAllocations]
+        .sort((left, right) => right.movement.operationDate.toMillis() - left.movement.operationDate.toMillis())[0];
+      if (!latestAllocation) continue;
+      const movementIds = [...new Set([
+        ...(charge.paymentMovementIds ?? []),
+        ...(charge.paidMovementId ? [charge.paidMovementId] : []),
+        ...uniqueAllocations.map((allocation) => allocation.movement.id),
+      ])];
+      planned.set(charge.id, {
+        charge,
+        movementIds,
+        paidClubAmountMinor,
+        remainingAmountMinor: 0,
+        settlementAmountMinor,
+        paidMovementId: latestAllocation.movement.id,
+        paidAt: latestAllocation.movement.operationDate,
+        paymentDiscountPctBps: currentPlan?.paymentDiscountPctBps ?? latestAllocation.discountPctBps ?? charge.paymentDiscountPctBps ?? 0,
+        paymentDiscountAmountMinor: currentPlan?.paymentDiscountAmountMinor ?? latestAllocation.discountAmountMinor ?? charge.paymentDiscountAmountMinor ?? 0,
+        paymentDiscountMode: currentPlan?.paymentDiscountMode ?? latestAllocation.discountMode ?? charge.paymentDiscountMode ?? 'none',
+        createDocument: false,
+      });
+      if (!repairs.some((repair) => repair.chargeId === charge.id && repair.completed)) {
+        repairs.push({
+          movementId: latestAllocation.movement.id,
+          chargeId: charge.id,
+          memberId: chargeMemberId(charge) ?? '',
+          chargePeriod: charge.period,
+          memberName: null,
+          memberNumber: null,
+          source: 'fully_paid_total',
+          appliedAmountMinor: paidClubAmountMinor,
+          remainingAmountMinor: 0,
+          completed: true,
+        });
+      }
+    }
+
+    const executionPlans = params.input.markFullyPaidOnly
+      ? new Map([...planned].filter(([, repair]) => repair.remainingAmountMinor === 0))
+      : planned;
     const affectedMemberIds = [...new Set(
-      [...planned.values()]
+      [...executionPlans.values()]
         .map((item) => chargeMemberId(item.charge))
         .filter((value): value is string => Boolean(value)),
     )];
@@ -515,16 +667,16 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
     }>();
     for (const memberId of affectedMemberIds) {
       const memberCharges = await listChargesForMember(dataAccess, memberId);
-      const hasReconstructedOpenCharge = [...planned.values()].some((repair) =>
+      const hasReconstructedOpenCharge = [...executionPlans.values()].some((repair) =>
         chargeMemberId(repair.charge) === memberId && repair.remainingAmountMinor > 0);
       const simulatedOpen = hasReconstructedOpenCharge || memberCharges.some((charge) => {
-        const repair = planned.get(charge.id);
+        const repair = executionPlans.get(charge.id);
         if (repair) return repair.remainingAmountMinor > 0;
         return isOpenChargeStatus(charge.status) && (charge.remainingAmountMinor ?? charge.finalAmountMinor) > 0;
       });
       const memberRepairs = repairs
-        .filter((repair) => repair.memberId === memberId)
-        .map((repair) => ({ repair, movement: feeMovements.find((movement) => movement.id === repair.movementId) }))
+        .filter((repair) => repair.memberId === memberId && executionPlans.has(repair.chargeId))
+        .map((repair) => ({ repair, movement: feeMovementById.get(repair.movementId) }))
         .filter((item): item is { repair: ReconcileMemberFeeRenewalsResult['repairs'][number]; movement: EntityWithId<FinancialMovementDocument> } => Boolean(item.movement))
         .sort((left, right) => right.movement.operationDate.toMillis() - left.movement.operationDate.toMillis());
       const latest = memberRepairs[0];
@@ -554,14 +706,14 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
     const diagnosticMemberById = new Map(diagnosticMembers);
 
     assertCondition(
-      planned.size + memberPatches.size <= MAX_REPAIR_WRITES,
+      executionPlans.size + memberPatches.size <= MAX_REPAIR_WRITES,
       'failed-precondition',
       `La sincronizacion requiere mas de ${MAX_REPAIR_WRITES} escrituras. Elegi un periodo mas acotado.`,
     );
 
     if (params.input.execute) {
       const createdChargeIds = new Map<string, string>();
-      for (const repair of planned.values()) {
+      for (const repair of executionPlans.values()) {
         const completed = repair.remainingAmountMinor === 0;
         const notes = [
           repair.charge.notes?.trim(),
@@ -635,9 +787,27 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
       scannedPeriodChargeCount: periodCharges.length,
       matchedAllocationCount: allocations.length,
       alreadySynchronizedCount,
-      repairedChargeCount: planned.size,
+      repairedChargeCount: executionPlans.size,
       repairedMemberCount: memberPatches.size,
       ambiguousCount: skipped.length,
+      fullyPaidCandidateCount: [...planned.values()].filter((repair) => repair.remainingAmountMinor === 0).length,
+      fullyPaidCandidates: [...planned.values()]
+        .filter((repair) => repair.remainingAmountMinor === 0 && repair.paidMovementId)
+        .map((repair) => {
+          const memberId = chargeMemberId(repair.charge) ?? '';
+          const member = diagnosticMemberById.get(memberId);
+          return {
+            chargeId: repair.charge.id,
+            memberId,
+            memberName: member ? `${member.lastName}, ${member.firstName}` : null,
+            memberNumber: member?.memberNumber ?? null,
+            chargePeriod: repair.charge.period,
+            paidAmountMinor: repair.paidClubAmountMinor,
+            settlementAmountMinor: repair.settlementAmountMinor,
+            movementCount: repair.movementIds.length,
+            lastMovementId: repair.paidMovementId!,
+          };
+        }),
       skipped: skipped.map((item) => {
         const memberId = skippedMemberIdByMovementId.get(item.movementId) ?? null;
         const member = memberId ? diagnosticMemberById.get(memberId) : null;
@@ -648,7 +818,9 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
           memberNumber: member?.memberNumber ?? null,
         };
       }),
-      repairs: repairs.map((repair) => {
+      repairs: repairs
+        .filter((repair) => !params.input.markFullyPaidOnly || executionPlans.has(repair.chargeId))
+        .map((repair) => {
         const member = diagnosticMemberById.get(repair.memberId);
         return { ...repair, memberName: member ? `${member.lastName}, ${member.firstName}` : null, memberNumber: member?.memberNumber ?? null };
       }),
@@ -661,5 +833,6 @@ export function parseReconcileMemberFeeRenewalsInput(payload: unknown): Reconcil
   return {
     period: parseRequiredAccountingPeriod(data, 'period'),
     execute: parseOptionalBoolean(data, 'execute') ?? false,
+    markFullyPaidOnly: parseOptionalBoolean(data, 'markFullyPaidOnly') ?? false,
   };
 }

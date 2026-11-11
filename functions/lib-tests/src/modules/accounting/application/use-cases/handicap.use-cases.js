@@ -31,6 +31,20 @@ export async function createHandicapChargeUseCase(params) {
                 duplicate: true,
             };
         }
+        const category = params.input.collectNow
+            ? await dataAccess.financialIncomeCategories.getById(FINANCIAL_INCOME_CATEGORY_IDS.handicap)
+            : null;
+        const paymentMethodId = params.input.paymentMethodId ?? PAYMENT_METHOD_IDS.transferMacro;
+        const paymentMethod = params.input.collectNow
+            ? await dataAccess.paymentMethods.getById(paymentMethodId)
+            : null;
+        const activeCommissionRule = params.input.collectNow && paymentMethod
+            ? await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id)
+            : null;
+        if (params.input.collectNow) {
+            assertCondition(category, 'not-found', `No existe financial_income_categories/${FINANCIAL_INCOME_CATEGORY_IDS.handicap}.`);
+            assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${paymentMethodId}.`);
+        }
         const handicapChargeId = existingCharge?.id
             ?? await dataAccess.handicapCharges.create({
                 memberId: member.id,
@@ -48,11 +62,6 @@ export async function createHandicapChargeUseCase(params) {
         if (!params.input.collectNow) {
             return { handicapChargeId, duplicate: false };
         }
-        const category = await dataAccess.financialIncomeCategories.getById(FINANCIAL_INCOME_CATEGORY_IDS.handicap);
-        assertCondition(category, 'not-found', `No existe financial_income_categories/${FINANCIAL_INCOME_CATEGORY_IDS.handicap}.`);
-        const paymentMethodId = params.input.paymentMethodId ?? PAYMENT_METHOD_IDS.transferMacro;
-        const paymentMethod = await dataAccess.paymentMethods.getById(paymentMethodId);
-        assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${paymentMethodId}.`);
         const operationDate = params.input.operationDate ?? new Date(`${params.input.period}-01T00:00:00.000Z`);
         const receiptNumber = buildReceiptNumber(operationDate, handicapChargeId);
         const movement = await createPostedMovement({
@@ -69,6 +78,8 @@ export async function createHandicapChargeUseCase(params) {
             thirdPartyType: 'member',
             thirdPartyId: member.id,
             paymentMethodId: paymentMethod.id,
+            prefetchedPaymentMethod: paymentMethod,
+            prefetchedActiveCommissionRule: activeCommissionRule,
             bancarizado: paymentMethod.bancarizado,
             imputableImpositivo: true,
             metadata: {

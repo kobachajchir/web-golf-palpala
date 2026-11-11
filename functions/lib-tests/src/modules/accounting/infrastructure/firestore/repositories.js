@@ -110,6 +110,14 @@ class FirestoreCollectionStore {
     async updateInternal(id, patch, actorUid) {
         await writeUpdate(this.collection.doc(id), createAuditedPatch(patch, actorUid), this.transaction);
     }
+    async deleteInternal(id) {
+        if (this.transaction) {
+            this.transaction.delete(this.collection.doc(id));
+        }
+        else {
+            await this.collection.doc(id).delete();
+        }
+    }
     async applyCursor(query, cursorId) {
         if (!cursorId) {
             return query;
@@ -537,6 +545,9 @@ class FirestoreEmployeeAccountingLinksStore extends FirestoreCollectionStore {
     update(linkId, patch, actorUid) {
         return this.updateInternal(linkId, patch, actorUid);
     }
+    delete(linkId, actorUid) {
+        return this.deleteInternal(linkId);
+    }
     async listPage(filters) {
         let query = this.collection;
         if (filters.employeeId) {
@@ -554,6 +565,12 @@ class FirestoreEmployeeAccountingLinksStore extends FirestoreCollectionStore {
         query = query.orderBy('period', 'desc');
         query = await this.applyCursor(query, filters.cursorId);
         return this.listPageFromQuery(query, filters.limit);
+    }
+    async listByReferenceAndPeriod(referenceId, period) {
+        const snapshot = await getQuerySnapshot(this.collection
+            .where('referenceId', '==', referenceId)
+            .where('period', '==', period), this.transaction);
+        return snapshot.docs.map((doc) => withId(doc));
     }
 }
 class FirestoreEmployeeCertificatesStore extends FirestoreCollectionStore {
@@ -624,6 +641,16 @@ class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStor
     getById(referenceId) {
         return this.getByIdInternal(referenceId);
     }
+    async createWithId(referenceId, data, actorUid) {
+        const ref = this.collection.doc(referenceId);
+        const document = createAuditedDocument(data, actorUid);
+        if (this.transaction) {
+            this.transaction.create(ref, document);
+        }
+        else {
+            await ref.create(document);
+        }
+    }
     async findByEmployeePeriodAndReferenceType(params) {
         const snapshot = await getQuerySnapshot(this.collection
             .where('employeeId', '==', params.employeeId)
@@ -637,6 +664,9 @@ class FirestoreExternalAccountingReferencesStore extends FirestoreCollectionStor
     }
     update(referenceId, patch, actorUid) {
         return this.updateInternal(referenceId, patch, actorUid);
+    }
+    delete(referenceId, actorUid) {
+        return this.deleteInternal(referenceId);
     }
 }
 class FirestoreExpenseSubmissionsStore extends FirestoreCollectionStore {
@@ -771,6 +801,15 @@ class FirestoreMemberFeeChargesStore extends FirestoreCollectionStore {
 export function createFirestoreAccountingDataAccess(db, clock, transaction) {
     void clock;
     return {
+        operations: {
+            async get(key) {
+                const snapshot = await getSnapshot(db.collection('accounting_operations').doc(key), transaction);
+                return snapshot.exists ? snapshot.data() : null;
+            },
+            async set(key, fingerprint, result) {
+                await writeSet(db.collection('accounting_operations').doc(key), { fingerprint, result, createdAt: FieldValue.serverTimestamp() }, transaction);
+            },
+        },
         users: new FirestoreUsersReferenceStore(db, transaction),
         members: new FirestoreMembersReferenceStore(db, transaction),
         familyGroups: new FirestoreFamilyGroupsReferenceStore(db, transaction),

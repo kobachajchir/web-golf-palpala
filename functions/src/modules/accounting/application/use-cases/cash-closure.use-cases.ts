@@ -6,6 +6,7 @@ import type { AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   ensureStaff,
+  movementCountsTowardBalance,
   parseOptionalAccountingPeriod,
   parseOptionalAmountMinor,
   parseOptionalIsoDate,
@@ -55,16 +56,27 @@ async function resolveClosureMovements(params: {
   if (params.movementIds?.length) {
     const movements = await Promise.all(params.movementIds.map((movementId) => dataAccess.financialMovements.getById(movementId)));
     assertCondition(movements.every(Boolean), 'not-found', 'Uno o más financial_movements no existen.');
-    return movements.filter((movement): movement is EntityWithId<FinancialMovementDocument> => movement !== null && movement.status === 'posted' && movement.installmentRole !== 'charge');
+    return movements.filter((movement): movement is EntityWithId<FinancialMovementDocument> => movement !== null && movementCountsTowardBalance(movement) && movement.installmentRole !== 'charge');
   }
 
-  const page = await dataAccess.financialMovements.listPage({
-    accountingPeriod: params.period,
-    status: 'posted',
-    limit: 100,
-  });
+  // Se recorren todas las paginas del periodo: con un solo lote de 100 se omitian movimientos del dia.
   const closureDay = toClubDayKey(params.closureDate);
-  return page.items.filter((movement) => movement.installmentRole !== 'charge' && toClubDayKey(movement.operationDate.toDate()) === closureDay);
+  const movements: Array<EntityWithId<FinancialMovementDocument>> = [];
+  let cursorId: string | undefined;
+  do {
+    const page = await dataAccess.financialMovements.listPage({
+      accountingPeriod: params.period,
+      limit: 200,
+      ...(cursorId ? { cursorId } : {}),
+    });
+    movements.push(...page.items.filter((movement) => (
+      movementCountsTowardBalance(movement)
+      && movement.installmentRole !== 'charge'
+      && toClubDayKey(movement.operationDate.toDate()) === closureDay
+    )));
+    cursorId = page.nextCursorId;
+  } while (cursorId);
+  return movements;
 }
 
 export async function createCashClosureUseCase(params: {

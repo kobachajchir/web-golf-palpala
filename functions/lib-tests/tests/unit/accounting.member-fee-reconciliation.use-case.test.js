@@ -70,7 +70,7 @@ test('la vista previa encuentra el cobro legado sin modificar contabilidad ni cu
     seedLegacyMovement(manager);
     const result = await reconcileMemberFeeRenewalsUseCase({
         actor: directivoActor(),
-        input: { period: '2026-05', execute: false },
+        input: { period: '2026-05', execute: false, markFullyPaidOnly: false },
         transactions: manager,
     });
     assert.equal(result.repairedChargeCount, 1);
@@ -88,7 +88,7 @@ test('la ejecucion descuenta la renovacion y conserva intacto el movimiento', as
     seedLegacyMovement(manager);
     const result = await reconcileMemberFeeRenewalsUseCase({
         actor: directivoActor(),
-        input: { period: '2026-05', execute: true },
+        input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
         transactions: manager,
     });
     assert.equal(result.repairedChargeCount, 1);
@@ -107,7 +107,7 @@ test('no infiere una renovacion cuando hay mas de una cuota candidata', async ()
     seedLegacyMovement(manager);
     const result = await reconcileMemberFeeRenewalsUseCase({
         actor: directivoActor(),
-        input: { period: '2026-05', execute: true },
+        input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
         transactions: manager,
     });
     assert.equal(result.repairedChargeCount, 0);
@@ -124,7 +124,7 @@ test('reconstruye una renovacion faltante solo cuando socio, periodo e importe s
     seedLegacyMovement(manager);
     const result = await reconcileMemberFeeRenewalsUseCase({
         actor: directivoActor(),
-        input: { period: '2026-05', execute: true },
+        input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
         transactions: manager,
     });
     const reconstructed = manager.memberFeeCharges.get('member-fee-charge-1');
@@ -148,7 +148,7 @@ test('reconstruye como pagada una cuota con pronto pago historico dentro del dia
     movement.metadata = { clubAmountMinor: 9_900_000 };
     const result = await reconcileMemberFeeRenewalsUseCase({
         actor: directivoActor(),
-        input: { period: '2026-05', execute: true },
+        input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
         transactions: manager,
     });
     const reconstructed = manager.memberFeeCharges.get('member-fee-charge-1');

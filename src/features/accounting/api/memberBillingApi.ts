@@ -4,6 +4,7 @@ import { createAccountingCallables } from '../../../modules/accounting/functions
 import { createMemberFeeChargesRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
 import { buildArgentinaDateIso } from '../utils/accountingFormatters';
 import { memberFeeChargeToOpenItem } from '../utils/accountingMappers';
+import { getOrCreateOperationKey, memberFeePaymentOperationScope } from '../utils/pendingOperationKeys';
 import type {
   ManualPaymentReceipt,
   ManualPaymentRequest,
@@ -11,7 +12,6 @@ import type {
 } from '../types/payment';
 
 const accountingCallables = createAccountingCallables();
-const pendingPaymentKeys = new Map<string, string>();
 
 function isCharge(charge: EntityWithId<MemberFeeChargeDocument> | null): charge is EntityWithId<MemberFeeChargeDocument> {
   return Boolean(charge);
@@ -61,15 +61,18 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
     throw new Error('Selecciona una cuota pendiente o un mes para cobrar por adelantado.');
   }
 
-  const fingerprint = JSON.stringify(request);
-  const requestKey = pendingPaymentKeys.get(fingerprint) ?? crypto.randomUUID();
-  pendingPaymentKeys.set(fingerprint, requestKey);
+  // La clave pertenece a la operacion de cobro del socio y se persiste hasta que la pantalla
+  // confirme el resultado (ver pendingOperationKeys). Reintentos y recargas reutilizan la misma.
+  const operationScope = request.operationScope ?? memberFeePaymentOperationScope(request.memberId);
+  const requestKey = getOrCreateOperationKey(operationScope);
   const result = await accountingCallables.registerMemberFeeBatchPayment({
     allocations: [...validCharges.map((charge) => {
       const amountMinor = request.allocationAmountsByChargeId?.[charge.id];
       const settlementAmountMinor = request.settlementAmountsByChargeId?.[charge.id];
+      const expectedAvailableMinor = request.expectedAvailableByChargeId?.[charge.id];
       return {
         chargeId: charge.id,
+        ...(expectedAvailableMinor !== undefined && settlementAmountMinor === undefined ? { expectedAvailableMinor } : {}),
         ...(amountMinor !== undefined ? { amountMinor } : {}),
         ...(settlementAmountMinor !== undefined ? { settlementAmountMinor } : {}),
         ...(request.applyEarlyPaymentDiscount !== undefined
@@ -95,11 +98,12 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
     idempotencyKey: requestKey,
   });
 
-  pendingPaymentKeys.delete(fingerprint);
   return {
     movementIds: [result.movementId],
     receiptNumbers: result.receiptNumber ? [result.receiptNumber] : [],
     totalAmountMinor: result.grossAmountMinor,
-    duplicate: false,
+    duplicate: Boolean((result as { duplicate?: boolean }).duplicate),
+    operationScope,
+    operationKey: requestKey,
   };
 }

@@ -32,7 +32,7 @@ import type {
   ReportScope,
 } from '../types/accounting';
 import { getCurrentAccountingPeriod, getSignedMovementAmount, normalizeAccountingPeriod, timestampToDate } from '../utils/accountingFormatters';
-import { isMovementExcludedFromBalance } from '../utils/balanceInclusion';
+import { isMovementExcludedFromBalance, movementCountsTowardBalance } from '../utils/balanceInclusion';
 import { buildChargesByMemberId, estimateMemberFeeAmountMinor, getChargeTargetMemberIds, getOpenFeeCharges } from '../utils/memberFeeEstimates';
 import { isVisiblePaymentMethod } from '../utils/paymentMethods';
 
@@ -271,7 +271,7 @@ export async function summarizeReportData({
     .flat()
     .filter((movement) => scope === 'period' || isMovementInsideRange(movement.operationDate, dateFrom ?? '', dateTo ?? ''));
   const visibleMovements = movements.filter((movement) => (
-    movement.status === 'posted'
+    movementCountsTowardBalance(movement)
     && movement.installmentRole !== 'charge'
     && !isMovementExcludedFromBalance(movement)
   ));

@@ -872,7 +872,7 @@ export const accountingPreviewMemberFeePayment = onCall(async (request) => {
   try {
     const actor = await getActorFromCallableRequest(request.auth);
     const data = assertIsRecord(request.data);
-    return await previewMemberFeePaymentUseCase({ actor, input: { memberId: parseRequiredString(data, 'memberId'), periods: parseRequiredStringArray(data, 'periods'), operationDate: parseRequiredIsoDate(data, 'operationDate') }, transactions });
+    return await previewMemberFeePaymentUseCase({ actor, input: { memberId: parseRequiredString(data, 'memberId'), periods: parseRequiredStringArray(data, 'periods'), operationDate: parseRequiredIsoDate(data, 'operationDate'), applyEarlyPaymentDiscount: typeof data.applyEarlyPaymentDiscount === 'boolean' ? data.applyEarlyPaymentDiscount : undefined }, transactions });
   } catch (error) { withCallableLogging('accountingPreviewMemberFeePayment', error); }
 });
 

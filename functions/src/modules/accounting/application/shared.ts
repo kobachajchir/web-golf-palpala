@@ -539,3 +539,12 @@ export async function resolveActor(
     user,
   };
 }
+
+/**
+ * Un movimiento anulado con contraasiento queda en estado `reversed` y su reverso en `posted`.
+ * Ambos deben contar en los saldos para compensarse; si solo contara el reverso, un ingreso
+ * de $100 anulado terminaria aportando -$100.
+ */
+export function movementCountsTowardBalance(movement: { status: string; reversalOfMovementId?: string | null }) {
+  return movement.status === 'posted' || (movement.status === 'reversed' && Boolean(movement.reversalOfMovementId));
+}

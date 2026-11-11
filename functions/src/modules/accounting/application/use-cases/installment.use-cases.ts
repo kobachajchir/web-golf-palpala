@@ -21,6 +21,7 @@ import {
 } from '../shared.js';
 import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 import { createPostedMovement } from '../movement-helpers.js';
+import { assertChargeNotLockedByPartialPlan } from '../member-fee-plan-lock.js';
 import { buildMemberFeeChargeCreateData, computeFeePreviewInternal } from './fee.use-cases.js';
 
 type MemberFeeChargeSnapshot = { id: string } & Omit<
@@ -173,7 +174,14 @@ async function prepareCompletedMemberFeeRenewals(params: {
       'failed-precondition',
       'La renovacion vinculada al plan no corresponde al socio y periodo seleccionados.',
     );
-    if (resolvedCharge.status === 'paid' || resolvedCharge.status === 'exempt') continue;
+    assertCondition(
+      resolvedCharge.status !== 'paid' && resolvedCharge.status !== 'exempt',
+      'failed-precondition',
+      `La cuota ${resolvedCharge.period} ya fue cobrada por otra via. No se registran mas abonos en este plan para evitar un cobro duplicado.`,
+    );
+    if (resolvedCharge.activePartialPlanId && resolvedCharge.activePartialPlanId !== params.root.id) {
+      await assertChargeNotLockedByPartialPlan(params.dataAccess, resolvedCharge, params.root.id);
+    }
 
     const paidFromRemaining = typeof resolvedCharge.remainingAmountMinor === 'number'
       ? (resolvedCharge.settlementAmountMinor ?? resolvedCharge.finalAmountMinor) - resolvedCharge.remainingAmountMinor
@@ -203,6 +211,7 @@ async function prepareCompletedMemberFeeRenewals(params: {
       paymentDiscountPctBps: allocation.discountPctBps,
       paymentDiscountAmountMinor: allocation.discountAmountMinor,
       paymentDiscountMode: allocation.discountMode,
+      activePartialPlanId: null,
       _completed: completed,
       _previousPaymentMovementIds: resolvedCharge.paymentMovementIds ?? [],
       _previousPaidMovementId: resolvedCharge.paidMovementId ?? null,
@@ -236,6 +245,95 @@ async function applyCompletedMemberFeeRenewals(params: {
     } else {
       await params.dataAccess.memberFeeCharges.update(action.id, finalPayload, params.actorUid);
     }
+  }
+}
+
+type ResolvedPlanAllocation = {
+  allocation: MemberFeePlanAllocation;
+  existingChargeId: string | null;
+  createData: ReturnType<typeof buildMemberFeeChargeCreateData> | null;
+};
+
+function isMemberFeePlan(root: Pick<FinancialMovementDocument, 'categoryId' | 'categoryCodeSnapshot'>) {
+  return root.categoryId === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
+    || root.categoryCodeSnapshot === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria;
+}
+
+/**
+ * Resuelve (y si hace falta prepara la emision de) las cuotas que cubre un plan de pagos
+ * parciales para poder reservarlas. Solo lee: las escrituras se hacen despues de crear el plan.
+ */
+async function resolvePlanAllocationsForLock(params: {
+  dataAccess: AccountingDataAccess;
+  actorUid: string;
+  memberId: string;
+  allocations: MemberFeePlanAllocation[];
+}): Promise<ResolvedPlanAllocation[]> {
+  const member = await params.dataAccess.members.getById(params.memberId);
+  assertCondition(member, 'not-found', `No existe members/${params.memberId}.`);
+  const resolved: ResolvedPlanAllocation[] = [];
+  const seen = new Set<string>();
+  for (const allocation of params.allocations) {
+    let charge: EntityWithId<MemberFeeChargeDocument> | null = allocation.chargeId
+      ? await params.dataAccess.memberFeeCharges.getById(allocation.chargeId)
+      : null;
+    let createData: ReturnType<typeof buildMemberFeeChargeCreateData> | null = null;
+    if (!charge) {
+      const preview = await computeFeePreviewInternal({ dataAccess: params.dataAccess, memberId: params.memberId, period: allocation.period });
+      charge = await params.dataAccess.memberFeeCharges.findDuplicate({
+        memberId: preview.billingMode === 'per_member' ? preview.memberId : preview.holderMemberId ?? null,
+        familyGroupId: preview.billingMode === 'single_group_charge' ? preview.familyGroupId ?? null : null,
+        period: preview.period,
+        billingMode: preview.billingMode,
+      });
+      if (!charge) {
+        const periodKey = `new:${allocation.period}`;
+        assertCondition(!seen.has(periodKey), 'invalid-argument', 'El mismo mes no puede incluirse dos veces en el plan.');
+        seen.add(periodKey);
+        createData = buildMemberFeeChargeCreateData({
+          preview,
+          actorUid: params.actorUid,
+          dueDate: new Date(allocation.period + '-01T00:00:00-03:00'),
+          notes: 'Cuota emitida al crear un plan de pagos parciales.',
+        });
+      }
+    }
+    if (charge) {
+      const belongsToMember = charge.memberId === params.memberId
+        || charge.holderMemberId === params.memberId
+        || Boolean(member.familyGroupId && charge.familyGroupId === member.familyGroupId && charge.billingMode === 'single_group_charge');
+      assertCondition(
+        belongsToMember && charge.period === allocation.period,
+        'failed-precondition',
+        'La cuota seleccionada no corresponde al socio y periodo del plan.',
+      );
+      assertCondition(
+        charge.status === 'pending' || charge.status === 'overdue',
+        'failed-precondition',
+        `La cuota ${charge.period} ya no admite pagos.`,
+      );
+      await assertChargeNotLockedByPartialPlan(params.dataAccess, charge);
+      assertCondition(!seen.has(charge.id), 'invalid-argument', 'La misma cuota no puede incluirse dos veces en el plan.');
+      seen.add(charge.id);
+    }
+    resolved.push({ allocation, existingChargeId: charge?.id ?? null, createData });
+  }
+  return resolved;
+}
+
+/** Antes de aceptar un abono, verifica que las cuotas del plan no se hayan cobrado por otra via. */
+async function assertPlanChargesStillOpen(dataAccess: AccountingDataAccess, root: EntityWithId<FinancialMovementDocument>) {
+  if (!isMemberFeePlan(root)) return;
+  for (const allocation of readMemberFeePlanAllocations(root.metadata)) {
+    if (!allocation.chargeId) continue;
+    const charge = await dataAccess.memberFeeCharges.getById(allocation.chargeId);
+    if (!charge) continue;
+    assertCondition(
+      charge.status !== 'paid' && charge.status !== 'exempt',
+      'failed-precondition',
+      `La cuota ${charge.period} ya fue cobrada por otra via. No se registran mas abonos en este plan para evitar un cobro duplicado; revisa el caso con administracion.`,
+    );
+    await assertChargeNotLockedByPartialPlan(dataAccess, charge, root.id);
   }
 }
 
@@ -325,6 +423,21 @@ export async function createInstallmentPlanUseCase(params: {
     assertCondition(category, 'not-found', `No existe la categoria ${params.input.categoryId}.`);
     assertCondition(category.active, 'failed-precondition', `La categoria ${params.input.categoryId} esta inactiva.`);
 
+    const requestedAllocations = params.input.movementType === 'income' && category.id === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
+      ? readMemberFeePlanAllocations(params.input.metadata)
+      : [];
+    const allocationMemberId = typeof params.input.metadata?.memberFeeMemberId === 'string'
+      ? params.input.metadata.memberFeeMemberId
+      : params.input.thirdPartyType === 'member' ? params.input.thirdPartyId ?? null : null;
+    assertCondition(
+      requestedAllocations.length === 0 || Boolean(allocationMemberId),
+      'invalid-argument',
+      'El plan de cuotas societarias debe indicar el socio.',
+    );
+    const resolvedAllocations = requestedAllocations.length > 0
+      ? await resolvePlanAllocationsForLock({ dataAccess, actorUid: actor.uid, memberId: allocationMemberId!, allocations: requestedAllocations })
+      : [];
+
     const interestAmountMinor = calculateAmountFromBps(params.input.baseAmountMinor, params.input.interestPctBps);
     const totalAmountMinor = params.input.baseAmountMinor + interestAmountMinor;
     const principalAmountsMinor = isFlexiblePartialPlan
@@ -403,6 +516,17 @@ export async function createInstallmentPlanUseCase(params: {
       actor.uid,
     );
 
+    const lockedAllocations: MemberFeePlanAllocation[] = [];
+    for (const entry of resolvedAllocations) {
+      let chargeId = entry.existingChargeId;
+      if (entry.createData) {
+        chargeId = await dataAccess.memberFeeCharges.create({ ...entry.createData, activePartialPlanId: movementId }, actor.uid);
+      } else if (chargeId) {
+        await dataAccess.memberFeeCharges.update(chargeId, { activePartialPlanId: movementId }, actor.uid);
+      }
+      lockedAllocations.push({ ...entry.allocation, chargeId });
+    }
+
     await dataAccess.financialMovements.update(
       movementId,
       {
@@ -410,6 +534,7 @@ export async function createInstallmentPlanUseCase(params: {
         originId: movementId,
         metadata: {
           ...(params.input.metadata ?? {}),
+          ...(resolvedAllocations.length > 0 ? { memberFeeRenewalAllocations: lockedAllocations } : {}),
           installmentPlanId: movementId,
           partialPaymentMode: isFlexiblePartialPlan ? 'flexible' : 'scheduled',
           installmentSchedule: schedule,
@@ -446,7 +571,7 @@ export async function registerInstallmentPaymentUseCase(params: {
     const fingerprint = createHash('sha256').update(JSON.stringify(params.input)).digest('hex');
     const previous = operationKey ? await dataAccess.operations?.get(operationKey) : null;
     if (previous) {
-      assertCondition(previous.fingerprint === fingerprint, 'invalid-argument', 'La clave de pago ya fue utilizada con otros datos.');
+      assertCondition(previous.fingerprint === fingerprint, 'already-exists', 'Ya se registro un abono con esta operacion (posiblemente tras un corte o una demora). Revisa el detalle del plan antes de volver a cobrar.', { movementId: previous.result?.movementId ?? null });
       return { ...previous.result, duplicate: true };
     }
     await assertCashOperationDateAllowed({ dataAccess, operationDate: params.input.operationDate });
@@ -454,6 +579,8 @@ export async function registerInstallmentPaymentUseCase(params: {
     assertCondition(root, 'not-found', `No existe la carga ${params.input.installmentPlanId}.`);
     assertCondition(root.installmentRole === 'charge', 'failed-precondition', 'El movimiento no es una carga en cuotas.');
     assertCondition(root.status !== 'voided' && root.status !== 'reversed', 'failed-precondition', 'La carga esta anulada.');
+    assertCondition(root.status === 'pending', 'failed-precondition', 'El plan ya esta completo.');
+    await assertPlanChargesStillOpen(dataAccess, root);
 
     const linkedMovements = await dataAccess.financialMovements.listByInstallmentPlanId(root.id);
     const postedPayments = linkedMovements

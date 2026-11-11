@@ -24,6 +24,58 @@ import { InstallmentProgress } from './InstallmentProgress';
 
 const MOVEMENTS_PAGE_SIZE = 5;
 
+type MovementListItem = {
+  movement: EntityWithId<FinancialMovementDocument>;
+  counterpart: EntityWithId<FinancialMovementDocument> | null;
+};
+
+function getMovementMetadataString(movement: EntityWithId<FinancialMovementDocument> | null, key: string) {
+  const value = movement?.metadata?.[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function getCounterpartMovementId(movement: EntityWithId<FinancialMovementDocument>) {
+  return getMovementMetadataString(movement, 'counterpartMovementId') || movement.originId || '';
+}
+
+function buildMovementListItems(movements: Array<EntityWithId<FinancialMovementDocument>>): MovementListItem[] {
+  const movementsById = new Map(movements.map((movement) => [movement.id, movement]));
+  const usedIds = new Set<string>();
+  const items: MovementListItem[] = [];
+
+  movements.forEach((movement) => {
+    if (usedIds.has(movement.id)) return;
+    if (movement.originType !== 'internal_transfer') {
+      usedIds.add(movement.id);
+      items.push({ movement, counterpart: null });
+      return;
+    }
+
+    const counterpart = movementsById.get(getCounterpartMovementId(movement)) ?? null;
+    const representative = movement.movementType === 'expense'
+      ? movement
+      : counterpart?.movementType === 'expense'
+        ? counterpart
+        : movement;
+    const representativeCounterpart = representative.id === movement.id ? counterpart : movement;
+    usedIds.add(movement.id);
+    if (counterpart) usedIds.add(counterpart.id);
+    items.push({ movement: representative, counterpart: representativeCounterpart });
+  });
+
+  return items;
+}
+
+function getInternalTransferMethodLabel(item: MovementListItem) {
+  const sourceName = getMovementMetadataString(item.movement, 'sourcePaymentMethodName')
+    || getMovementMetadataString(item.counterpart, 'sourcePaymentMethodName')
+    || getPaymentMethodDisplayName(item.movement.paymentMethodCodeSnapshot);
+  const destinationName = getMovementMetadataString(item.movement, 'destinationPaymentMethodName')
+    || getMovementMetadataString(item.counterpart, 'destinationPaymentMethodName')
+    || getPaymentMethodDisplayName(item.counterpart?.paymentMethodCodeSnapshot);
+  return `${sourceName} -> ${destinationName}`;
+}
+
 function normalizeSearchText(value: string) {
   return value
     .normalize('NFD')
@@ -173,9 +225,10 @@ export function AccountingMovementsPanel({
     dateFrom: initialDateRange.dateFrom,
     dateTo: initialDateRange.dateTo,
   });
+  const movementItems = useMemo(() => buildMovementListItems(movements), [movements]);
   const movementUserIds = useMemo(
-    () => Array.from(new Set(movements.map((movement) => movement.createdBy).filter((uid): uid is string => Boolean(uid)))).sort(),
-    [movements],
+    () => Array.from(new Set(movementItems.map(({ movement }) => movement.createdBy).filter((uid): uid is string => Boolean(uid)))).sort(),
+    [movementItems],
   );
   const [usersById, setUsersById] = useState<Record<string, UserEntityWithId<UserDocument>>>({});
 
@@ -247,9 +300,10 @@ export function AccountingMovementsPanel({
     [expenseCategories, incomeCategories],
   );
   const filteredMovements = useMemo(
-    () => movements.filter((movement) => {
+    () => movementItems.filter((item) => {
+      const { movement, counterpart } = item;
       const movementDateKey = getMovementDateKey(movement);
-      if (filters.categoryId !== 'all' && movement.categoryId !== filters.categoryId) {
+      if (filters.categoryId !== 'all' && movement.categoryId !== filters.categoryId && counterpart?.categoryId !== filters.categoryId) {
         return false;
       }
       if (filters.status !== 'all' && movement.status !== filters.status) {
@@ -258,7 +312,9 @@ export function AccountingMovementsPanel({
       if (filters.planMode === 'partial_payments' && !isFlexiblePartialPaymentMovement(movement)) {
         return false;
       }
-      if (filters.paymentMethodId !== 'all' && movement.paymentMethodId !== filters.paymentMethodId) {
+      if (filters.paymentMethodId !== 'all'
+        && movement.paymentMethodId !== filters.paymentMethodId
+        && counterpart?.paymentMethodId !== filters.paymentMethodId) {
         return false;
       }
       if (filters.dateFrom && (!movementDateKey || movementDateKey < filters.dateFrom)) {
@@ -272,10 +328,14 @@ export function AccountingMovementsPanel({
         const searchable = normalizeSearchText([
           getCategoryLabel(movement.categoryId),
           movement.paymentMethodCodeSnapshot,
+          counterpart?.paymentMethodCodeSnapshot,
           movement.originType,
           movement.thirdPartyId,
           getMovementUserLabel(movement.createdBy, usersById),
           movement.notes,
+          counterpart?.notes,
+          getMovementMetadataString(movement, 'transferReference'),
+          getInternalTransferMethodLabel(item),
         ].filter(Boolean).join(' '));
         if (!searchable.includes(query)) {
           return false;
@@ -283,7 +343,7 @@ export function AccountingMovementsPanel({
       }
       return true;
     }),
-    [filters, movements, usersById],
+    [filters, movementItems, usersById],
   );
   const visibleMovements = useMemo(
     () => filteredMovements.slice(0, visibleMovementCount),
@@ -408,49 +468,53 @@ export function AccountingMovementsPanel({
               </tr>
             </thead>
             <tbody>
-              {visibleMovements.map((movement) => (
-                <tr key={movement.id} className={getMovementBalanceRowClassName(movement)}>
-                  <td>{formatTimestamp(movement.operationDate)}</td>
-                  <td>
-                    <span>{getCategoryLabel(movement.categoryId)}</span>
-                    {movement.installmentPlanId && (
-                      <span className="status-chip status-chip--installments">
-                        {movement.metadata?.partialPaymentMode === 'flexible' ? 'PAGOS PARCIALES' : 'CUOTAS'}
-                      </span>
-                    )}
-                    {movement.installmentRole === 'charge' && <span className="status-chip status-chip--charge">CARGA</span>}
-                  </td>
-                  <td>{movement.movementType === 'income' ? 'Ingreso' : 'Egreso'}</td>
-                  <td>{getPaymentMethodDisplayName(movement.paymentMethodCodeSnapshot)}</td>
-                  <td><span className={`status-chip status-chip--${movement.status}`}>{getMovementStatusLabel(movement.status)}</span></td>
-                  <td>{getMovementUserLabel(movement.createdBy, usersById)}</td>
-                  <td>
-                    <strong>{formatCurrency(getMovementListAmountMinor(movement))}</strong>
-                    <InstallmentProgress movement={movement} compact />
-                  </td>
-                  {hasActions && (
+              {visibleMovements.map((item) => {
+                const { movement } = item;
+                const isInternalTransfer = movement.originType === 'internal_transfer';
+                return (
+                  <tr key={movement.id} className={getMovementBalanceRowClassName(movement)}>
+                    <td>{formatTimestamp(movement.operationDate)}</td>
                     <td>
-                      <div className="accounting-movement-row-actions">
-                        {onRegisterPartialPayment && canRegisterFlexiblePartialPayment(movement) && (
-                          <button type="button" className="btn-primary" onClick={() => onRegisterPartialPayment(movement)}>
-                            Registrar pago
-                          </button>
-                        )}
-                        <button type="button" className="btn-secondary" onClick={() => onSelectMovement?.(movement)}>
-                          Ver detalles
-                        </button>
-                        <AccountingMovementActions
-                          movement={movement}
-                          incomeCategories={incomeCategories}
-                          expenseCategories={expenseCategories}
-                          paymentMethods={paymentMethods}
-                          {...(onMovementChanged ? { onChanged: onMovementChanged } : {})}
-                        />
-                      </div>
+                      <span>{isInternalTransfer ? 'Movimiento entre cuentas' : getCategoryLabel(movement.categoryId)}</span>
+                      {movement.installmentPlanId && (
+                        <span className="status-chip status-chip--installments">
+                          {movement.metadata?.partialPaymentMode === 'flexible' ? 'PAGOS PARCIALES' : 'CUOTAS'}
+                        </span>
+                      )}
+                      {movement.installmentRole === 'charge' && <span className="status-chip status-chip--charge">CARGA</span>}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td>{isInternalTransfer ? 'Transferencia' : movement.movementType === 'income' ? 'Ingreso' : 'Egreso'}</td>
+                    <td>{isInternalTransfer ? getInternalTransferMethodLabel(item) : getPaymentMethodDisplayName(movement.paymentMethodCodeSnapshot)}</td>
+                    <td><span className={`status-chip status-chip--${movement.status}`}>{getMovementStatusLabel(movement.status)}</span></td>
+                    <td>{getMovementUserLabel(movement.createdBy, usersById)}</td>
+                    <td>
+                      <strong>{formatCurrency(isInternalTransfer ? movement.netAmountMinor : getMovementListAmountMinor(movement))}</strong>
+                      <InstallmentProgress movement={movement} compact />
+                    </td>
+                    {hasActions && (
+                      <td>
+                        <div className="accounting-movement-row-actions">
+                          {onRegisterPartialPayment && canRegisterFlexiblePartialPayment(movement) && (
+                            <button type="button" className="btn-primary" onClick={() => onRegisterPartialPayment(movement)}>
+                              Registrar pago
+                            </button>
+                          )}
+                          <button type="button" className="btn-secondary" onClick={() => onSelectMovement?.(movement)}>
+                            Ver detalles
+                          </button>
+                          <AccountingMovementActions
+                            movement={movement}
+                            incomeCategories={incomeCategories}
+                            expenseCategories={expenseCategories}
+                            paymentMethods={paymentMethods}
+                            {...(onMovementChanged ? { onChanged: onMovementChanged } : {})}
+                          />
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

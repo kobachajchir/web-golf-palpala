@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { registerManualPayment } from '../api/memberBillingApi';
 import type { ManualPaymentReceipt, OpenItem, PaymentMethod } from '../types/payment';
 import { formatCurrency, parseAmountInputToMinor } from '../utils/accountingFormatters';
+import { isDefinitiveServerRejection, memberFeePaymentOperationScope, peekOperationKey, releaseOperationKey } from '../utils/pendingOperationKeys';
 import { usePaymentComposer } from '../hooks/usePaymentComposer';
 import { isMacroDebitPaymentMethod, isVisiblePaymentMethod } from '../utils/paymentMethods';
 import { calculatePaymentCommission } from '../utils/paymentMethods';
@@ -122,8 +123,10 @@ export function PaymentComposer({
       if (remainingPaymentMinor > 0) {
         throw new Error('No se pudo distribuir el monto entre las cuotas seleccionadas.');
       }
+      const operationScope = memberFeePaymentOperationScope(memberId);
       const receipt = await registerManualPayment({
         memberId,
+        operationScope,
         openItemIds: composer.state.selectedOpenItemIds,
         paymentMethodId: composer.state.paymentMethodId ?? '',
         paymentDate: composer.state.paymentDate,
@@ -132,7 +135,13 @@ export function PaymentComposer({
         allocationAmountsByChargeId,
         settlementAmountsByChargeId,
         notes: composer.state.notes,
+      }).catch((paymentError: unknown) => {
+        if (isDefinitiveServerRejection(paymentError)) {
+          releaseOperationKey(operationScope, peekOperationKey(operationScope) ?? '');
+        }
+        throw paymentError;
       });
+      releaseOperationKey(receipt.operationScope, receipt.operationKey);
       composer.clearSelection();
       onSubmitManual(receipt);
       setConfirmOpen(false);

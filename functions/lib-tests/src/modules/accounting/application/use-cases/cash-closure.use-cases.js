@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import { assertIsRecord, ensureStaff, parseOptionalAccountingPeriod, parseOptionalAmountMinor, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalStringArray, parseRequiredAccountingPeriod, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
+import { assertIsRecord, ensureStaff, movementCountsTowardBalance, parseOptionalAccountingPeriod, parseOptionalAmountMinor, parseOptionalIsoDate, parseOptionalNullableString, parseOptionalStringArray, parseRequiredAccountingPeriod, parseRequiredAmountMinor, parseRequiredIsoDate, parseRequiredString, } from '../shared.js';
 import { assertCashClosureCanOpen } from '../cash-closure-guards.js';
 function toClubDayKey(date) {
     return new Intl.DateTimeFormat('en-CA', {
@@ -19,15 +19,24 @@ async function resolveClosureMovements(params) {
     if (params.movementIds?.length) {
         const movements = await Promise.all(params.movementIds.map((movementId) => dataAccess.financialMovements.getById(movementId)));
         assertCondition(movements.every(Boolean), 'not-found', 'Uno o más financial_movements no existen.');
-        return movements.filter((movement) => movement !== null);
+        return movements.filter((movement) => movement !== null && movementCountsTowardBalance(movement) && movement.installmentRole !== 'charge');
     }
-    const page = await dataAccess.financialMovements.listPage({
-        accountingPeriod: params.period,
-        status: 'posted',
-        limit: 100,
-    });
+    // Se recorren todas las paginas del periodo: con un solo lote de 100 se omitian movimientos del dia.
     const closureDay = toClubDayKey(params.closureDate);
-    return page.items.filter((movement) => toClubDayKey(movement.operationDate.toDate()) === closureDay);
+    const movements = [];
+    let cursorId;
+    do {
+        const page = await dataAccess.financialMovements.listPage({
+            accountingPeriod: params.period,
+            limit: 200,
+            ...(cursorId ? { cursorId } : {}),
+        });
+        movements.push(...page.items.filter((movement) => (movementCountsTowardBalance(movement)
+            && movement.installmentRole !== 'charge'
+            && toClubDayKey(movement.operationDate.toDate()) === closureDay)));
+        cursorId = page.nextCursorId;
+    } while (cursorId);
+    return movements;
 }
 export async function createCashClosureUseCase(params) {
     const actor = ensureStaff(params.actor);

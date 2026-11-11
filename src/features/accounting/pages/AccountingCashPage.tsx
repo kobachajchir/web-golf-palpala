@@ -41,7 +41,7 @@ import {
   getFallbackIncomeCategories,
   includeRequiredExpenseCategories,
 } from '../utils/accountingCategories';
-import { getMovementBalanceRowClassName, isMovementExcludedFromBalance } from '../utils/balanceInclusion';
+import { getMovementBalanceRowClassName, isMovementExcludedFromBalance, movementCountsTowardBalance } from '../utils/balanceInclusion';
 import {
   buildArgentinaDateIso,
   formatCurrency,
@@ -51,6 +51,7 @@ import {
   getSignedMovementAmount,
   normalizeAccountingPeriod,
   parseAmountInputToMinor,
+  parseNumberInputToMinor,
   timestampToDate,
 } from '../utils/accountingFormatters';
 import {
@@ -364,11 +365,11 @@ function ExpenseQuickForm({
   const needsVendor = isVendorExpenseCategory(form.categoryId) && !needsEmployee;
   const isOvertime = form.categoryId === ACCOUNTING_EXPENSE_CATEGORY_IDS.horasExtra;
   const overtimeHours = Number(form.overtimeHours.replace(',', '.'));
-  const overtimeRateMinor = parseAmountInputToMinor(form.overtimeRate);
+  const overtimeRateMinor = parseNumberInputToMinor(form.overtimeRate);
   const overtimeAmountMinor = Number.isFinite(overtimeHours) && Number.isFinite(overtimeRateMinor)
     ? Math.round(overtimeHours * overtimeRateMinor)
     : Number.NaN;
-  const amountMinorPreview = isOvertime ? overtimeAmountMinor : parseAmountInputToMinor(form.amount);
+  const amountMinorPreview = isOvertime ? overtimeAmountMinor : parseNumberInputToMinor(form.amount);
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === form.paymentMethodId) ?? null;
   const paymentCommission = calculatePaymentCommission(
     Number.isFinite(amountMinorPreview) ? amountMinorPreview : 0,
@@ -395,7 +396,7 @@ function ExpenseQuickForm({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const amountMinor = isOvertime ? overtimeAmountMinor : parseAmountInputToMinor(form.amount);
+    const amountMinor = isOvertime ? overtimeAmountMinor : parseNumberInputToMinor(form.amount);
     const employeeId = needsEmployee ? resolveEmployeeId(employees, form.employeeSearch) : '';
     if (needsEmployee && !employeeId) {
       onNotice({ kind: 'error', message: 'Selecciona el empleado asociado.' });
@@ -751,7 +752,7 @@ function TileIcon({ type }: { type: 'wallet' | 'clipboard' | 'chart' }) {
 }
 
 function isPostedMovement(movement: EntityWithId<FinancialMovementDocument>) {
-  return movement.status === 'posted' && movement.installmentRole !== 'charge' && !isMovementExcludedFromBalance(movement);
+  return movementCountsTowardBalance(movement) && movement.installmentRole !== 'charge' && !isMovementExcludedFromBalance(movement);
 }
 
 function getMovementDateKeyFromTimestamp(movement: EntityWithId<FinancialMovementDocument>) {

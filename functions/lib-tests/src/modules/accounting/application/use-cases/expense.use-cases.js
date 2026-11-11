@@ -18,6 +18,16 @@ export async function submitExpenseUseCase(params) {
             assertCondition(actor.user.profileId === params.input.employeeId, 'permission-denied', 'Solo podés cargar tus propias rendiciones.');
             assertCondition(employee.canSubmitExpenses, 'permission-denied', 'El empleado no tiene habilitada la carga de rendiciones.');
         }
+        const restrictedCategories = [
+            FINANCIAL_EXPENSE_CATEGORY_IDS.sueldo,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.aguinaldo,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.f931,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.obraSocial,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.art,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer,
+        ];
+        assertCondition(!restrictedCategories.includes(category.id), 'failed-precondition', `La categoría ${category.id} no puede registrarse manualmente. Usá el módulo correspondiente.`);
         if (category.id === FINANCIAL_EXPENSE_CATEGORY_IDS.combustible) {
             if (params.input.liters !== undefined && params.input.liters !== null) {
                 assertCondition(params.input.liters >= 0, 'invalid-argument', 'liters no puede ser negativo.');
@@ -66,6 +76,16 @@ export async function registerExpenseMovementUseCase(params) {
         if (params.input.employeeId) {
             assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
         }
+        const restrictedCategories = [
+            FINANCIAL_EXPENSE_CATEGORY_IDS.sueldo,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.aguinaldo,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.f931,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.obraSocial,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.art,
+            FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer,
+        ];
+        assertCondition(!restrictedCategories.includes(category.id), 'failed-precondition', `La categoría ${category.id} no puede registrarse manualmente. Usá el módulo correspondiente.`);
         const paymentMethod = await dataAccess.paymentMethods.getById(params.input.paymentMethodId);
         assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.input.paymentMethodId}.`);
         assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.input.paymentMethodId} esta inactivo.`);

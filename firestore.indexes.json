@@ -369,41 +369,6 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-      "collectionGroup": "financial_movements",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "categoryCodeSnapshot",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "thirdPartyType",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "thirdPartyId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "operationDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },    {
-          "fieldPath": "paymentMethodCodeSnapshot",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "operationDate",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "financial_movements",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
           "fieldPath": "thirdPartyType",
           "order": "ASCENDING"
         },

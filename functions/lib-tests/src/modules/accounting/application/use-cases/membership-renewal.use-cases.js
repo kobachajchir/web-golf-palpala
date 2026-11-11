@@ -149,7 +149,7 @@ export async function syncMembershipRenewalsDailyUseCase(params) {
     const issuance = await markMembershipRenewalsUseCase({ transactions: params.transactions, actor, now });
     const paymentReconciliation = await reconcileMemberFeeRenewalsUseCase({
         actor,
-        input: { period: issuance.period, execute: true },
+        input: { period: issuance.period, execute: true, markFullyPaidOnly: false },
         transactions: params.transactions,
     });
     return {

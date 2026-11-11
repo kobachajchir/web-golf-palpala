@@ -9,11 +9,13 @@ import {
   formatCurrency,
   getSignedMovementAmount,
   parseAmountInputToMinor,
+  parseNumberInputToMinor,
   timestampToDate,
 } from '../utils/accountingFormatters';
 import { getCategoryLabel } from '../utils/accountingCategories';
 import { calculatePaymentCommission, getPaymentMethodDisplayName } from '../utils/paymentMethods';
 import { isMovementExcludedFromBalance } from '../utils/balanceInclusion';
+import { getOrCreateOperationKey, installmentPaymentOperationScope, isDefinitiveServerRejection, releaseOperationKey } from '../utils/pendingOperationKeys';
 import { AccountingOperationModal } from './AccountingOperationModal';
 import { InstallmentProgress } from './InstallmentProgress';
 import { PaymentCommissionSummary } from './PaymentCommissionSummary';
@@ -164,7 +166,7 @@ export function AccountingMovementDetailModal({
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
   const nextInstallmentIndex = rootMovement?.installmentPaidCount ?? 0;
   const nextSchedule = schedule[nextInstallmentIndex] ?? {};
-  const parsedPartialAmountMinor = parseAmountInputToMinor(partialAmount);
+  const parsedPartialAmountMinor = parseNumberInputToMinor(partialAmount);
   const nextInstallmentAmountMinor = isFlexiblePartialPlan
     ? (Number.isFinite(parsedPartialAmountMinor) ? parsedPartialAmountMinor : 0)
     : typeof nextSchedule.amountMinor === 'number'
@@ -210,8 +212,11 @@ export function AccountingMovementDetailModal({
     }
     setSavingInstallment(true);
     setInstallmentError('');
+    const operationScope = installmentPaymentOperationScope(rootMovement.id);
+    const operationKey = getOrCreateOperationKey(operationScope);
     try {
       await accountingCallables.registerInstallmentPayment({
+        idempotencyKey: operationKey,
         installmentPlanId: rootMovement.id,
         paymentMethodId,
         operationDate: buildArgentinaDateIso(todayInputValue()),
@@ -219,10 +224,12 @@ export function AccountingMovementDetailModal({
         paymentReference: paymentReference.trim() || null,
         notes: paymentNotes.trim() || null,
       });
+      releaseOperationKey(operationScope, operationKey);
       setPaymentReference('');
       setPaymentNotes('');
       await Promise.all([loadPlan(), Promise.resolve(onChanged?.())]);
     } catch (error) {
+      if (isDefinitiveServerRejection(error)) releaseOperationKey(operationScope, operationKey);
       setInstallmentError(error instanceof Error ? error.message : 'No pudimos registrar la cuota.');
     } finally {
       setSavingInstallment(false);
@@ -263,7 +270,7 @@ export function AccountingMovementDetailModal({
               : 'Usuario del sistema';
           })()}</dd></div>
           <div><dt>Persona</dt><dd>{resolveMovementThirdPartyLabel(movement, members, employees)}</dd></div>
-          <div><dt>Referencia</dt><dd>{typeof movement.metadata?.paymentReference === 'string' ? movement.metadata.paymentReference : 'Sin referencia'}</dd></div>
+          <div><dt>Referencia</dt><dd>{typeof movement.metadata?.paymentReference === 'string' ? movement.metadata.paymentReference : typeof movement.metadata?.transferReference === 'string' ? movement.metadata.transferReference : typeof movement.metadata?.receiptNumber === 'string' ? movement.metadata.receiptNumber : 'Sin referencia'}</dd></div>
           <div><dt>Notas</dt><dd>{movement.notes ?? (typeof movement.metadata?.description === 'string' ? movement.metadata.description : 'Sin notas')}</dd></div>
         </dl>
 

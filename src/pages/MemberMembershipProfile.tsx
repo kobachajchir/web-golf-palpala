@@ -755,21 +755,25 @@ export function MemberMembershipProfile() {
             <div className="accounting-section-header">
               <div>
                 <p className="eyebrow">Cuotas pendientes</p>
-                <h2>Cobro de membresia</h2>
+                <h2>{canManageMembership ? 'Cobro de membresia' : 'Estado de cuenta'}</h2>
                 <p>
-                  Podés pagar {payableFeeCharges.length} cuota{payableFeeCharges.length === 1 ? '' : 's'} junta
-                  . El cobro se registra desde Caja o desde el panel de Renovaciones.
+                  {canManageMembership
+                    ? `Podés pagar ${payableFeeCharges.length} cuota${payableFeeCharges.length === 1 ? '' : 's'} junta. El cobro se registra desde Caja o desde el panel de Renovaciones.`
+                    : `Tenés ${payableFeeCharges.length} cuota${payableFeeCharges.length === 1 ? '' : 's'} pendiente${payableFeeCharges.length === 1 ? '' : 's'}. Por favor, contactá a administración para regularizar tu situación.`
+                  }
                 </p>
               </div>
               <div className="accounting-inline-actions">
                 <strong>{formatCurrency(payableFeeTotalMinor)}</strong>
-                <UiActionButton
-                  to={`/accounting/member-dues?tab=renewals&memberId=${member.id}`}
-                  variant="positive"
-                  disabled={membershipPaymentAvailability !== 'Disponible'}
-                >
-                  Ir a cobrar
-                </UiActionButton>
+                {canManageMembership && (
+                  <UiActionButton
+                    to={`/accounting/member-dues?tab=renewals&memberId=${member.id}`}
+                    variant="positive"
+                    disabled={membershipPaymentAvailability !== 'Disponible'}
+                  >
+                    Ir a cobrar
+                  </UiActionButton>
+                )}
               </div>
             </div>
 

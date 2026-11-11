@@ -20,6 +20,7 @@ function parseOptions() {
         projectId: projectArg?.split('=')[1]?.trim() || DEFAULT_PROJECT_ID,
         period: period,
         execute: args.includes('--execute') && args.includes('--yes-membership-renewals-only'),
+        markFullyPaidOnly: args.includes('--mark-fully-paid-only'),
     };
 }
 function createMigrationActor() {
@@ -77,7 +78,7 @@ async function run() {
     for (const period of periods) {
         results.push(await reconcileMemberFeeRenewalsUseCase({
             actor,
-            input: { period, execute: options.execute },
+            input: { period, execute: options.execute, markFullyPaidOnly: options.markFullyPaidOnly },
             transactions: manager,
         }));
     }
@@ -92,6 +93,7 @@ async function run() {
             matchedAllocations: results.reduce((total, result) => total + result.matchedAllocationCount, 0),
             repairedCharges: results.reduce((total, result) => total + result.repairedChargeCount, 0),
             repairedMembers: results.reduce((total, result) => total + result.repairedMemberCount, 0),
+            fullyPaidCandidates: results.reduce((total, result) => total + result.fullyPaidCandidateCount, 0),
             ambiguous: results.reduce((total, result) => total + result.ambiguousCount, 0),
         },
         safety: {

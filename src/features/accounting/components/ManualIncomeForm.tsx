@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { UiActionButton } from '../../../components/UiActionButton';
 import { AccountingMonthPicker } from './AccountingMonthPicker';
 import { ACCOUNTING_INCOME_CATEGORY_IDS, ACCOUNTING_PAYMENT_METHOD_IDS } from '../../../modules/accounting/domain/constants';
 import type { AccountingPeriod, EntityWithId as AccountingEntityWithId, FinancialConfigDocument } from '../../../modules/accounting/domain/models';
-import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
+import { createAccountingCallables, type MemberFeePaymentQuote } from '../../../modules/accounting/functions/accounting.callables';
 import type { EntityWithId as TournamentEntityWithId, TournamentDocument } from '../../../modules/tournaments/domain/models';
 import { listOpenTournaments } from '../../../modules/tournaments/repositories';
 import type { EntityWithId as UserEntityWithId, MemberDocument } from '../../../modules/users/domain/models';
@@ -11,7 +11,7 @@ import { getMemberOpenItems, registerManualPayment } from '../api/memberBillingA
 import type { AccountingNotice } from '../types/accounting';
 import type { OpenItem, PaymentMethod } from '../types/payment';
 import type { IncomeCategoryOption } from '../utils/accountingCategories';
-import { buildArgentinaDateIso, formatCurrency, getPersonDisplayName, parseAmountInputToMinor, shiftAccountingPeriod } from '../utils/accountingFormatters';
+import { buildArgentinaDateIso, formatCurrency, getPersonDisplayName, parseAmountInputToMinor, parseNumberInputToMinor, shiftAccountingPeriod } from '../utils/accountingFormatters';
 import { estimateMemberFeeDetails } from '../utils/memberFeeEstimates';
 import { InstallmentPlanFields, normalizePercentageInput, parsePercentageToBps } from './InstallmentPlanFields';
 import { PaymentCommissionSummary } from './PaymentCommissionSummary';
@@ -24,6 +24,7 @@ import {
   type PaymentAccountId,
 } from '../utils/paymentMethods';
 import { calculateMemberFeeEarlyPaymentPreview } from '../utils/memberFeeDiscounts';
+import { isDefinitiveServerRejection, memberFeePaymentOperationScope, peekOperationKey, releaseOperationKey } from '../utils/pendingOperationKeys';
 
 const accountingCallables = createAccountingCallables();
 const REGISTER_PAYMENT_TIMEOUT_MS = 25000;
@@ -260,7 +261,7 @@ export function ManualIncomeForm({
   );
   const shouldShowPeriodControls = showPeriodControls && !isMemberFeeCategory && !isTournamentRegistrationCategory;
   const rangeDayCount = getInclusiveDayCount(periodStartDate, periodEndDate);
-  const periodDailyPriceMinor = parseAmountInputToMinor(periodDailyPrice);
+  const periodDailyPriceMinor = parseNumberInputToMinor(periodDailyPrice);
   const isPeriodPriceByDayActive = shouldShowPeriodControls && periodMode === 'range' && periodPriceByDay;
   const periodDailyTotalMinor = isPeriodPriceByDayActive && rangeDayCount > 0 && Number.isFinite(periodDailyPriceMinor)
     ? rangeDayCount * periodDailyPriceMinor
@@ -283,7 +284,7 @@ export function ManualIncomeForm({
   );
   const defaultPaymentMethodId = selectablePaymentMethods[0]?.id ?? visiblePaymentMethods[0]?.id ?? '';
   const selectedPaymentMethod = visiblePaymentMethods.find((method) => method.id === form.paymentMethodId) ?? null;
-  const amountMinorPreview = parseAmountInputToMinor(form.amount);
+  const amountMinorPreview = parseNumberInputToMinor(form.amount);
   const paymentCommission = calculatePaymentCommission(
     Number.isFinite(amountMinorPreview) ? amountMinorPreview : 0,
     selectedPaymentMethod,
@@ -297,19 +298,59 @@ export function ManualIncomeForm({
   );
   const shouldManageMemberFeeRenewals = isMemberFeeCategory && !onSubmitPayment;
   const [advancePeriods, setAdvancePeriods] = useState<AccountingPeriod[]>([]);
-  const [advanceQuote, setAdvanceQuote] = useState<Awaited<ReturnType<typeof accountingCallables.previewMemberFeePayment>> | null>(null);
+  // La cotizacion del servidor es la unica fuente de importes de cuotas: la misma logica que
+  // aplica al confirmar. Se conserva la ultima cotizacion mientras se pide la siguiente, para que
+  // las filas (y su seleccion) no desaparezcan al agregar meses.
+  const [advanceQuote, setAdvanceQuote] = useState<MemberFeePaymentQuote | null>(null);
+  const [advanceQuoteKey, setAdvanceQuoteKey] = useState('');
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [autoSelectPeriods, setAutoSelectPeriods] = useState<string[]>([]);
+  const initialSelectionDoneRef = useRef(false);
   useEffect(() => {
     setAdvancePeriods([]);
     setAdvanceQuote(null);
+    setAdvanceQuoteKey('');
+    setAutoSelectPeriods([]);
+    initialSelectionDoneRef.current = false;
   }, [selectedMember?.id]);
+  const quotePeriods = useMemo(
+    () => [...new Set([
+      ...pendingRenewals.map((renewal) => renewal.period).filter((period): period is AccountingPeriod => Boolean(period)),
+      ...advancePeriods,
+      memberFeePeriod,
+    ])].sort(),
+    [advancePeriods, memberFeePeriod, pendingRenewals],
+  );
+  const quoteRequestKey = selectedMember && shouldManageMemberFeeRenewals
+    ? JSON.stringify([selectedMember.id, quotePeriods, operationDate, applyEarlyPaymentDiscount])
+    : '';
   useEffect(() => {
-    if (!selectedMember || !shouldManageMemberFeeRenewals) return;
+    if (!quoteRequestKey || !selectedMember) return undefined;
     let active = true;
-    setAdvanceQuote(null);
+    setQuoteLoading(true);
     setRenewalsError('');
-    accountingCallables.previewMemberFeePayment({ memberId: selectedMember.id, periods: [...new Set([...advancePeriods, memberFeePeriod])], operationDate: buildArgentinaDateIso(operationDate) }).then((quote) => { if (active) setAdvanceQuote(quote); }).catch((error) => { if (active) setRenewalsError(error instanceof Error ? error.message : 'No pudimos calcular el adelanto.'); });
+    accountingCallables.previewMemberFeePayment({
+      memberId: selectedMember.id,
+      periods: quotePeriods,
+      operationDate: buildArgentinaDateIso(operationDate),
+      applyEarlyPaymentDiscount,
+    })
+      .then((quote) => {
+        if (!active) return;
+        setAdvanceQuote(quote);
+        setAdvanceQuoteKey(quoteRequestKey);
+      })
+      .catch((error) => {
+        if (active) setRenewalsError(error instanceof Error ? error.message : 'No pudimos calcular los importes de las cuotas.');
+      })
+      .finally(() => {
+        if (active) setQuoteLoading(false);
+      });
     return () => { active = false; };
-  }, [selectedMember?.id, shouldManageMemberFeeRenewals, advancePeriods, memberFeePeriod, operationDate]);
+    // quoteRequestKey resume todas las entradas de la cotizacion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteRequestKey]);
+  const quoteIsCurrent = Boolean(advanceQuote) && advanceQuoteKey === quoteRequestKey && !quoteLoading;
   const billableRenewals = useMemo(() => {
     if (!shouldManageMemberFeeRenewals || !selectedMember || !activeConfig) {
       return pendingRenewals;
@@ -320,7 +361,7 @@ export function ManualIncomeForm({
     const details = estimateMemberFeeDetails(selectedMember, activeConfig);
     const amountMinor = applyTypeDiscount ? details.finalAmountMinor : details.baseAmountMinor;
     if (amountMinor <= 0) return pendingRenewals;
-    return [...pendingRenewals, ...[...new Set([...advancePeriods, memberFeePeriod])].filter((period) => !pendingRenewals.some((entry) => entry.period === period) && (advanceQuote?.lines.find((line) => line.period === period)?.payableAmountMinor ?? 0) > 0).map((period) => ({
+    return [...pendingRenewals, ...[...new Set([...advancePeriods, memberFeePeriod])].sort().filter((period) => !pendingRenewals.some((entry) => entry.period === period) && (advanceQuote?.lines.find((line) => line.period === period)?.payableAmountMinor ?? 0) > 0).map((period) => ({
       id: `generated:${selectedMember.id}:${period}`,
       kind: 'member_fee_charge' as const,
       memberId: selectedMember.id,
@@ -335,6 +376,19 @@ export function ManualIncomeForm({
   }, [activeConfig, advanceQuote, advancePeriods, applyTypeDiscount, memberFeePeriod, pendingRenewals, selectedMember, shouldManageMemberFeeRenewals]);
   const pendingRenewalLines = useMemo(
     () => billableRenewals.map((renewal) => {
+      const quoteLine = advanceQuote?.lines.find((line) => (
+        renewal.isGenerated ? line.period === renewal.period : line.chargeId === renewal.id
+      ));
+      if (quoteLine) {
+        return {
+          ...renewal,
+          discountPctBps: quoteLine.discountPctBps,
+          discountAmountMinor: quoteLine.discountAmountMinor,
+          payableAmountMinor: quoteLine.payableAmountMinor,
+          lockedByPartialPlan: Boolean(quoteLine.activePartialPlanId),
+          quoted: true,
+        };
+      }
       const preview = renewal.settlementLocked || !renewal.period
         ? {
             discountPctBps: 0,
@@ -366,12 +420,14 @@ export function ManualIncomeForm({
         payableAmountMinor: applyEarlyPaymentDiscount
           ? Math.max(renewal.amountMinor - (preview.discountAmountMinor || manualDiscountAmountMinor), 0)
           : renewal.amountMinor,
+        lockedByPartialPlan: false,
+        quoted: false,
       };
     }),
-    [activeConfig, applyEarlyPaymentDiscount, billableRenewals, operationDate],
+    [activeConfig, advanceQuote, applyEarlyPaymentDiscount, billableRenewals, operationDate],
   );
   const selectedPendingRenewalLines = useMemo(
-    () => pendingRenewalLines.filter((renewal) => selectedRenewalIds.includes(renewal.id)),
+    () => pendingRenewalLines.filter((renewal) => selectedRenewalIds.includes(renewal.id) && !renewal.lockedByPartialPlan),
     [pendingRenewalLines, selectedRenewalIds],
   );
   const selectedPendingRenewalAmountMinor = useMemo(
@@ -512,17 +568,24 @@ export function ManualIncomeForm({
   }, [selectedMember, shouldManageMemberFeeRenewals]);
 
   useEffect(() => {
-    if (!shouldManageMemberFeeRenewals || !selectedMember) return;
-    const validIds = new Set(pendingRenewalLines.map((renewal) => renewal.id));
-    const selectedPeriodIds = pendingRenewalLines
-      .filter((renewal) => renewal.period === memberFeePeriod)
+    // Solo se depura la seleccion con una cotizacion vigente: mientras se recalcula, las filas
+    // pueden no estar todas y se perderian casillas marcadas.
+    if (!shouldManageMemberFeeRenewals || !selectedMember || !quoteIsCurrent || renewalsLoading) return;
+    const selectableLines = pendingRenewalLines.filter((renewal) => !renewal.lockedByPartialPlan);
+    const validIds = new Set(selectableLines.map((renewal) => renewal.id));
+    const autoIds = selectableLines
+      .filter((renewal) => renewal.period && autoSelectPeriods.includes(renewal.period))
       .map((renewal) => renewal.id);
+    const initialIds = initialSelectionDoneRef.current
+      ? []
+      : selectableLines.filter((renewal) => renewal.period === memberFeePeriod).map((renewal) => renewal.id);
+    initialSelectionDoneRef.current = true;
     setSelectedRenewalIds((current) => {
-      const stillValid = current.filter((id) => validIds.has(id));
-      if (stillValid.length > 0) return stillValid;
-      return selectedPeriodIds;
+      const next = [...new Set([...current.filter((id) => validIds.has(id)), ...autoIds, ...initialIds])];
+      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
     });
-  }, [memberFeePeriod, pendingRenewalLines, selectedMember, shouldManageMemberFeeRenewals]);
+    if (autoSelectPeriods.length > 0) setAutoSelectPeriods([]);
+  }, [autoSelectPeriods, memberFeePeriod, pendingRenewalLines, quoteIsCurrent, renewalsLoading, selectedMember, shouldManageMemberFeeRenewals]);
   useEffect(() => {
     setSettleSelectedRenewalAsFinalAmount(false);
   }, [memberFeePeriod, selectedMember?.id]);
@@ -548,10 +611,10 @@ export function ManualIncomeForm({
     }
     const paymentDay = getPaymentDateDay(operationDate);
     const discountDay = activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10;
-    setApplyEarlyPaymentDiscount(
-      memberFeePeriod === operationDate.slice(0, 7) && paymentDay >= 1 && paymentDay <= discountDay,
-    );
-  }, [activeConfig?.earlyPaymentDiscountDayOfMonth, isMemberFeeCategory, memberFeePeriod, operationDate, selectedMember?.id]);
+    // Aplica a la cuota del mes del cobro; los meses futuros llevan su descuento por adelanto
+    // segun la cotizacion del servidor, sin depender del mes elegido en el selector.
+    setApplyEarlyPaymentDiscount(paymentDay >= 1 && paymentDay <= discountDay);
+  }, [activeConfig?.earlyPaymentDiscountDayOfMonth, isMemberFeeCategory, operationDate, selectedMember?.id]);
 
   useEffect(() => {
     if (!isGreenFeeCategory) {
@@ -684,7 +747,7 @@ export function ManualIncomeForm({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const amountMinor = parseAmountInputToMinor(form.amount);
+    const amountMinor = parseNumberInputToMinor(form.amount);
     if (shouldManageMemberFeeRenewals && !selectedMember) {
       onNotice({ kind: 'error', message: 'Selecciona el socio cuya renovacion queres cobrar.' });
       return;
@@ -826,6 +889,9 @@ export function ManualIncomeForm({
       };
 
       if (shouldManageMemberFeeRenewals && selectedMember) {
+        if (!quoteIsCurrent) {
+          throw new Error('Estamos actualizando los importes de las cuotas. Espera un momento y volve a confirmar.');
+        }
         if (selectedPendingRenewalLines.length === 0) {
           throw new Error('Selecciona la cuota o el mes que queres cobrar.');
         }
@@ -836,6 +902,7 @@ export function ManualIncomeForm({
         let remainingPaymentMinor = amountMinor;
         const allocationAmountsByChargeId: Record<string, number> = {};
         const settlementAmountsByChargeId: Record<string, number> = {};
+        const expectedAvailableByChargeId: Record<string, number> = {};
         const periodAllocations: Array<{ period: AccountingPeriod; amountMinor: number; expectedAvailableMinor?: number; settlementAmountMinor?: number }> = [];
         if (settlesAsFinalAmount) {
           const renewal = selectedPendingRenewalLines[0]!;
@@ -859,6 +926,7 @@ export function ManualIncomeForm({
               periodAllocations.push({ period: renewal.period, amountMinor: allocatedAmountMinor, expectedAvailableMinor: renewal.payableAmountMinor });
             } else {
               allocationAmountsByChargeId[renewal.id] = allocatedAmountMinor;
+              expectedAvailableByChargeId[renewal.id] = renewal.payableAmountMinor;
             }
             remainingPaymentMinor -= allocatedAmountMinor;
           }
@@ -866,9 +934,11 @@ export function ManualIncomeForm({
         if (remainingPaymentMinor > 0) {
           throw new Error('No se pudo distribuir el pago entre las renovaciones seleccionadas.');
         }
+        const operationScope = memberFeePaymentOperationScope(selectedMember.id);
         const receipt = await withTimeout(
           registerManualPayment({
             memberId: selectedMember.id,
+            operationScope,
             openItemIds: Object.keys(allocationAmountsByChargeId),
             paymentMethodId: payload.paymentMethodId,
             paymentDate: payload.operationDate,
@@ -876,13 +946,22 @@ export function ManualIncomeForm({
             amount: payload.amountMinor,
             allocationAmountsByChargeId,
             settlementAmountsByChargeId,
+            expectedAvailableByChargeId,
             periodAllocations,
             applyEarlyPaymentDiscount,
             notes: payload.notes,
+          }).catch((paymentError: unknown) => {
+            // Un rechazo definitivo del servidor no registro nada: la proxima vez se usa otra clave.
+            // Ante timeouts o cortes la clave se conserva para que el reintento no duplique el cobro.
+            if (isDefinitiveServerRejection(paymentError)) {
+              releaseOperationKey(operationScope, peekOperationKey(operationScope) ?? '');
+            }
+            throw paymentError;
           }),
           REGISTER_PAYMENT_TIMEOUT_MS,
-          'El cobro no respondio a tiempo. Revisalo en movimientos antes de volver a cargarlo.',
+          'El cobro no respondio a tiempo. No lo vuelvas a cargar con otros datos: revisa movimientos o reintenta el mismo cobro, que no se duplicara.',
         );
+        releaseOperationKey(receipt.operationScope, receipt.operationKey);
         registered = true;
         onNotice({
           kind: 'success',
@@ -1219,6 +1298,7 @@ export function ManualIncomeForm({
                 maxPeriod={null}
                 onChange={(period) => {
                   setAdvancePeriods((current) => [...new Set([...current, memberFeePeriod])]);
+                  setAutoSelectPeriods((current) => [...new Set([...current, period])]);
                   setMemberFeePeriod(period);
                 }}
               />
@@ -1226,6 +1306,7 @@ export function ManualIncomeForm({
             </div>
             {advanceQuote && <div className="accounting-list">{advanceQuote.lines.map((line) => <small key={line.period}>{line.period}: cuota {formatCurrency(line.baseAmountMinor)} · descuento {formatCurrency(line.discountAmountMinor)} · pagado {formatCurrency(line.paidAmountMinor)} · saldo {formatCurrency(line.payableAmountMinor)}</small>)}</div>}
             {renewalsLoading && <div className="loading-state loading-state--inline"><span className="loading-spinner" /><strong>Consultando renovaciones</strong></div>}
+            {!renewalsLoading && quoteLoading && <div className="loading-state loading-state--inline"><span className="loading-spinner" /><strong>Actualizando importes</strong></div>}
             {renewalsError && <div className="profile-note profile-note--danger">{renewalsError}</div>}
             {!renewalsLoading && !renewalsError && pendingRenewalLines.length === 0 && (
               <div className="profile-note">Este socio no tiene renovaciones pendientes para cobrar.</div>
@@ -1233,7 +1314,7 @@ export function ManualIncomeForm({
             {pendingRenewalLines.length > 0 && (
               <>
                 <div className="renewal-payment-selection-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setSelectedRenewalIds(pendingRenewalLines.map((renewal) => renewal.id))}>
+                  <button type="button" className="btn-secondary" onClick={() => setSelectedRenewalIds(pendingRenewalLines.filter((renewal) => !renewal.lockedByPartialPlan).map((renewal) => renewal.id))}>
                     Seleccionar todas
                   </button>
                   <button type="button" className="btn-secondary" onClick={() => setSelectedRenewalIds([])}>
@@ -1251,7 +1332,8 @@ export function ManualIncomeForm({
                       <span className="renewal-payment-line__selector">
                         <input
                           type="checkbox"
-                          checked={selectedRenewalIds.includes(renewal.id)}
+                          disabled={renewal.lockedByPartialPlan}
+                          checked={selectedRenewalIds.includes(renewal.id) && !renewal.lockedByPartialPlan}
                           onChange={() => setSelectedRenewalIds((current) => (
                             current.includes(renewal.id)
                               ? current.filter((id) => id !== renewal.id)
@@ -1263,7 +1345,7 @@ export function ManualIncomeForm({
                       <span className="renewal-payment-line__title">
                         <span>
                           <strong>{renewal.description}</strong>
-                          <small>{renewal.isGenerated ? 'A preparar' : renewal.status === 'overdue' ? 'Vencida' : 'Pendiente'}{renewal.dueLabel ? ' - ' + renewal.dueLabel : ''}</small>
+                          <small>{renewal.lockedByPartialPlan ? 'Con plan de pagos parciales activo: registra los abonos desde el plan' : renewal.isGenerated ? 'A preparar' : renewal.status === 'overdue' ? 'Vencida' : 'Pendiente'}{!renewal.lockedByPartialPlan && renewal.dueLabel ? ' - ' + renewal.dueLabel : ''}</small>
                         </span>
                         <strong>{formatCurrency(renewal.payableAmountMinor)}</strong>
                       </span>
@@ -1381,7 +1463,7 @@ export function ManualIncomeForm({
         )}
         {extraDetail}
         <div className="form-actions form-actions--right">
-          <UiActionButton type="submit" disabled={saving || !form.categoryId || (!installmentPlanEnabled && !form.paymentMethodId)}>
+          <UiActionButton type="submit" disabled={saving || !form.categoryId || (!installmentPlanEnabled && !form.paymentMethodId) || (shouldManageMemberFeeRenewals && Boolean(selectedMember) && !quoteIsCurrent)}>
             {saving ? savingLabel : installmentPlanEnabled ? 'Crear plan de pagos parciales' : submitLabel}
           </UiActionButton>
         </div>

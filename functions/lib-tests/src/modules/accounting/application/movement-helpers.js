@@ -2,9 +2,11 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { assertCondition } from '../domain/errors.js';
 import { calculateAmountFromBps, toAccountingPeriod } from './shared.js';
 export async function createPostedMovement(params) {
-    const paymentMethod = params.paymentMethodId
-        ? await params.dataAccess.paymentMethods.getById(params.paymentMethodId)
-        : null;
+    const paymentMethod = params.prefetchedPaymentMethod !== undefined
+        ? params.prefetchedPaymentMethod
+        : (params.paymentMethodId
+            ? await params.dataAccess.paymentMethods.getById(params.paymentMethodId)
+            : null);
     if (params.paymentMethodId) {
         assertCondition(paymentMethod, 'not-found', `No existe payment_methods/${params.paymentMethodId}.`);
         assertCondition(paymentMethod.active, 'failed-precondition', `El medio de pago ${params.paymentMethodId} esta inactivo.`);
@@ -15,7 +17,9 @@ export async function createPostedMovement(params) {
     let netAmountMinor = params.grossAmountMinor;
     let paymentCommissionBreakdown = [];
     if (params.applyPaymentCommission === true && paymentMethod) {
-        const activeRule = await params.dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
+        const activeRule = params.prefetchedActiveCommissionRule !== undefined
+            ? params.prefetchedActiveCommissionRule
+            : await params.dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
         if (activeRule) {
             appliedCommissionPctBps = activeRule.percentageBps;
             appliedCommissionAmountMinor = calculateAmountFromBps(params.grossAmountMinor, activeRule.percentageBps);

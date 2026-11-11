@@ -517,6 +517,7 @@ export interface RegisterInstallmentPaymentPayload {
   amountMinor?: AmountMinor;
   paymentReference?: string | null;
   notes?: string | null;
+  idempotencyKey?: string;
 }
 
 export interface RegisterInstallmentPaymentResult {

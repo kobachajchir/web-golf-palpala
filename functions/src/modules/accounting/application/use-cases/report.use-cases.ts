@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp, type DocumentData, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import type {
@@ -11,7 +12,7 @@ import type {
 } from '../../domain/models.js';
 import { ACCOUNTING_COLLECTIONS, ACCOUNTING_TIME_ZONE, FINANCIAL_INCOME_CATEGORY_IDS } from '../../domain/constants.js';
 import { assertCondition, isRecord } from '../../domain/errors.js';
-import { ensureStaff } from '../shared.js';
+import { ensureStaff, movementCountsTowardBalance } from '../shared.js';
 
 type ReportRow = {
   id: string;
@@ -144,7 +145,7 @@ function outstandingAmount(charge: MemberFeeChargeDocument) {
 }
 
 function movementIsReportable(movement: FinancialMovementDocument) {
-  return movement.status === 'posted'
+  return movementCountsTowardBalance(movement)
     && movement.installmentRole !== 'charge'
     && movement.excludeFromBalance !== true
     && movement.originType !== 'internal_transfer';
@@ -218,8 +219,25 @@ export async function generateAccountingReportUseCase(params: {
   const db = database();
   const reportId = `${actor.uid}_${params.input.requestId}`;
   const reportRef = db.collection(ACCOUNTING_COLLECTIONS.accountingReports).doc(reportId);
+  // El requestId solo identifica reintentos de la MISMA solicitud. Si llega con otros datos
+  // (nombre, periodo, filtros) no se devuelve el informe anterior como si fuera el nuevo.
+  const requestData = { ...params.input, requestId: undefined };
+  const requestFingerprint = createHash('sha256').update(JSON.stringify(requestData)).digest('hex');
   const existing = await reportRef.get();
-  if (existing.exists && existing.data()?.status !== 'failed') return { reportId };
+  if (existing.exists) {
+    const existingData = existing.data();
+    const failed = existingData?.status === 'failed';
+    // Un informe fallido no tiene contenido: se puede regenerar con los datos actuales.
+    // Uno existente (o en curso) solo se devuelve si corresponde exactamente a esta solicitud.
+    if (!failed) {
+      assertCondition(
+        existingData?.requestFingerprint === requestFingerprint,
+        'already-exists',
+        'Este identificador de reporte ya se uso con otros datos. Vuelve a generar el reporte.',
+      );
+      return { reportId };
+    }
+  }
 
   if (existing.exists) {
     const oldChunks = await reportRef.collection('chunks').get();
@@ -249,6 +267,7 @@ export async function generateAccountingReportUseCase(params: {
     notes: params.input.notes ?? null,
     format: ['screen', 'pdf', 'excel'],
     filters: params.input,
+    requestFingerprint,
   });
 
   try {

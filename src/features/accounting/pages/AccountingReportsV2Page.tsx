@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { UiActionButton } from '../../../components/UiActionButton';
 import {
@@ -244,7 +244,8 @@ export function AccountingReportsV2Page() {
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [form, setForm] = useState(initialForm);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [reportRequestId, setReportRequestId] = useState(() => crypto.randomUUID());
+  // El id se reutiliza solo para reintentar exactamente la misma solicitud.
+  const reportRequestAttempt = useRef<{ fingerprint: string; requestId: string } | null>(null);
   const [incomeCategories, setIncomeCategories] = useState<IncomeCategoryOption[]>(getFallbackIncomeCategories);
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryOption[]>(getFallbackExpenseCategories);
   const [expandedSection, setExpandedSection] = useState<string | null>(reportId ? 'detail' : 'generate');
@@ -309,9 +310,7 @@ export function AccountingReportsV2Page() {
     }
     setIsGenerating(true);
     setNotice(null);
-    try {
-      await generateReport({
-        requestId: reportRequestId,
+    const reportRequest = {
         title: form.title.trim(),
         template: form.template,
         scope: form.scope,
@@ -326,8 +325,15 @@ export function AccountingReportsV2Page() {
         includeUnpaidPeriod: form.includeUnpaidPeriod,
         includeUnpaidAccumulated: form.includeUnpaidAccumulated,
         notes: form.notes.trim() || null,
-      });
-      setReportRequestId(crypto.randomUUID());
+      };
+    const fingerprint = JSON.stringify(reportRequest);
+    const requestId = reportRequestAttempt.current?.fingerprint === fingerprint
+      ? reportRequestAttempt.current.requestId
+      : crypto.randomUUID();
+    reportRequestAttempt.current = { fingerprint, requestId };
+    try {
+      await generateReport({ requestId, ...reportRequest });
+      reportRequestAttempt.current = null;
       setNotice({ kind: 'success', message: 'Reporte generado exitosamente.' });
       setExpandedSection('history');
       void load();

@@ -81,7 +81,7 @@ test('la vista previa encuentra el cobro legado sin modificar contabilidad ni cu
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
-    input: { period: '2026-05', execute: false },
+    input: { period: '2026-05', execute: false, markFullyPaidOnly: false },
     transactions: manager,
   });
 
@@ -102,7 +102,7 @@ test('la ejecucion descuenta la renovacion y conserva intacto el movimiento', as
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
-    input: { period: '2026-05', execute: true },
+    input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
     transactions: manager,
   });
 
@@ -124,7 +124,7 @@ test('no infiere una renovacion cuando hay mas de una cuota candidata', async ()
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
-    input: { period: '2026-05', execute: true },
+    input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
     transactions: manager,
   });
 
@@ -143,7 +143,7 @@ test('reconstruye una renovacion faltante solo cuando socio, periodo e importe s
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
-    input: { period: '2026-05', execute: true },
+    input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
     transactions: manager,
   });
 
@@ -169,7 +169,7 @@ test('reconstruye como pagada una cuota con pronto pago historico dentro del dia
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
-    input: { period: '2026-05', execute: true },
+    input: { period: '2026-05', execute: true, markFullyPaidOnly: false },
     transactions: manager,
   });
 
