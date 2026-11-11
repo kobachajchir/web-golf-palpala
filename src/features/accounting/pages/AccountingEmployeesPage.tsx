@@ -3,8 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { UiActionButton } from '../../../components/UiActionButton';
 import { ROLES } from '../../../constants/roles';
 import { useAuth } from '../../../hooks/useAuth';
-import { createEmployeePayrollCyclesRepository, createEmployeeAccountingLinksRepository, createSalaryConfigurationsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
-import type { EmployeeAccountingLinkDocument, EmployeePayrollCycleDocument, EntityWithId, SalaryConfigurationDocument } from '../../../modules/accounting/domain/models';
+import { createEmployeePayrollCyclesRepository, createEmployeeAccountingLinksRepository, createSalaryConfigurationsRepository, createOvertimeEntriesRepository, createSalaryPaymentsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
+import type { EmployeeAccountingLinkDocument, EmployeePayrollCycleDocument, EntityWithId, SalaryConfigurationDocument, SalaryPaymentDocument } from '../../../modules/accounting/domain/models';
 import type { EmployeeDocument } from '../../../modules/users/domain/models';
 import { createEmployeesRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import { AccountingBarChart } from '../components/AccountingCharts';
@@ -14,15 +14,19 @@ import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
 import { AccountingMonthPicker } from '../components/AccountingMonthPicker';
 import type { AccountingNotice } from '../types/accounting';
 import { formatCurrency, formatPeriod, getCurrentAccountingPeriod, normalizeAccountingPeriod } from '../utils/accountingFormatters';
+import { summarizeEmployeeOvertime } from '../utils/employeeOvertime';
+import { withEmployeeOperationTimeout } from '../utils/employeeOperations';
 
 type EmployeeRow = EntityWithId<EmployeeDocument> & {
   cycle: EntityWithId<EmployeePayrollCycleDocument> | null;
   salaryConfiguration: EntityWithId<SalaryConfigurationDocument> | null;
   links: Array<EntityWithId<EmployeeAccountingLinkDocument>>;
+  overtime: ReturnType<typeof summarizeEmployeeOvertime>;
+  salaryPayment: EntityWithId<SalaryPaymentDocument> | null;
 };
 
 function getEmployeeCycleStatusLabel(row: EmployeeRow) {
-  const status = row.cycle?.status;
+  const status = row.cycle?.status ?? row.salaryPayment?.status;
   if (!status) {
     return row.salaryConfiguration ? 'Ciclo abierto' : 'Sueldo pendiente';
   }
@@ -63,12 +67,13 @@ export function AccountingEmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [openEmployeeActionsId, setOpenEmployeeActionsId] = useState<string | null>(null);
-  const getEmployeeSalaryMinor = (row: EmployeeRow) => row.cycle?.salaryGrossMinor ?? row.salaryConfiguration?.baseAmountMinor ?? 0;
+  const getEmployeeSalaryMinor = (row: EmployeeRow) => row.cycle?.salaryGrossMinor ?? row.salaryPayment?.salaryGrossMinor ?? row.salaryConfiguration?.baseAmountMinor ?? 0;
+  const isSalaryPaid = (row: EmployeeRow) => row.cycle?.status === 'paid' || row.cycle?.status === 'posted' || row.salaryPayment?.status === 'paid' || row.salaryPayment?.status === 'posted';
   const canConfigureSalaries = interfaceMode === ROLES.ADMINISTRATIVO || interfaceMode === ROLES.DIRECTIVO;
-  const grossTotalMinor = rows.reduce((total, row) => total + getEmployeeSalaryMinor(row), 0);
-  const pendingSettlementMinor = rows
-    .filter((row) => row.cycle?.status !== 'paid')
-    .reduce((total, row) => total + getEmployeeSalaryMinor(row), 0);
+  const grossTotalMinor = rows.reduce((total, row) => total + getEmployeeSalaryMinor(row) + row.overtime.totalMinor, 0);
+  const pendingSettlementMinor = rows.reduce((total, row) => total + row.overtime.pendingMinor + (isSalaryPaid(row) ? 0 : getEmployeeSalaryMinor(row)), 0);
+  const overtimeTotalMinor = rows.reduce((total, row) => total + row.overtime.totalMinor, 0);
+  const overtimePaidMinor = rows.reduce((total, row) => total + row.overtime.paidMinor, 0);
   const linkedDocsCount = rows.reduce((total, row) => total + row.links.length, 0);
   const missingSalaryCount = rows.filter((row) => !row.salaryConfiguration).length;
   const salaryNotice: AccountingNotice = missingSalaryCount > 0
@@ -87,18 +92,33 @@ export function AccountingEmployeesPage() {
       const cyclesRepository = createEmployeePayrollCyclesRepository();
       const linksRepository = createEmployeeAccountingLinksRepository();
       const salaryConfigurationsRepository = createSalaryConfigurationsRepository();
-      const [employees, cycles] = await Promise.all([
+      const overtimeRepository = createOvertimeEntriesRepository();
+      const salaryPaymentsRepository = createSalaryPaymentsRepository();
+      const [employees, cycles, overtimeEntries, salaryPayments] = await withEmployeeOperationTimeout(Promise.all([
         employeesRepository.listAlphabetical(100),
         cyclesRepository.listByPeriod(period),
-      ]);
-      const rowsWithLinks = await Promise.all(
-        employees.map(async (employee) => ({
-          ...employee,
-          cycle: cycles.find((cycle) => cycle.employeeId === employee.id) ?? null,
-          salaryConfiguration: await salaryConfigurationsRepository.getActiveByEmployeeId(employee.id),
-          links: await linksRepository.listByEmployeeAndPeriod(employee.id, period),
-        })),
-      );
+        overtimeRepository.listByPeriod(period),
+        salaryPaymentsRepository.listByPeriod(period),
+      ]), 'La carga de personal no respondio a tiempo. Vuelve a intentarlo.');
+      const rowsWithLinks = await withEmployeeOperationTimeout(Promise.all(
+        employees.map(async (employee) => {
+          const cycle = cycles.find((cycle) => cycle.employeeId === employee.id) ?? null;
+          const salaryPayment = salaryPayments.find((payment) => payment.employeeId === employee.id && (payment.status === 'posted' || payment.status === 'paid')) ?? null;
+          const payrollOvertimeMinor = cycle?.status === 'posted' || cycle?.status === 'paid' ? cycle.overtimeTotalMinor : salaryPayment?.overtimeAmountMinor ?? 0;
+          const [salaryConfiguration, links] = await Promise.all([
+            salaryConfigurationsRepository.getActiveByEmployeeId(employee.id),
+            linksRepository.listByEmployeeAndPeriod(employee.id, period),
+          ]);
+          return {
+            ...employee,
+            cycle,
+            salaryPayment,
+            overtime: summarizeEmployeeOvertime(overtimeEntries.filter((entry) => entry.employeeId === employee.id), payrollOvertimeMinor),
+            salaryConfiguration,
+            links,
+          };
+        }),
+      ), 'La carga de sueldos y horas extra no respondio a tiempo. Vuelve a intentarlo.');
       setRows(rowsWithLinks);
     } catch (error) {
       setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos cargar empleados.' });
@@ -129,7 +149,9 @@ export function AccountingEmployeesPage() {
       <section className="summary-grid accounting-summary-grid accounting-employees-summary" aria-label="Resumen de empleados y sueldos">
         <article className="summary-card"><span>Empleados</span><strong>{rows.length}</strong><small>{formatPeriod(period)}</small></article>
         <article className="summary-card"><span>Docs vinculados</span><strong>{linkedDocsCount}</strong><small>Del periodo</small></article>
-        <article className="summary-card"><span>Total bruto</span><strong>{formatCurrency(grossTotalMinor)}</strong><small>Sueldos estimados</small></article>
+        <article className="summary-card"><span>Total bruto</span><strong>{formatCurrency(grossTotalMinor)}</strong><small>Sueldos + horas extra</small></article>
+        <article className="summary-card"><span>Horas extra</span><strong>{formatCurrency(overtimeTotalMinor)}</strong><small>Del periodo, sin rechazadas</small></article>
+        <article className="summary-card"><span>Horas extra pagadas</span><strong>{formatCurrency(overtimePaidMinor)}</strong><small>Con movimiento registrado</small></article>
         <article className="summary-card"><span>Pendiente</span><strong>{formatCurrency(pendingSettlementMinor)}</strong><small>No pagado</small></article>
         <article className="summary-card"><span>Sin sueldo</span><strong>{missingSalaryCount}</strong><small>Falta configurar</small></article>
       </section>
@@ -171,12 +193,17 @@ export function AccountingEmployeesPage() {
                       </div>
                       <div className="accounting-row__meta">
                         <small>Estado</small>
-                        <span className={`status-chip status-chip--${employee.cycle?.status ?? 'draft'}`}>{getEmployeeCycleStatusLabel(employee)}</span>
+                        <span className={`status-chip status-chip--${employee.cycle?.status ?? employee.salaryPayment?.status ?? 'draft'}`}>{getEmployeeCycleStatusLabel(employee)}</span>
                       </div>
                       <div className="accounting-row__meta">
                         <small>Sueldo</small>
                         <strong>{formatCurrency(getEmployeeSalaryMinor(employee))}</strong>
-                        <small>{employee.cycle ? 'Ciclo registrado' : employee.salaryConfiguration ? 'Configurado' : 'Sin sueldo'}</small>
+                        <small>{employee.cycle ? 'Ciclo registrado' : employee.salaryPayment ? 'Pago registrado' : employee.salaryConfiguration ? 'Configurado' : 'Sin sueldo'}</small>
+                      </div>
+                      <div className="accounting-row__meta">
+                        <small>Horas extra</small>
+                        <strong>{formatCurrency(employee.overtime.totalMinor)}</strong>
+                        <small>Pendientes: {formatCurrency(employee.overtime.pendingMinor)}</small>
                       </div>
                       <div className="accounting-row__meta">
                         <small>Documentos</small>

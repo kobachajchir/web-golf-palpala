@@ -23,6 +23,12 @@ export function useAccountingSummary(initialPeriod = getCurrentAccountingPeriod(
   }, [period]);
 
   useEffect(() => {
+    const refresh = () => { void reload(); };
+    window.addEventListener('focus', refresh);
+    const timer = window.setInterval(refresh, 60000);
+    return () => { window.removeEventListener('focus', refresh); window.clearInterval(timer); };
+  }, [reload]);
+  useEffect(() => {
     void reload();
   }, [reload]);
 

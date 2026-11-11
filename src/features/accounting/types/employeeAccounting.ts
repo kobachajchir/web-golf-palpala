@@ -25,6 +25,8 @@ export type EmployeeCycleSection =
 export type EmployeePeriodSummary = {
   baseSalary: number;
   overtimeTotal: number;
+  overtimePending: number;
+  overtimePaid: number;
   expenseReimbursements: number;
   externalDocsLinked: number;
   status: string;

@@ -439,6 +439,7 @@ export interface RegisterMemberFeeBatchPaymentResult {
 export interface ReconcileMemberFeeRenewalsPayload {
   period: AccountingPeriod;
   execute?: boolean;
+  markFullyPaidOnly?: boolean;
 }
 
 export interface ReconcileMemberFeeRenewalsResult {
@@ -452,6 +453,18 @@ export interface ReconcileMemberFeeRenewalsResult {
   repairedChargeCount: number;
   repairedMemberCount: number;
   ambiguousCount: number;
+  fullyPaidCandidateCount: number;
+  fullyPaidCandidates: Array<{
+    chargeId: DocId;
+    memberId: DocId;
+    memberName: string | null;
+    memberNumber: string | null;
+    chargePeriod: AccountingPeriod;
+    paidAmountMinor: AmountMinor;
+    settlementAmountMinor: AmountMinor;
+    movementCount: number;
+    lastMovementId: DocId;
+  }>;
   skipped: Array<{
     movementId: DocId;
     memberId: DocId | null;
@@ -466,7 +479,7 @@ export interface ReconcileMemberFeeRenewalsResult {
     memberName: string | null;
     memberNumber: string | null;
     chargePeriod: AccountingPeriod;
-    source: 'payment_allocation' | 'origin_charge' | 'period_member';
+    source: 'payment_allocation' | 'origin_charge' | 'period_member' | 'fully_paid_total';
     appliedAmountMinor: AmountMinor;
     remainingAmountMinor: AmountMinor;
     completed: boolean;
@@ -865,6 +878,18 @@ export interface ReviewOvertimeEntryResult {
   status: OvertimeEntryStatus;
 }
 
+export interface PayOvertimeEntryPayload {
+  overtimeEntryId: DocId;
+  paymentMethodId: DocId;
+  operationDate?: string;
+}
+
+export interface PayOvertimeEntryResult {
+  overtimeEntryId: DocId;
+  movementId: DocId;
+  duplicate: boolean;
+}
+
 export type AnnualBonusReferenceSource = 'salary_payment' | 'payroll_cycle' | 'active_salary_configuration';
 
 export interface AnnualBonusPreview {
@@ -1000,4 +1025,27 @@ export interface DeleteExternalReferencePayload {
 
 export interface DeleteExternalReferenceResult {
   success: boolean;
+}
+
+export type AccountingReportTemplate = 'categories' | 'green_fee' | 'member_dues' | 'custom';
+export type AccountingReportScope = 'period' | 'date_range';
+
+export interface GenerateAccountingReportPayload {
+  requestId: string;
+  title: string;
+  template: AccountingReportTemplate;
+  scope: AccountingReportScope;
+  period?: AccountingPeriod | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  movementTypes: FinancialMovementType[];
+  categoryIds: DocId[];
+  includePaidDues: boolean;
+  includeUnpaidPeriod: boolean;
+  includeUnpaidAccumulated: boolean;
+  notes?: string | null;
+}
+
+export interface GenerateAccountingReportResult {
+  reportId: DocId;
 }

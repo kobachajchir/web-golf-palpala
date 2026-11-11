@@ -27,11 +27,11 @@ export function AccountingMonthPicker({
   onChange: (period: AccountingPeriod) => void;
   label?: string;
   minPeriod?: AccountingPeriod;
-  maxPeriod?: AccountingPeriod;
+  maxPeriod?: AccountingPeriod | null;
 }) {
   const { year, month } = splitPeriod(period);
   const normalizedMinPeriod = minPeriod ? normalizeAccountingPeriod(minPeriod) : null;
-  const normalizedMaxPeriod = normalizeAccountingPeriod(maxPeriod);
+  const normalizedMaxPeriod = maxPeriod === null ? '9999-12' as AccountingPeriod : normalizeAccountingPeriod(maxPeriod);
   const { year: minYear } = normalizedMinPeriod ? splitPeriod(normalizedMinPeriod) : { year: Number.NEGATIVE_INFINITY };
   const { year: maxYear, month: maxMonth } = splitPeriod(normalizedMaxPeriod);
   const [open, setOpen] = useState(false);

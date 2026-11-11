@@ -11,7 +11,7 @@ export function memberFeeChargeToOpenItem(charge: EntityWithId<MemberFeeChargeDo
     description: `Cuota societaria ${formatPeriod(charge.period)}`,
     amountMinor: charge.remainingAmountMinor
       ?? Math.max((charge.settlementAmountMinor ?? charge.finalAmountMinor) - (charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0), 0),
-    settlementLocked: typeof charge.settlementAmountMinor === 'number',
+    settlementLocked: typeof charge.settlementAmountMinor === 'number' && ((charge.paidClubAmountMinor ?? charge.paidAmountMinor ?? 0) > 0 || charge.settlementAmountMinor !== charge.finalAmountMinor || (charge.paymentDiscountAmountMinor ?? 0) > 0),
     status: charge.status === 'overdue' ? 'overdue' : charge.status === 'paid' ? 'paid' : 'pending',
     ...(charge.dueDate ? { dueLabel: `Vence ${formatTimestamp(charge.dueDate)}` } : {}),
   };

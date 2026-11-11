@@ -2,8 +2,9 @@ import type { Timestamp } from 'firebase/firestore';
 import type { AccountingPeriod, FinancialMovementDocument } from '../../../modules/accounting/domain/models';
 
 export function getCurrentAccountingPeriod(date = new Date()): AccountingPeriod {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit' }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')!.value;
+  const month = parts.find((part) => part.type === 'month')!.value;
   return `${year}-${month}` as AccountingPeriod;
 }
 
@@ -43,15 +44,34 @@ export function formatPeriod(period: string): string {
   }).format(new Date(Number(year), Number(month) - 1, 1));
 }
 
-export function timestampToDate(value: Timestamp | Date | null | undefined): Date | null {
+type SerializedTimestamp = { seconds?: number; nanoseconds?: number; _seconds?: number; _nanoseconds?: number };
+
+export function timestampToDate(value: Timestamp | Date | SerializedTimestamp | string | null | undefined): Date | null {
   if (!value) {
     return null;
   }
 
-  return value instanceof Date ? value : value.toDate();
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  if ('toDate' in value && typeof value.toDate === 'function') {
+    return value.toDate();
+  }
+  const serialized = value as SerializedTimestamp;
+  const seconds = serialized.seconds ?? serialized._seconds;
+  const nanoseconds = serialized.nanoseconds ?? serialized._nanoseconds ?? 0;
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || !Number.isFinite(nanoseconds)) {
+    return null;
+  }
+  const date = new Date(seconds * 1000 + nanoseconds / 1_000_000);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
-export function formatTimestamp(value: Timestamp | Date | null | undefined): string {
+export function formatTimestamp(value: Timestamp | Date | SerializedTimestamp | string | null | undefined): string {
   const date = timestampToDate(value);
   if (!date) {
     return 'Sin fecha';

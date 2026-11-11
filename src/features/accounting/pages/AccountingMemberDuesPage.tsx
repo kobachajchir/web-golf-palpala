@@ -7,14 +7,16 @@ import { UiActionButton } from '../../../components/UiActionButton';
 import { ROLES } from '../../../constants/roles';
 import { useAuth } from '../../../hooks/useAuth';
 import { ACCOUNTING_INCOME_CATEGORY_IDS, ACCOUNTING_PAYMENT_METHOD_IDS } from '../../../modules/accounting/domain/constants';
-import type { AccountingPeriod, EntityWithId, FinancialConfigDocument, MemberFeeChargeDocument, ReconcileMemberFeeRenewalsResult, UpsertFinancialConfigPayload } from '../../../modules/accounting/domain/models';
+import type { AccountingPeriod, EntityWithId, FinancialConfigDocument, FinancialMovementDocument, MemberFeeChargeDocument, ReconcileMemberFeeRenewalsResult, UpsertFinancialConfigPayload } from '../../../modules/accounting/domain/models';
 import type { MemberDocument } from '../../../modules/users/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
+import { createFinancialMovementsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
 import { createMemberRegistryService } from '../../../modules/users/services/memberRegistry.service';
 import { AccountingCollapsibleSections } from '../components/AccountingCollapsibleSections';
 import { AccountingEmptyState } from '../components/AccountingEmptyState';
 import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
 import { AccountingMonthPicker } from '../components/AccountingMonthPicker';
+import { AccountingMovementDetailModal } from '../components/AccountingMovementDetailModal';
 import { ManualIncomeForm, type ManualIncomeFormSubmitPayload } from '../components/ManualIncomeForm';
 import { MEMBER_FEE_RENEWAL_MIN_PERIOD } from '../api/accountingApi';
 import { registerManualPayment } from '../api/memberBillingApi';
@@ -38,7 +40,7 @@ import { calculateMemberFeeEarlyPaymentPreview } from '../utils/memberFeeDiscoun
 const accountingCallables = createAccountingCallables();
 const DEFAULT_SERVER_MONTHLY_USD_MINOR = 6500;
 const DEFAULT_SERVER_EXPENSE_DUE_DAY = 20;
-const RENEWAL_MAX_PERIOD = getCurrentAccountingPeriod();
+
 function formatHolidayDateForForm(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value;
@@ -141,14 +143,14 @@ function isAccountingPeriodValue(value: string | null | undefined): value is Acc
 function clampRenewalPeriod(value: string | null | undefined): AccountingPeriod {
   const normalized = isAccountingPeriodValue(value)
     ? normalizeAccountingPeriod(value)
-    : RENEWAL_MAX_PERIOD;
+    : getCurrentAccountingPeriod();
 
   if (normalized < MEMBER_FEE_RENEWAL_MIN_PERIOD) {
     return MEMBER_FEE_RENEWAL_MIN_PERIOD;
   }
 
-  if (normalized > RENEWAL_MAX_PERIOD) {
-    return RENEWAL_MAX_PERIOD;
+  if (normalized > getCurrentAccountingPeriod()) {
+    return getCurrentAccountingPeriod();
   }
 
   return normalized;
@@ -307,6 +309,8 @@ function getReconciliationSourceDescription(
       return 'El movimiento estaba vinculado a la cuota de origen.';
     case 'period_member':
       return 'La coincidencia se resolvio por socio, periodo e importe.';
+    case 'fully_paid_total':
+      return 'La suma de los movimientos vinculados cubre completamente la cuota.';
     default:
       return 'Se encontro una coincidencia contable sin ambiguedades.';
   }
@@ -439,11 +443,14 @@ export function AccountingMemberDuesPage() {
   const [renewalPaymentMember, setRenewalPaymentMember] = useState<EntityWithId<MemberDocument> | null>(null);
   const [selectedRenewalLineKeys, setSelectedRenewalLineKeys] = useState<string[]>([]);
   const [renewalApplyEarlyPaymentDiscount, setRenewalApplyEarlyPaymentDiscount] = useState(false);
-  const [renewalSettleAsFinalAmount, setRenewalSettleAsFinalAmount] = useState(true);
+  const [renewalSettleAsFinalAmount, setRenewalSettleAsFinalAmount] = useState(false);
   const [reconciliationPeriod, setReconciliationPeriod] = useState(() => todayInputValue().slice(0, 7) as AccountingPeriod);
   const [reconciliationResult, setReconciliationResult] = useState<ReconcileMemberFeeRenewalsResult | null>(null);
   const [reconcilingRenewals, setReconcilingRenewals] = useState(false);
   const [reconciliationApplyPending, setReconciliationApplyPending] = useState(false);
+  const [reconciliationMarkPaidPending, setReconciliationMarkPaidPending] = useState(false);
+  const [selectedReconciliationMovement, setSelectedReconciliationMovement] = useState<EntityWithId<FinancialMovementDocument> | null>(null);
+  const [openingReconciliationMovementId, setOpeningReconciliationMovementId] = useState<string | null>(null);
   const [showRepairsList, setShowRepairsList] = useState(false);
   const [showSkippedList, setShowSkippedList] = useState(false);
   const memberRegistry = useMemo(() => createMemberRegistryService(), []);
@@ -493,7 +500,7 @@ export function AccountingMemberDuesPage() {
       setRenewalPaymentMember(null);
       setSelectedRenewalLineKeys([]);
       setRenewalApplyEarlyPaymentDiscount(false);
-      setRenewalSettleAsFinalAmount(true);
+      setRenewalSettleAsFinalAmount(false);
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -705,7 +712,7 @@ export function AccountingMemberDuesPage() {
     }
   };
 
-  const runRenewalReconciliation = async (execute: boolean) => {
+  const runRenewalReconciliation = async (execute: boolean, markFullyPaidOnly = false) => {
     if (!canConfigure) {
       setNotice({ kind: 'error', message: 'No tenes permisos para revisar la sincronizacion de cuotas.' });
       return;
@@ -720,13 +727,17 @@ export function AccountingMemberDuesPage() {
       const result = await accountingCallables.reconcileMemberFeeRenewals({
         period: reconciliationPeriod,
         execute,
+        markFullyPaidOnly,
       });
       setReconciliationResult(result);
       setReconciliationApplyPending(false);
+      setReconciliationMarkPaidPending(false);
       setNotice({
         kind: result.ambiguousCount > 0 ? 'info' : 'success',
         message: execute
-          ? 'Sincronizacion aplicada: ' + result.repairedChargeCount + ' cuota(s) actualizada(s).'
+          ? markFullyPaidOnly
+            ? 'Cierre aplicado: ' + result.repairedChargeCount + ' cuota(s) pasaron a pagadas.'
+            : 'Sincronizacion aplicada: ' + result.repairedChargeCount + ' cuota(s) actualizada(s).'
           : 'Revision completada: ' + result.repairedChargeCount + ' cuota(s) para sincronizar.',
       });
       if (execute) await reload();
@@ -739,6 +750,25 @@ export function AccountingMemberDuesPage() {
       });
     } finally {
       setReconcilingRenewals(false);
+    }
+  };
+
+  const openReconciliationMovement = async (movementId: string) => {
+    setOpeningReconciliationMovementId(movementId);
+    try {
+      const movement = await createFinancialMovementsRepository().getById(movementId);
+      if (!movement) {
+        setNotice({ kind: 'error', message: 'No se encontro el movimiento contable seleccionado.' });
+        return;
+      }
+      setSelectedReconciliationMovement(movement);
+    } catch (movementError) {
+      setNotice({
+        kind: 'error',
+        message: movementError instanceof Error ? movementError.message : 'No pudimos abrir el detalle del movimiento.',
+      });
+    } finally {
+      setOpeningReconciliationMovementId(null);
     }
   };
 
@@ -779,7 +809,7 @@ export function AccountingMemberDuesPage() {
           .filter((line) => line.period === summary?.period)
           .map((line) => line.key);
     setSelectedRenewalLineKeys(initialLineKeys);
-    setRenewalSettleAsFinalAmount(true);
+    setRenewalSettleAsFinalAmount(false);
     setRenewalPaymentMember(member);
   };
 
@@ -787,7 +817,7 @@ export function AccountingMemberDuesPage() {
     setRenewalPaymentMember(null);
     setSelectedRenewalLineKeys([]);
     setRenewalApplyEarlyPaymentDiscount(false);
-    setRenewalSettleAsFinalAmount(true);
+    setRenewalSettleAsFinalAmount(false);
   };
 
   const toggleRenewalLine = (lineKey: string) => {
@@ -923,13 +953,13 @@ export function AccountingMemberDuesPage() {
                 <div className="accounting-full-width-section accounting-member-dues-renewals-section">
                   <div className="accounting-section-header">
                     <div>
-                      <h3>Mes de la cuota</h3>
+                      <h3>Mes de la cuota</h3><UiActionButton to="/accounting/caja?tab=cobros" variant="secondary">Cobrar meses por adelantado</UiActionButton>
                       <p>Se puede revisar desde julio de 2026 hasta el mes actual.</p>
                     </div>
                     <AccountingMonthPicker
                       period={selectedPeriod}
                       minPeriod={MEMBER_FEE_RENEWAL_MIN_PERIOD}
-                      maxPeriod={RENEWAL_MAX_PERIOD}
+                      maxPeriod={getCurrentAccountingPeriod()}
                       onChange={handleRenewalPeriodChange}
                     />
                   </div>
@@ -1058,7 +1088,49 @@ export function AccountingMemberDuesPage() {
                             <article className="summary-card"><span>Coincidencias</span><strong>{reconciliationResult.matchedAllocationCount}</strong><small>Vinculos encontrados</small></article>
                             <article className="summary-card"><span>Cuotas a reparar</span><strong>{reconciliationResult.repairedChargeCount}</strong><small>{reconciliationResult.mode === 'execute' ? 'Aplicadas' : 'Vista previa'}</small></article>
                             <article className="summary-card"><span>Requieren revision</span><strong>{reconciliationResult.ambiguousCount}</strong><small>No se modifican automaticamente</small></article>
+                            <article className="summary-card"><span>Pagadas a cerrar</span><strong>{reconciliationResult.fullyPaidCandidateCount}</strong><small>Movimientos cubren el 100%</small></article>
                           </div>
+                          {reconciliationResult.fullyPaidCandidates.length > 0 && (
+                            <section className="accounting-full-width-section">
+                              <div className="accounting-section-header">
+                                <div>
+                                  <h4>Cuotas completamente pagadas</h4>
+                                  <p>{reconciliationResult.mode === 'execute'
+                                    ? 'Estas cuotas fueron marcadas como pagadas sin modificar sus movimientos contables.'
+                                    : 'Los movimientos vinculados alcanzan el importe final, pero la cuota todavia figura pendiente.'}</p>
+                                </div>
+                                {canConfigureSensitive && reconciliationResult.mode === 'dry-run' && (
+                                  <UiActionButton type="button" disabled={reconcilingRenewals} onClick={() => setReconciliationMarkPaidPending(true)}>
+                                    Pasar a pagado
+                                  </UiActionButton>
+                                )}
+                              </div>
+                              <div className="accounting-table-wrap">
+                                <table className="accounting-data-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Socio</th>
+                                      <th>Nro. Socio</th>
+                                      <th>Periodo</th>
+                                      <th>Importe cubierto</th>
+                                      <th>Movimientos</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {reconciliationResult.fullyPaidCandidates.map((candidate) => (
+                                      <tr key={candidate.chargeId}>
+                                        <td><strong>{getDiagnosticMemberName(candidate.memberId, candidate.memberName, null)}</strong></td>
+                                        <td>{candidate.memberNumber ?? '-'}</td>
+                                        <td>{formatPeriod(candidate.chargePeriod)}</td>
+                                        <td><strong>{formatCurrency(candidate.paidAmountMinor)}</strong></td>
+                                        <td>{candidate.movementCount}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </section>
+                          )}
                           {reconciliationResult.repairs.length > 0 && (
                             <>
                               <div className="form-actions" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
@@ -1092,8 +1164,8 @@ export function AccountingMemberDuesPage() {
                                           <td><strong>{formatCurrency(repair.appliedAmountMinor)}</strong></td>
                                           <td>
                                             <div className="accounting-inline-actions">
-                                              <UiActionButton type="button" variant="secondary" compact onClick={() => { window.alert(`Ver movimiento ${repair.movementId} (Ir a Caja)`); }}>Ver movimiento</UiActionButton>
-                                              <UiActionButton type="button" variant="secondary" compact onClick={() => { window.alert(`Ver recibo de ${repair.movementId}`); }}>Ver recibo</UiActionButton>
+                                              <UiActionButton type="button" variant="secondary" compact disabled={openingReconciliationMovementId === repair.movementId} onClick={() => void openReconciliationMovement(repair.movementId)}>Ver movimiento</UiActionButton>
+                                              <UiActionButton type="button" variant="secondary" compact disabled={openingReconciliationMovementId === repair.movementId} onClick={() => void openReconciliationMovement(repair.movementId)}>Ver recibo</UiActionButton>
                                             </div>
                                           </td>
                                         </tr>
@@ -1132,7 +1204,7 @@ export function AccountingMemberDuesPage() {
                                           <td>{item.movementId}</td>
                                           <td>
                                             <div className="accounting-inline-actions">
-                                              <UiActionButton type="button" variant="secondary" compact onClick={() => { window.alert(`Ver movimiento ${item.movementId} (Ir a Caja)`); }}>Ver movimiento</UiActionButton>
+                                              <UiActionButton type="button" variant="secondary" compact disabled={openingReconciliationMovementId === item.movementId} onClick={() => void openReconciliationMovement(item.movementId)}>Ver movimiento</UiActionButton>
                                             </div>
                                           </td>
                                         </tr>
@@ -1252,6 +1324,19 @@ export function AccountingMemberDuesPage() {
         onConfirm={() => void runRenewalReconciliation(true)}
       />
       <ConfirmDialog
+        open={reconciliationMarkPaidPending}
+        title="Pasar cuotas completas a pagadas"
+        description={
+          reconciliationResult
+            ? 'Se marcaran como pagadas ' + reconciliationResult.fullyPaidCandidateCount + ' cuota(s) cuyo importe esta completamente cubierto por movimientos vinculados. Los movimientos contables no se modifican.'
+            : undefined
+        }
+        confirmLabel="Pasar a pagado"
+        loading={reconcilingRenewals}
+        onCancel={() => setReconciliationMarkPaidPending(false)}
+        onConfirm={() => void runRenewalReconciliation(true, true)}
+      />
+      <ConfirmDialog
         open={Boolean(pendingCancelMember)}
         title="Eliminar renovacion automatica"
         description={
@@ -1265,6 +1350,17 @@ export function AccountingMemberDuesPage() {
         onCancel={() => setPendingCancelMember(null)}
         onConfirm={() => void confirmCancelSubscription()}
       />
+      {selectedReconciliationMovement && (
+        <AccountingMovementDetailModal
+          movement={selectedReconciliationMovement}
+          members={summary?.membersPreview ?? []}
+          employees={summary?.employeesPreview ?? []}
+          paymentMethods={summary?.paymentMethods ?? []}
+          onSelectMovement={setSelectedReconciliationMovement}
+          onChanged={reload}
+          onClose={() => setSelectedReconciliationMovement(null)}
+        />
+      )}
       {renewalPaymentMember && renewalPaymentDraft && (
         <div className="modal-overlay quick-actions-modal-overlay" role="presentation">
           <section

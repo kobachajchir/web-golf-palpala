@@ -428,6 +428,9 @@ export function createOvertimeEntriesRepository(db: Firestore = requireFirestore
 
   return {
     ...repository,
+    listByPeriod(period: string) {
+      return repository.listByQuery(query(repository.collectionRef, where('period', '==', period)));
+    },
     listByEmployeeAndPeriod(employeeId: string, period: string, pageSize = 25) {
       return repository.listByQuery(
         query(

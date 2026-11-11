@@ -230,7 +230,7 @@ export function ManualIncomeForm({
   const [applyEarlyPaymentDiscount, setApplyEarlyPaymentDiscount] = useState(false);
   const [operationDate, setOperationDate] = useState(todayInputValue);
   const [memberFeePeriod, setMemberFeePeriod] = useState(() => todayInputValue().slice(0, 7) as AccountingPeriod);
-  const [settleSelectedRenewalAsFinalAmount, setSettleSelectedRenewalAsFinalAmount] = useState(true);
+  const [settleSelectedRenewalAsFinalAmount, setSettleSelectedRenewalAsFinalAmount] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [guestFirstName, setGuestFirstName] = useState('');
   const [guestLastName, setGuestLastName] = useState('');
@@ -296,29 +296,42 @@ export function ManualIncomeForm({
     [form.payerSearch, members],
   );
   const shouldManageMemberFeeRenewals = isMemberFeeCategory && !onSubmitPayment;
+  const [advancePeriods, setAdvancePeriods] = useState<AccountingPeriod[]>([]);
+  const [advanceQuote, setAdvanceQuote] = useState<Awaited<ReturnType<typeof accountingCallables.previewMemberFeePayment>> | null>(null);
+  useEffect(() => {
+    setAdvancePeriods([]);
+    setAdvanceQuote(null);
+  }, [selectedMember?.id]);
+  useEffect(() => {
+    if (!selectedMember || !shouldManageMemberFeeRenewals) return;
+    let active = true;
+    setAdvanceQuote(null);
+    accountingCallables.previewMemberFeePayment({ memberId: selectedMember.id, periods: [...new Set([...advancePeriods, memberFeePeriod])], operationDate: buildArgentinaDateIso(operationDate) }).then((quote) => { if (active) setAdvanceQuote(quote); }).catch((error) => { if (active) setRenewalsError(error instanceof Error ? error.message : 'No pudimos calcular el adelanto.'); });
+    return () => { active = false; };
+  }, [selectedMember?.id, shouldManageMemberFeeRenewals, advancePeriods, memberFeePeriod, operationDate]);
   const billableRenewals = useMemo(() => {
     if (!shouldManageMemberFeeRenewals || !selectedMember || !activeConfig) {
       return pendingRenewals;
     }
-    if (pendingRenewals.some((renewal) => renewal.period === memberFeePeriod)) {
+    if (advancePeriods.length === 0 && pendingRenewals.some((renewal) => renewal.period === memberFeePeriod)) {
       return pendingRenewals;
     }
     const details = estimateMemberFeeDetails(selectedMember, activeConfig);
     const amountMinor = applyTypeDiscount ? details.finalAmountMinor : details.baseAmountMinor;
     if (amountMinor <= 0) return pendingRenewals;
-    return [...pendingRenewals, {
-      id: `generated:${selectedMember.id}:${memberFeePeriod}`,
+    return [...pendingRenewals, ...[...new Set([...advancePeriods, memberFeePeriod])].filter((period) => !pendingRenewals.some((entry) => entry.period === period) && (advanceQuote?.lines.find((line) => line.period === period)?.payableAmountMinor ?? 0) > 0).map((period) => ({
+      id: `generated:${selectedMember.id}:${period}`,
       kind: 'member_fee_charge' as const,
       memberId: selectedMember.id,
-      period: memberFeePeriod,
-      description: `Cuota societaria - ${formatMonthPeriodLabel(memberFeePeriod)}`,
-      amountMinor,
-      settlementLocked: false,
+      period,
+      description: `Cuota societaria - ${formatMonthPeriodLabel(period)}`,
+      amountMinor: advanceQuote?.lines.find((line) => line.period === period)?.payableAmountMinor ?? amountMinor,
+      settlementLocked: true,
       isGenerated: true,
       status: 'ready' as const,
       dueLabel: 'Se crea y se paga al confirmar el cobro',
-    }];
-  }, [activeConfig, applyTypeDiscount, memberFeePeriod, pendingRenewals, selectedMember, shouldManageMemberFeeRenewals]);
+    }))];
+  }, [activeConfig, advanceQuote, advancePeriods, applyTypeDiscount, memberFeePeriod, pendingRenewals, selectedMember, shouldManageMemberFeeRenewals]);
   const pendingRenewalLines = useMemo(
     () => billableRenewals.map((renewal) => {
       const preview = renewal.settlementLocked || !renewal.period
@@ -510,7 +523,7 @@ export function ManualIncomeForm({
     });
   }, [memberFeePeriod, pendingRenewalLines, selectedMember, shouldManageMemberFeeRenewals]);
   useEffect(() => {
-    setSettleSelectedRenewalAsFinalAmount(true);
+    setSettleSelectedRenewalAsFinalAmount(false);
   }, [memberFeePeriod, selectedMember?.id]);
 
 
@@ -701,6 +714,14 @@ export function ManualIncomeForm({
       onNotice({ kind: 'error', message: 'El interes debe estar entre 0 y 100%.' });
       return;
     }
+    if (
+      installmentPlanEnabled
+      && shouldManageMemberFeeRenewals
+      && amountMinor !== selectedPendingRenewalAmountMinor
+    ) {
+      onNotice({ kind: 'error', message: 'El total del plan debe coincidir con las renovaciones seleccionadas.' });
+      return;
+    }
     if (isGreenFeeCategory && isGuest && (!guestFirstName.trim() || !guestLastName.trim())) {
       onNotice({ kind: 'error', message: 'Ingresa nombre y apellido del invitado.' });
       return;
@@ -756,6 +777,17 @@ export function ManualIncomeForm({
               periodEndDate: showPeriodControls && periodMode === 'range' ? periodEndDate : null,
               tournamentId: selectedTournament?.id ?? null,
               tournamentName: selectedTournament?.name ?? null,
+              memberFeeMemberId: shouldManageMemberFeeRenewals ? selectedMember?.id ?? null : null,
+              memberFeeRenewalAllocations: shouldManageMemberFeeRenewals
+                ? selectedPendingRenewalLines.map((renewal) => ({
+                    chargeId: renewal.isGenerated ? null : renewal.id,
+                    period: renewal.period,
+                    settlementAmountMinor: renewal.payableAmountMinor,
+                    discountPctBps: renewal.discountPctBps,
+                    discountAmountMinor: renewal.discountAmountMinor,
+                    discountMode: renewal.discountAmountMinor > 0 ? 'automatic' : 'none',
+                  }))
+                : [],
             },
           }),
           REGISTER_PAYMENT_TIMEOUT_MS,
@@ -859,7 +891,7 @@ export function ManualIncomeForm({
         setForm((current) => ({ ...current, description: '', payerSearch: '', amount: '', paymentReference: '', notes: '' }));
         setPendingRenewals([]);
         setSelectedRenewalIds([]);
-        setSettleSelectedRenewalAsFinalAmount(true);
+        setSettleSelectedRenewalAsFinalAmount(false);
         setSaving(false);
         void Promise.resolve(onRegistered?.());
         return;
@@ -1181,16 +1213,17 @@ export function ManualIncomeForm({
             </div>
             <div className="accounting-inline-actions">
               <AccountingMonthPicker
-                label="Mes de la cuota"
+                label="Agregar meses para adelantar"
                 period={memberFeePeriod}
-                maxPeriod={MAX_FUTURE_MEMBER_FEE_PERIOD}
+                maxPeriod={null}
                 onChange={(period) => {
-                  setSelectedRenewalIds([]);
+                  setAdvancePeriods((current) => [...new Set([...current, memberFeePeriod])]);
                   setMemberFeePeriod(period);
                 }}
               />
               <small>La fecha del cobro puede ser hoy aunque el mes de la cuota todavia no haya comenzado.</small>
             </div>
+            {advanceQuote && <div className="accounting-list">{advanceQuote.lines.map((line) => <small key={line.period}>{line.period}: cuota {formatCurrency(line.baseAmountMinor)} · descuento {formatCurrency(line.discountAmountMinor)} · pagado {formatCurrency(line.paidAmountMinor)} · saldo {formatCurrency(line.payableAmountMinor)}</small>)}</div>}
             {renewalsLoading && <div className="loading-state loading-state--inline"><span className="loading-spinner" /><strong>Consultando renovaciones</strong></div>}
             {renewalsError && <div className="profile-note profile-note--danger">{renewalsError}</div>}
             {!renewalsLoading && !renewalsError && pendingRenewalLines.length === 0 && (

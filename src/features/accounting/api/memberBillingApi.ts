@@ -11,6 +11,7 @@ import type {
 } from '../types/payment';
 
 const accountingCallables = createAccountingCallables();
+const pendingPaymentKeys = new Map<string, string>();
 
 function isCharge(charge: EntityWithId<MemberFeeChargeDocument> | null): charge is EntityWithId<MemberFeeChargeDocument> {
   return Boolean(charge);
@@ -27,7 +28,8 @@ export async function getMemberOpenItems(memberId: string, period?: AccountingPe
       const isOpen = charge.status === 'pending' || charge.status === 'overdue';
       return isOpen && (!period || charge.period === period);
     })
-    .map(memberFeeChargeToOpenItem);
+    .map(memberFeeChargeToOpenItem)
+    .filter((item) => item.amountMinor > 0);
 }
 
 export async function generateMembershipFee({
@@ -59,6 +61,9 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
     throw new Error('Selecciona una cuota pendiente o un mes para cobrar por adelantado.');
   }
 
+  const fingerprint = JSON.stringify(request);
+  const requestKey = pendingPaymentKeys.get(fingerprint) ?? crypto.randomUUID();
+  pendingPaymentKeys.set(fingerprint, requestKey);
   const result = await accountingCallables.registerMemberFeeBatchPayment({
     allocations: [...validCharges.map((charge) => {
       const amountMinor = request.allocationAmountsByChargeId?.[charge.id];
@@ -86,9 +91,10 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
     paymentReference: request.reference?.trim() || null,
     operationDate: buildArgentinaDateIso(request.paymentDate),
     notes: request.notes?.trim() || null,
-    idempotencyKey: globalThis.crypto?.randomUUID?.() ?? `${request.memberId}-${Date.now()}`,
+    idempotencyKey: requestKey,
   });
 
+  pendingPaymentKeys.delete(fingerprint);
   return {
     movementIds: [result.movementId],
     receiptNumbers: result.receiptNumber ? [result.receiptNumber] : [],

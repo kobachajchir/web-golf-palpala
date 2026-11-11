@@ -193,6 +193,7 @@ const MOVEMENT_ORIGIN_LABELS: Record<string, string> = {
   rental_tennis: 'Alquiler tenis',
   salary_payment: 'Sueldo',
   salary_payment_overtime: 'Horas extra',
+  employee_overtime: 'Horas extra de personal',
   tournament_registration: 'Inscripcion torneo',
 };
 
@@ -200,9 +201,21 @@ function getMovementReferenceLabel(movement: EntityWithId<FinancialMovementDocum
   const paymentReference = typeof movement.metadata?.paymentReference === 'string'
     ? movement.metadata.paymentReference.trim()
     : '';
+  const transferReference = typeof movement.metadata?.transferReference === 'string'
+    ? movement.metadata.transferReference.trim()
+    : '';
+  const receiptNumber = typeof movement.metadata?.receiptNumber === 'string'
+    ? movement.metadata.receiptNumber.trim()
+    : '';
 
   if (paymentReference) {
     return paymentReference;
+  }
+  if (transferReference) {
+    return transferReference;
+  }
+  if (receiptNumber) {
+    return receiptNumber;
   }
 
   return MOVEMENT_ORIGIN_LABELS[movement.originType] ?? 'Sin referencia';
@@ -276,6 +289,9 @@ function buildFinancialConfigPayload(
 }
 
 const HIDDEN_EXPENSE_CATEGORY_IDS = new Set<string>([
+  ACCOUNTING_EXPENSE_CATEGORY_IDS.sueldo,
+  ACCOUNTING_EXPENSE_CATEGORY_IDS.aguinaldo,
+  ACCOUNTING_EXPENSE_CATEGORY_IDS.horasExtra,
   ACCOUNTING_EXPENSE_CATEGORY_IDS.f931,
   ACCOUNTING_EXPENSE_CATEGORY_IDS.obraSocial,
   ACCOUNTING_EXPENSE_CATEGORY_IDS.art,
@@ -735,7 +751,7 @@ function TileIcon({ type }: { type: 'wallet' | 'clipboard' | 'chart' }) {
 }
 
 function isPostedMovement(movement: EntityWithId<FinancialMovementDocument>) {
-  return movement.status === 'posted' && !isMovementExcludedFromBalance(movement);
+  return movement.status === 'posted' && movement.installmentRole !== 'charge' && !isMovementExcludedFromBalance(movement);
 }
 
 function getMovementDateKeyFromTimestamp(movement: EntityWithId<FinancialMovementDocument>) {

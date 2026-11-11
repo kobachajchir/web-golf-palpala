@@ -30,16 +30,17 @@ export function calculateMemberFeeEarlyPaymentPreview({
   config: EarlyPaymentConfig | null | undefined;
   forceDiscount?: boolean;
 }) {
-  const discountPctBps = config?.earlyPaymentDiscountPctBps ?? 0;
+  const discountPctBps = config?.earlyPaymentDiscountPctBps ?? 1000;
   const discountDayOfMonth = config?.earlyPaymentDiscountDayOfMonth ?? 10;
   const isCurrentPaymentPeriod = getPaymentDatePeriod(paymentDate) === period;
   const paymentDay = getPaymentDateDay(paymentDate);
+  const isAdvance = period > (getPaymentDatePeriod(paymentDate) ?? period);
   const qualifiesAutomatically = isCurrentPaymentPeriod
     && paymentDay >= 1
     && paymentDay <= discountDayOfMonth;
   const appliesDiscount = discountPctBps > 0
-    && isCurrentPaymentPeriod
-    && (forceDiscount === true || (forceDiscount === undefined && qualifiesAutomatically));
+    && (isAdvance || (isCurrentPaymentPeriod
+    && (forceDiscount === true || (forceDiscount === undefined && qualifiesAutomatically))));
   const discountAmountMinor = appliesDiscount
     ? Math.round((amountMinor * discountPctBps) / 10000)
     : 0;

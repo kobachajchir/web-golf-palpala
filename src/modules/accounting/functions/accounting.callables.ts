@@ -20,6 +20,8 @@ import type {
   EditInternalTransferResult,
   GenerateCuotaPayload,
   GenerateCuotaResult,
+  GenerateAccountingReportPayload,
+  GenerateAccountingReportResult,
   LinkExternalReferenceToEmployeePayload,
   LinkExternalReferenceToEmployeeResult,
   ListEmployeePayrollCyclePayload,
@@ -51,6 +53,8 @@ import type {
   ReviewExpenseResult,
   ReviewOvertimeEntryPayload,
   ReviewOvertimeEntryResult,
+  PayOvertimeEntryPayload,
+  PayOvertimeEntryResult,
   SetCreditCommissionRulePayload,
   SetCreditCommissionRuleResult,
   SetFinancialMovementBalanceInclusionPayload,
@@ -78,6 +82,8 @@ import type {
 function getAccountingFunctions(functionsInstance?: Functions): Functions {
   return getFirebaseFunctions(functionsInstance);
 }
+
+const pendingInstallmentKeys = new Map<string, string>();
 
 export function createAccountingCallables(functionsInstance?: Functions) {
   const functionsRef = getAccountingFunctions(functionsInstance);
@@ -113,6 +119,16 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.generateCuota,
       )(payload)).data;
     },
+    async previewMemberFeePayment(payload: { memberId: string; periods: string[]; operationDate: string }) {
+      return (await httpsCallable<typeof payload, { lines: Array<{ period: string; chargeId: string | null; status: string; baseAmountMinor: number; discountAmountMinor: number; paidAmountMinor: number; payableAmountMinor: number }>; totalAmountMinor: number }>(functionsRef, 'accountingPreviewMemberFeePayment')(payload)).data;
+    },
+    async generateReport(payload: GenerateAccountingReportPayload) {
+      return (await httpsCallable<GenerateAccountingReportPayload, GenerateAccountingReportResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.generateReport,
+        { timeout: 600000 },
+      )(payload)).data;
+    },
     async registerPayment(payload: RegisterPaymentPayload) {
       return (await httpsCallable<RegisterPaymentPayload, RegisterPaymentResult>(
         functionsRef,
@@ -138,10 +154,15 @@ export function createAccountingCallables(functionsInstance?: Functions) {
       )(payload)).data;
     },
     async registerInstallmentPayment(payload: RegisterInstallmentPaymentPayload) {
-      return (await httpsCallable<RegisterInstallmentPaymentPayload, RegisterInstallmentPaymentResult>(
+      const fingerprint = JSON.stringify(payload);
+      const key = pendingInstallmentKeys.get(fingerprint) ?? crypto.randomUUID();
+      pendingInstallmentKeys.set(fingerprint, key);
+      const result = (await httpsCallable<RegisterInstallmentPaymentPayload, RegisterInstallmentPaymentResult>(
         functionsRef,
         ACCOUNTING_CALLABLE_NAMES.registerInstallmentPayment,
-      )(payload)).data;
+      )({ ...payload, idempotencyKey: key } as RegisterInstallmentPaymentPayload)).data;
+      pendingInstallmentKeys.delete(fingerprint);
+      return result;
     },
     async listMyReceipts() {
       return (await httpsCallable<Record<string, never>, ListMyReceiptsResult>(
@@ -231,6 +252,12 @@ export function createAccountingCallables(functionsInstance?: Functions) {
       return (await httpsCallable<ReviewOvertimeEntryPayload, ReviewOvertimeEntryResult>(
         functionsRef,
         ACCOUNTING_CALLABLE_NAMES.reviewOvertimeEntry,
+      )(payload)).data;
+    },
+    async payOvertimeEntry(payload: PayOvertimeEntryPayload) {
+      return (await httpsCallable<PayOvertimeEntryPayload, PayOvertimeEntryResult>(
+        functionsRef,
+        ACCOUNTING_CALLABLE_NAMES.payOvertimeEntry,
       )(payload)).data;
     },
     async listEmployeePayrollCycle(payload: ListEmployeePayrollCyclePayload) {

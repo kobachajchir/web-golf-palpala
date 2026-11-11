@@ -1,26 +1,29 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ModalCloseIcon } from '../../../components/ModalCloseIcon';
+import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import { UiActionButton } from '../../../components/UiActionButton';
 import { ROLES } from '../../../constants/roles';
 import { useAuth } from '../../../hooks/useAuth';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
 import { ACCOUNTING_PAYMENT_METHOD_IDS } from '../../../modules/accounting/domain/constants';
-import type { SalaryPeriodicity } from '../../../modules/accounting/domain/models';
+import type { OvertimeEntryStatus, SalaryPeriodicity } from '../../../modules/accounting/domain/models';
 import { AccountingEmptyState } from '../components/AccountingEmptyState';
 import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
-import { DangerActionDialog } from '../components/DangerActionDialog';
 import { useEmployeePeriod } from '../hooks/useEmployeePeriod';
 import type { AccountingNotice } from '../types/accounting';
 import {
   buildArgentinaDateIso,
   formatCurrency,
+  formatPeriod,
   formatTimestamp,
   getCurrentAccountingPeriod,
   normalizeAccountingPeriod,
   parseAmountInputToMinor,
   timestampToDate,
 } from '../utils/accountingFormatters';
+import { withEmployeeOperationTimeout } from '../utils/employeeOperations';
+import { getPaymentMethodDisplayName, isVisiblePaymentMethod } from '../utils/paymentMethods';
 
 const accountingCallables = createAccountingCallables();
 
@@ -40,6 +43,18 @@ function todayInputValue() {
     day: '2-digit',
   }).format(new Date());
 }
+
+function overtimeDateForPeriod(period: string) {
+  const today = todayInputValue();
+  return today.startsWith(period) ? today : `${period}-01`;
+}
+
+const OVERTIME_STATUS_LABELS: Record<OvertimeEntryStatus, string> = {
+  submitted: 'Pendiente de aprobacion',
+  approved: 'Aprobada, pendiente de pago',
+  rejected: 'Rechazada',
+  liquidated: 'Pagada',
+};
 
 function getCycleStatusLabel(status: string | null | undefined, isLocked = false) {
   if (isLocked) {
@@ -85,13 +100,21 @@ export function AccountingEmployeeCyclePage() {
   const queryPeriod = normalizeAccountingPeriod(searchParams.get('period') ?? getCurrentAccountingPeriod());
   const employeePeriod = useEmployeePeriod(employeeId, queryPeriod, 'summary');
   const [notice, setNotice] = useState<AccountingNotice>(null);
-  const [payrollReason, setPayrollReason] = useState('');
   const [confirmPayrollOpen, setConfirmPayrollOpen] = useState(false);
   const [postingPayroll, setPostingPayroll] = useState(false);
   const [overtimeModalOpen, setOvertimeModalOpen] = useState(false);
+  const [savingOvertime, setSavingOvertime] = useState(false);
+  const [overtimeNotice, setOvertimeNotice] = useState<AccountingNotice>(null);
+  const [overtimeActionId, setOvertimeActionId] = useState<string | null>(null);
+  const [payOvertimeEntryId, setPayOvertimeEntryId] = useState<string | null>(null);
+  const [overtimePaymentNotice, setOvertimePaymentNotice] = useState<AccountingNotice>(null);
+  const [rejectOvertimeEntryId, setRejectOvertimeEntryId] = useState<string | null>(null);
+  const [overtimeRejectionReason, setOvertimeRejectionReason] = useState('');
+  const [overtimeRejectionNotice, setOvertimeRejectionNotice] = useState<AccountingNotice>(null);
+  const [overtimePaymentMethodId, setOvertimePaymentMethodId] = useState<string>(ACCOUNTING_PAYMENT_METHOD_IDS.cash);
   const [salaryModalOpen, setSalaryModalOpen] = useState(false);
   const [savingSalary, setSavingSalary] = useState(false);
-  const [overtimeForm, setOvertimeForm] = useState({ workDate: todayInputValue(), hours: '', amount: '', reason: '' });
+  const [overtimeForm, setOvertimeForm] = useState({ workDate: overtimeDateForPeriod(queryPeriod), hours: '', amount: '', reason: '' });
   const [salaryForm, setSalaryForm] = useState({
     baseAmount: '',
     periodicity: 'monthly' as SalaryPeriodicity,
@@ -123,9 +146,22 @@ export function AccountingEmployeeCyclePage() {
   const canGenerateSalaryPayments = interfaceMode === ROLES.DIRECTIVO || interfaceMode === ROLES.ADMINISTRATIVO;
   const canGenerateSalaryPayment = Boolean(state?.salaryConfiguration || state?.salaryPayment || state?.payrollCycle);
   const grossSalaryMinor = (state?.summary.baseSalary ?? 0) + (state?.summary.overtimeTotal ?? 0);
+  const hasSubmittedOvertime = state?.overtimeItems.some((entry) => entry.status === 'submitted') ?? false;
+  const overtimeEntryToPay = state?.overtimeItems.find((entry) => entry.id === payOvertimeEntryId) ?? null;
+  const overtimePaymentMethods = state?.paymentMethods.filter((method) => isVisiblePaymentMethod(method) && method.id !== ACCOUNTING_PAYMENT_METHOD_IDS.debitMacro) ?? [];
+  const [periodYear, periodMonth] = queryPeriod.split('-').map(Number);
+  const periodLastDate = `${queryPeriod}-${new Date(periodYear!, periodMonth!, 0).getDate()}`;
 
   const annualBonusPreview = state?.annualBonusPreview ?? null;
   const annualBonusSemesterLabel = annualBonusPreview?.semester === 1 ? 'Primer semestre' : 'Segundo semestre';
+
+  useEffect(() => {
+    setOvertimeForm({ workDate: overtimeDateForPeriod(queryPeriod), hours: '', amount: '', reason: '' });
+    setOvertimeModalOpen(false);
+    setOvertimeNotice(null);
+    setPayOvertimeEntryId(null);
+    setRejectOvertimeEntryId(null);
+  }, [employeeId, queryPeriod]);
 
   useEffect(() => {
     if (!state?.salaryConfiguration) {
@@ -180,39 +216,112 @@ export function AccountingEmployeeCyclePage() {
       if (event.key !== 'Escape') return;
       if (annualBonusModalOpen) setAnnualBonusModalOpen(false);
       else if (salaryModalOpen) setSalaryModalOpen(false);
-      else setOvertimeModalOpen(false);
+      else if (!savingOvertime) setOvertimeModalOpen(false);
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [annualBonusModalOpen, overtimeModalOpen, salaryModalOpen]);
+  }, [annualBonusModalOpen, overtimeModalOpen, salaryModalOpen, savingOvertime]);
 
   const handleCreateOvertime = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (savingOvertime) return;
     const hours = Number(overtimeForm.hours.replace(',', '.'));
     const amountMinor = parseAmountInputToMinor(overtimeForm.amount);
     if (!employeeId || !Number.isFinite(hours) || hours <= 0 || !Number.isFinite(amountMinor) || amountMinor <= 0) {
-      setNotice({ kind: 'error', message: 'Revisa horas, monto y empleado.' });
+      setOvertimeNotice({ kind: 'error', message: 'Ingresa una cantidad de horas y un monto total mayores a cero.' });
+      return;
+    }
+    if (!overtimeForm.workDate || overtimeForm.workDate.slice(0, 7) !== queryPeriod) {
+      setOvertimeNotice({ kind: 'error', message: 'La fecha debe pertenecer al periodo seleccionado.' });
       return;
     }
 
+    setSavingOvertime(true);
+    setOvertimeNotice({ kind: 'info', message: 'Guardando horas extra...' });
     try {
-      await accountingCallables.createOvertimeEntry({
+      await withEmployeeOperationTimeout(accountingCallables.createOvertimeEntry({
         employeeId,
         period: queryPeriod,
         workDate: buildArgentinaDateIso(overtimeForm.workDate),
         hours,
         amountMinor,
         reason: overtimeForm.reason.trim() || 'Horas extra',
-      });
-      setNotice({ kind: 'success', message: 'Hora extra cargada para revision.' });
-      setOvertimeForm({ workDate: todayInputValue(), hours: '', amount: '', reason: '' });
+      }), 'El guardado no respondio a tiempo. Actualiza el ciclo para comprobar si se guardo antes de volver a cargarlo.');
+      setNotice({ kind: 'success', message: 'Horas extra guardadas. Puedes aprobarlas para el sueldo o usar Pagar ahora.' });
+      setOvertimeForm({ workDate: overtimeDateForPeriod(queryPeriod), hours: '', amount: '', reason: '' });
+      setOvertimeNotice(null);
       setOvertimeModalOpen(false);
       await employeePeriod.reload();
     } catch (error) {
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos cargar la hora extra.' });
+      setOvertimeNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos guardar las horas extra.' });
+    } finally {
+      setSavingOvertime(false);
+    }
+  };
+
+  const approveOvertime = async (entryId: string) => {
+    if (overtimeActionId) return;
+    setOvertimeActionId(entryId);
+    setNotice({ kind: 'info', message: 'Aprobando horas extra...' });
+    try {
+      await withEmployeeOperationTimeout(accountingCallables.reviewOvertimeEntry({ overtimeEntryId: entryId, decision: 'approved' }), 'La aprobacion no respondio a tiempo. Actualiza el ciclo antes de reintentar.');
+      setNotice({ kind: 'success', message: 'Horas extra aprobadas. Se incluiran al generar el pago de sueldo o puedes pagarlas ahora.' });
+      await employeePeriod.reload();
+    } catch (error) {
+      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos aprobar las horas extra.' });
+    } finally {
+      setOvertimeActionId(null);
+    }
+  };
+
+  const payOvertime = async () => {
+    if (!overtimeEntryToPay || overtimeActionId) return;
+    if (state?.salaryConfiguration?.allowOvertime === false) {
+      setOvertimePaymentNotice({ kind: 'error', message: 'Las horas extra estan deshabilitadas. Usa Modificar sueldo para habilitarlas antes de pagar.' });
+      return;
+    }
+    if (!overtimePaymentMethodId) {
+      setOvertimePaymentNotice({ kind: 'error', message: 'Selecciona la cuenta de origen del pago.' });
+      return;
+    }
+    setOvertimeActionId(overtimeEntryToPay.id);
+    setOvertimePaymentNotice({ kind: 'info', message: 'Registrando pago y movimiento en la cuenta seleccionada...' });
+    try {
+      const result = await withEmployeeOperationTimeout(accountingCallables.payOvertimeEntry({
+        overtimeEntryId: overtimeEntryToPay.id,
+        paymentMethodId: overtimePaymentMethodId,
+        operationDate: buildArgentinaDateIso(todayInputValue()),
+      }), 'El pago no respondio a tiempo. Actualiza el ciclo y revisa los movimientos antes de reintentar.');
+      setNotice({ kind: 'success', message: result.duplicate ? 'Estas horas extra ya estaban pagadas. No se duplico el movimiento.' : 'Horas extra pagadas. El egreso quedo registrado en cuentas y balances como Horas extra de personal.' });
+      setPayOvertimeEntryId(null);
+      await employeePeriod.reload();
+    } catch (error) {
+      setOvertimePaymentNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos registrar el pago de horas extra.' });
+    } finally {
+      setOvertimeActionId(null);
+    }
+  };
+
+  const rejectOvertime = async () => {
+    if (!rejectOvertimeEntryId || overtimeActionId) return;
+    if (!overtimeRejectionReason.trim()) {
+      setOvertimeRejectionNotice({ kind: 'error', message: 'Indica el motivo del rechazo.' });
+      return;
+    }
+    setOvertimeActionId(rejectOvertimeEntryId);
+    setOvertimeRejectionNotice(null);
+    try {
+      await withEmployeeOperationTimeout(accountingCallables.reviewOvertimeEntry({ overtimeEntryId: rejectOvertimeEntryId, decision: 'rejected', rejectionReason: overtimeRejectionReason.trim() }), 'El rechazo no respondio a tiempo. Actualiza el ciclo antes de reintentar.');
+      setRejectOvertimeEntryId(null);
+      setNotice({ kind: 'success', message: 'Horas extra rechazadas. Quedan en el historial y no se incluyen en los importes a pagar.' });
+      await employeePeriod.reload();
+    } catch (error) {
+      setOvertimeRejectionNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos rechazar las horas extra.' });
+    } finally {
+      setOvertimeActionId(null);
     }
   };
 
@@ -303,6 +412,11 @@ export function AccountingEmployeeCyclePage() {
     if (!employeeId || !state) {
       return;
     }
+    if (hasSubmittedOvertime) {
+      setNotice({ kind: 'error', message: 'Aprueba o paga las horas extra pendientes antes de generar el pago de sueldo.' });
+      setConfirmPayrollOpen(false);
+      return;
+    }
 
     if (!canGenerateSalaryPayments) {
       setNotice({ kind: 'error', message: 'Solo Administracion o el Comite Ejecutivo pueden generar pagos de sueldo.' });
@@ -312,30 +426,30 @@ export function AccountingEmployeeCyclePage() {
 
     setPostingPayroll(true);
     try {
-      const result = await accountingCallables.postEmployeePayrollCycle({
+      const result = await withEmployeeOperationTimeout(accountingCallables.postEmployeePayrollCycle({
         employeeId,
         period: queryPeriod,
         linkedExternalReferenceIds: linkedReferenceIds,
         operationDate: buildArgentinaDateIso(todayInputValue()),
-        notes: payrollReason.trim(),
-      });
+        notes: `Pago de sueldo ${queryPeriod}`,
+      }), 'El pago no respondio a tiempo. Actualiza el ciclo y revisa movimientos antes de reintentar.');
       setNotice({ kind: 'success', message: `Pago de sueldo generado con ${result.financialMovementIds.length} movimientos de caja.` });
       setConfirmPayrollOpen(false);
-      setPayrollReason('');
       await employeePeriod.reload();
     } catch (error) {
+      setConfirmPayrollOpen(false);
       setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos postear la liquidacion.' });
     } finally {
       setPostingPayroll(false);
     }
   };
 
-  if (employeePeriod.loading) {
+  if (employeePeriod.loading && !state) {
     return <div className="loading-state loading-state--inline"><span className="loading-spinner" /><strong>Cargando ciclo mensual</strong></div>;
   }
 
-  if (employeePeriod.error || !state) {
-    return <div className="empty-state">{employeePeriod.error || 'No encontramos el ciclo solicitado.'}</div>;
+  if (!state) {
+    return <div className="empty-state" role="alert">{employeePeriod.error || 'No encontramos el ciclo solicitado.'}<UiActionButton onClick={() => void employeePeriod.reload()}>Reintentar</UiActionButton></div>;
   }
 
   return (
@@ -343,6 +457,7 @@ export function AccountingEmployeeCyclePage() {
       <section className="floating-card accounting-hero accounting-employee-cycle-hero">
         <div className="accounting-hero__copy">
           <h1>{employeeName}</h1>
+          <p>{formatPeriod(queryPeriod)}</p>
         </div>
         <div className="accounting-hero__actions">
           <Link className="ui-action-button ui-action-button--secondary" to="/accounting/employees">Volver</Link>
@@ -350,6 +465,10 @@ export function AccountingEmployeeCyclePage() {
       </section>
 
       <AccountingInlineNotice notice={notice} />
+      {employeePeriod.error && <AccountingInlineNotice notice={{ kind: 'error', message: `No pudimos actualizar los datos del ciclo: ${employeePeriod.error}` }} />}
+      <UiActionButton variant="secondary" disabled={employeePeriod.loading || savingOvertime || Boolean(overtimeActionId) || postingPayroll} onClick={() => void employeePeriod.reload()}>
+        {employeePeriod.loading ? 'Actualizando ciclo...' : 'Actualizar ciclo'}
+      </UiActionButton>
 
       <section className="floating-card accounting-panel accounting-centered-panel accounting-employee-cycle-summary">
         <div className="accounting-section-header accounting-section-header--plain">
@@ -362,13 +481,15 @@ export function AccountingEmployeeCyclePage() {
                 Modificar sueldo
               </UiActionButton>
             )}
-            <UiActionButton type="button" onClick={() => setOvertimeModalOpen(true)}>Cargar horas extra</UiActionButton>
+            <UiActionButton type="button" disabled={postingPayroll || Boolean(overtimeActionId)} onClick={() => { setOvertimeNotice(null); setOvertimeModalOpen(true); }}>Cargar horas extra</UiActionButton>
           </div>
         </div>
 
         <div className="summary-grid accounting-summary-grid accounting-employee-cycle-summary-grid">
           <article className="summary-card"><span>Sueldo base</span><strong>{formatCurrency(state.summary.baseSalary)}</strong><small>{salarySourceLabel}</small></article>
           <article className="summary-card"><span>Horas extra</span><strong>{formatCurrency(state.summary.overtimeTotal)}</strong><small>{state.overtimeItems.length} registros</small></article>
+          <article className="summary-card"><span>Horas extra pendientes</span><strong>{formatCurrency(state.summary.overtimePending)}</strong><small>Guardadas, aun sin pagar</small></article>
+          <article className="summary-card"><span>Horas extra pagadas</span><strong>{formatCurrency(state.summary.overtimePaid)}</strong><small>Registradas en cuentas</small></article>
           <article className="summary-card"><span>Bruto estimado</span><strong>{formatCurrency(grossSalaryMinor)}</strong><small>Sueldo base + horas extra</small></article>
           <article className="summary-card"><span>Estado</span><strong>{cycleStatusLabel}</strong><small>Control del ciclo</small></article>
         </div>
@@ -396,12 +517,14 @@ export function AccountingEmployeeCyclePage() {
               {!canGenerateSalaryPayments
                 ? 'Solo Administracion o el Comite Ejecutivo pueden generar pagos de sueldo.'
                 : state.isLocked
-                ? 'El pago de sueldo ya fue generado para este ciclo.'
+                ? 'El sueldo ya fue pagado. Las horas extra pendientes pueden pagarse con Pagar ahora.'
+                : hasSubmittedOvertime
+                  ? 'Hay horas extra pendientes: apruebalas para incluirlas en el sueldo o usa Pagar ahora.'
                 : canGenerateSalaryPayment
                   ? 'Genera el pago desde la configuracion salarial activa; el backend crea los movimientos de egreso.'
                   : 'Primero hay que configurar el sueldo del empleado.'}
             </small>
-            <UiActionButton type="button" disabled={!canGenerateSalaryPayments || state.isLocked || !canGenerateSalaryPayment} onClick={() => setConfirmPayrollOpen(true)}>
+            <UiActionButton type="button" disabled={!canGenerateSalaryPayments || state.isLocked || !canGenerateSalaryPayment || hasSubmittedOvertime || Boolean(overtimeActionId)} onClick={() => setConfirmPayrollOpen(true)}>
               Generar pago de sueldo
             </UiActionButton>
           </div>
@@ -464,9 +587,20 @@ export function AccountingEmployeeCyclePage() {
                 <small>{formatTimestamp(entry.workDate)} - {entry.hours} horas</small>
               </div>
               <div className="accounting-row__meta">
-                <span className={`status-chip status-chip--${entry.status}`}>{entry.status}</span>
+                <span className={`status-chip status-chip--${entry.status}`}>{OVERTIME_STATUS_LABELS[entry.status]}</span>
                 <strong>{formatCurrency(entry.amountMinor)}</strong>
               </div>
+              {canGenerateSalaryPayments && (entry.status === 'submitted' || entry.status === 'approved') && (
+                <div className="accounting-inline-actions">
+                  {entry.status === 'submitted' && !state.isLocked && <UiActionButton variant="secondary" compact disabled={Boolean(overtimeActionId) || postingPayroll} onClick={() => void approveOvertime(entry.id)}>{overtimeActionId === entry.id ? 'Procesando...' : 'Aprobar para el sueldo'}</UiActionButton>}
+                  <UiActionButton variant="danger" compact disabled={Boolean(overtimeActionId) || postingPayroll} onClick={() => { setRejectOvertimeEntryId(entry.id); setOvertimeRejectionReason(''); setOvertimeRejectionNotice(null); }}>Rechazar</UiActionButton>
+                  <UiActionButton compact disabled={Boolean(overtimeActionId) || postingPayroll} onClick={() => {
+                    setPayOvertimeEntryId(entry.id);
+                    setOvertimePaymentNotice(null);
+                    setOvertimePaymentMethodId(overtimePaymentMethods.find((method) => method.id === ACCOUNTING_PAYMENT_METHOD_IDS.cash)?.id ?? overtimePaymentMethods[0]?.id ?? '');
+                  }}>Pagar ahora</UiActionButton>
+                </div>
+              )}
             </article>
           ))}
           {state.overtimeItems.length === 0 && <AccountingEmptyState title="Sin horas extra cargadas" />}
@@ -486,17 +620,19 @@ export function AccountingEmployeeCyclePage() {
               <div className="accounting-operation-modal__title-block">
                 <h2 id="employee-overtime-modal-title" className="accounting-operation-modal__title">Cargar horas extra</h2>
               </div>
-              <button type="button" className="modal-close-button" aria-label="Cerrar" onClick={() => setOvertimeModalOpen(false)}>
+              <button type="button" className="modal-close-button" aria-label="Cerrar" disabled={savingOvertime} onClick={() => setOvertimeModalOpen(false)}>
                 <ModalCloseIcon />
               </button>
             </div>
             <form className="accounting-entry-form accounting-dialog-form accounting-employee-cycle-modal-form" onSubmit={handleCreateOvertime}>
-              <label className="form-field"><span>Fecha</span><input type="date" value={overtimeForm.workDate} onChange={(event) => setOvertimeForm((current) => ({ ...current, workDate: event.target.value }))} /></label>
-              <label className="form-field"><span>Horas</span><input inputMode="decimal" value={overtimeForm.hours} onChange={(event) => setOvertimeForm((current) => ({ ...current, hours: event.target.value }))} /></label>
-              <label className="form-field"><span>Monto</span><input inputMode="decimal" value={overtimeForm.amount} onChange={(event) => setOvertimeForm((current) => ({ ...current, amount: event.target.value }))} /></label>
-              <label className="form-field"><span>Motivo</span><input value={overtimeForm.reason} onChange={(event) => setOvertimeForm((current) => ({ ...current, reason: event.target.value }))} /></label>
+              <p className="profile-note">{employeeName} · {formatPeriod(queryPeriod)}. Al guardar quedan pendientes; el movimiento en cuentas se genera al pagarlas.</p>
+              <AccountingInlineNotice notice={overtimeNotice} />
+              <label className="form-field"><span>Fecha</span><input type="date" required min={`${queryPeriod}-01`} max={periodLastDate} disabled={savingOvertime} value={overtimeForm.workDate} onChange={(event) => setOvertimeForm((current) => ({ ...current, workDate: event.target.value }))} /></label>
+              <label className="form-field"><span>Horas</span><input required inputMode="decimal" disabled={savingOvertime} value={overtimeForm.hours} onChange={(event) => setOvertimeForm((current) => ({ ...current, hours: event.target.value }))} /></label>
+              <label className="form-field"><span>Monto total ARS</span><input required inputMode="decimal" disabled={savingOvertime} value={overtimeForm.amount} onChange={(event) => setOvertimeForm((current) => ({ ...current, amount: event.target.value }))} /></label>
+              <label className="form-field"><span>Motivo</span><input disabled={savingOvertime} value={overtimeForm.reason} onChange={(event) => setOvertimeForm((current) => ({ ...current, reason: event.target.value }))} /></label>
               <div className="form-actions form-actions--right">
-                <UiActionButton type="submit">Cargar hora extra</UiActionButton>
+                <UiActionButton type="submit" disabled={savingOvertime} aria-busy={savingOvertime}>{savingOvertime ? 'Guardando horas extra...' : 'Guardar horas extra'}</UiActionButton>
               </div>
             </form>
           </section>
@@ -604,14 +740,47 @@ export function AccountingEmployeeCyclePage() {
         </div>
       )}
 
-      <DangerActionDialog
+      <ConfirmDialog
+        open={Boolean(overtimeEntryToPay)}
+        title="Pagar horas extra"
+        description={overtimeEntryToPay && <>
+          <p>{overtimeEntryToPay.hours} horas · {formatCurrency(overtimeEntryToPay.amountMinor)} · {employeeName}</p>
+          {state.salaryConfiguration?.allowOvertime === false && <AccountingInlineNotice notice={{ kind: 'error', message: 'Horas extra deshabilitadas: habilitalas desde Modificar sueldo antes de confirmar.' }} />}
+          <p>Se registrara el pago y un egreso de Horas extra de personal. Si estaban pendientes, quedaran aprobadas al pagar.</p>
+          <label className="form-field"><span>Cuenta de origen / medio de pago</span>
+            <select value={overtimePaymentMethodId} disabled={Boolean(overtimeActionId)} onChange={(event) => setOvertimePaymentMethodId(event.target.value)}>
+              {overtimePaymentMethods.length === 0 && <option value="">Sin medios de pago activos</option>}
+              {overtimePaymentMethods.map((method) => <option key={method.id} value={method.id}>{getPaymentMethodDisplayName(method)}</option>)}
+            </select>
+          </label>
+          <AccountingInlineNotice notice={overtimePaymentNotice} />
+        </>}
+        confirmLabel="Pagar ahora"
+        loading={Boolean(overtimeActionId)}
+        onCancel={() => setPayOvertimeEntryId(null)}
+        onConfirm={() => void payOvertime()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(rejectOvertimeEntryId)}
+        title="Rechazar horas extra"
+        description={<>
+          <label className="form-field"><span>Motivo del rechazo</span><input value={overtimeRejectionReason} disabled={Boolean(overtimeActionId)} onChange={(event) => setOvertimeRejectionReason(event.target.value)} /></label>
+          <AccountingInlineNotice notice={overtimeRejectionNotice} />
+        </>}
+        confirmLabel="Rechazar"
+        tone="danger"
+        loading={Boolean(overtimeActionId)}
+        onCancel={() => setRejectOvertimeEntryId(null)}
+        onConfirm={() => void rejectOvertime()}
+      />
+
+      <ConfirmDialog
         open={confirmPayrollOpen}
         title="Generar pago de sueldo"
-        description="Esta accion toma el sueldo cargado en Firestore, registra el pago del periodo y crea los movimientos de egreso en caja segun validacion backend."
-        reason={payrollReason}
+        description="Se registrara el pago del periodo y se crearan los movimientos de egreso correspondientes en caja."
         confirmLabel="Generar pago"
         loading={postingPayroll}
-        onReasonChange={setPayrollReason}
         onCancel={() => setConfirmPayrollOpen(false)}
         onConfirm={() => void postPayroll()}
       />

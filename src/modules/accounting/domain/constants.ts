@@ -24,6 +24,7 @@ export const ACCOUNTING_CALLABLE_NAMES = {
   upsertEmployeeExternalReference: 'accountingUpsertEmployeeExternalReference',
   createOvertimeEntry: 'accountingCreateOvertimeEntry',
   reviewOvertimeEntry: 'accountingReviewOvertimeEntry',
+  payOvertimeEntry: 'accountingPayOvertimeEntry',
   listEmployeePayrollCycle: 'accountingListEmployeePayrollCycle',
   postEmployeePayrollCycle: 'accountingPostEmployeePayrollCycle',
   postAnnualBonusPayment: 'accountingPostAnnualBonusPayment',
@@ -36,6 +37,7 @@ export const ACCOUNTING_CALLABLE_NAMES = {
   voidFinancialMovement: 'accountingVoidFinancialMovement',
   editFinancialMovement: 'accountingEditFinancialMovement',
   setFinancialMovementBalanceInclusion: 'accountingSetFinancialMovementBalanceInclusion',
+  generateReport: 'accountingGenerateReport',
 } as const;
 
 export const ACCOUNTING_COLLECTIONS = {
@@ -58,6 +60,7 @@ export const ACCOUNTING_COLLECTIONS = {
   cashClosures: 'cash_closures',
   handicapCharges: 'handicap_charges',
   memberFeeCharges: 'member_fee_charges',
+  accountingReports: 'accounting_reports',
 } as const;
 
 export const ACCOUNTING_PAYMENT_METHOD_IDS = {
