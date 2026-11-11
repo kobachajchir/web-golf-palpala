@@ -1,4 +1,6 @@
 import { Timestamp } from 'firebase-admin/firestore';
+import { createHash } from 'node:crypto';
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
 import { FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import type { AccountingPeriod, Actor, EntityWithId, MemberFeeChargeDocument, ReferencedMemberDocument } from '../../domain/models.js';
@@ -64,13 +66,17 @@ function buildReceiptNumber(operationDate: Date, movementId: string): string {
 }
 
 function resolveStoredPaidAmount(charge: MemberFeeChargeDocument, settlementAmountMinor: number): number {
-  if (typeof charge.paidClubAmountMinor === 'number') {
-    return charge.paidClubAmountMinor;
-  }
-  if (charge.status === 'paid') {
-    return charge.paidAmountMinor ?? settlementAmountMinor;
-  }
-  return charge.paidAmountMinor ?? 0;
+  const paidFromRemaining = typeof charge.remainingAmountMinor === 'number'
+    ? settlementAmountMinor - charge.remainingAmountMinor
+    : 0;
+  const storedPaidAmountMinor = Math.max(
+    charge.paidClubAmountMinor ?? 0,
+    charge.paidAmountMinor ?? 0,
+    paidFromRemaining,
+    charge.status === 'paid' ? settlementAmountMinor : 0,
+  );
+
+  return Math.min(Math.max(storedPaidAmountMinor, 0), settlementAmountMinor);
 }
 
 function getStoredSettlementAmount(charge: MemberFeeChargeDocument): number | null {
@@ -154,11 +160,19 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
   );
 
   return params.transactions.runInTransaction(async (dataAccess) => {
+    const operationKey = params.input.idempotencyKey ? createHash('sha256').update(actor.uid + ':' + params.input.idempotencyKey).digest('hex') : null;
+    const fingerprint = createHash('sha256').update(JSON.stringify(params.input)).digest('hex');
+    const previous = operationKey ? await dataAccess.operations?.get(operationKey) : null;
+    if (previous) {
+      assertCondition(previous.fingerprint === fingerprint, 'invalid-argument', 'La clave de cobro ya fue utilizada con otros datos.');
+      return { ...previous.result, duplicate: true };
+    }
     await assertCashOperationDateAllowed({ dataAccess, operationDate: params.input.operationDate });
-    const [category, paymentMethod, activeConfig] = await Promise.all([
+    const [category, paymentMethod, activeConfig, activeCommissionRule] = await Promise.all([
       dataAccess.financialIncomeCategories.getById(FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria),
       dataAccess.paymentMethods.getById(params.input.paymentMethodId),
       dataAccess.financialConfigs.getActive(),
+      dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(params.input.paymentMethodId),
     ]);
     assertCondition(category?.active, 'failed-precondition', 'La categoria cuota societaria no esta activa.');
     assertCondition(paymentMethod?.active, 'failed-precondition', 'El medio de pago no esta activo.');
@@ -242,7 +256,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
           discountPctBps = activeConfig.earlyPaymentDiscountPctBps ?? 0;
           discountAmountMinor = calculateAmountFromBps(charge.finalAmountMinor, discountPctBps);
           discountMode = preview.qualifies ? 'automatic' : 'manual';
-        } else if (inputAllocation.applyEarlyPaymentDiscount === undefined && preview.qualifies) {
+        } else if (preview.qualifies && (charge.period > paymentAccountingPeriod || inputAllocation.applyEarlyPaymentDiscount === undefined)) {
           discountPctBps = preview.discountPctBps;
           discountAmountMinor = preview.discountAmountMinor;
           discountMode = 'automatic';
@@ -266,7 +280,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
         settlementAmountMinor,
         previouslyPaidMinor,
         appliedAmountMinor,
-        remainingAmountMinor: availableMinor - appliedAmountMinor,
+        remainingAmountMinor: Math.max(settlementAmountMinor - previouslyPaidMinor - appliedAmountMinor, 0),
         discountPctBps,
         discountAmountMinor,
         discountMode,
@@ -280,6 +294,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
     const paymentMember = await dataAccess.members.getById(memberId);
     assertCondition(paymentMember, 'not-found', `No existe members/${memberId}.`);
     const openChargesBeforePayment = await listOpenRenewalChargesForMember(dataAccess, paymentMember);
+    const membershipStatus = await prepareMemberFeeStatus(dataAccess, memberId, prepared.map((allocation) => ({ id: allocation.charge.id, period: allocation.charge.period, status: allocation.remainingAmountMinor === 0 ? 'paid' : 'pending' })));
     for (const allocation of prepared) {
       if (!allocation.createData) continue;
       const memberFeeChargeId = await dataAccess.memberFeeCharges.create(allocation.createData, actor.uid);
@@ -301,6 +316,8 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
       thirdPartyType: 'member',
       thirdPartyId: memberId,
       paymentMethodId: paymentMethod.id,
+      prefetchedPaymentMethod: paymentMethod,
+      prefetchedActiveCommissionRule: activeCommissionRule ?? null,
       bancarizado: paymentMethod.bancarizado,
       imputableImpositivo: true,
       applyPaymentCommission: true,
@@ -348,8 +365,13 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
     }, actor.uid);
 
     for (const allocation of prepared) {
-      const paidClubAmountMinor = allocation.previouslyPaidMinor + allocation.appliedAmountMinor;
-      const completed = allocation.remainingAmountMinor === 0;
+      const paidClubAmountMinor = Math.min(
+        allocation.previouslyPaidMinor + allocation.appliedAmountMinor,
+        allocation.settlementAmountMinor,
+      );
+      const remainingAmountMinor = Math.max(allocation.settlementAmountMinor - paidClubAmountMinor, 0);
+      const completed = paidClubAmountMinor >= allocation.settlementAmountMinor;
+      allocation.remainingAmountMinor = remainingAmountMinor;
       await dataAccess.memberFeeCharges.update(allocation.charge.id, {
         status: completed ? 'paid' : allocation.charge.status,
         paidMovementId: completed ? movement.movementId : allocation.charge.paidMovementId ?? null,
@@ -358,7 +380,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
         paidAmountMinor: paidClubAmountMinor,
         settlementAmountMinor: allocation.settlementAmountMinor,
         paidClubAmountMinor,
-        remainingAmountMinor: allocation.remainingAmountMinor,
+        remainingAmountMinor,
         paymentDiscountPctBps: allocation.discountPctBps,
         paymentDiscountAmountMinor: allocation.discountAmountMinor,
         paymentDiscountMode: allocation.discountMode,
@@ -376,14 +398,12 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
       .sort((left, right) => right.localeCompare(left))[0]!;
     await dataAccess.members.update(memberId, {
       lastFeePaymentAt: Timestamp.fromDate(params.input.operationDate),
-      membershipRenewalDueAt: keepsOpenDebt
-        ? undefined
-        : Timestamp.fromDate(calculateMembershipRenewalDueDateFromPeriod(latestPaidPeriod)),
-      membershipRenewalStatus: keepsOpenDebt ? 'needs_renewal' : 'current',
+      ...membershipStatus,
       lastFeePaidAmountMinor: clubAmountMinor,
     }, actor.uid);
 
-    return {
+    const result = {
+      duplicate: false,
       memberId,
       movementId: movement.movementId,
       grossAmountMinor: movement.grossAmountMinor,
@@ -394,6 +414,8 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
       completedChargeIds: prepared.filter((allocation) => allocation.remainingAmountMinor === 0).map((allocation) => allocation.charge.id),
       remainingChargeIds: prepared.filter((allocation) => allocation.remainingAmountMinor > 0).map((allocation) => allocation.charge.id),
     };
+    if (operationKey) await dataAccess.operations?.set(operationKey, fingerprint, result);
+    return result;
   });
 }
 
@@ -419,4 +441,23 @@ export function parseRegisterMemberFeeBatchPaymentInput(payload: unknown): Regis
     notes: parseOptionalNullableString(data, 'notes'),
     idempotencyKey: parseOptionalString(data, 'idempotencyKey'),
   };
+}
+export async function previewMemberFeePaymentUseCase(params: { actor: Actor | null; input: { memberId: string; periods: string[]; operationDate: Date }; transactions: AccountingTransactionManager }) {
+  ensureStaff(params.actor);
+  assertCondition(params.input.periods.length > 0 && params.input.periods.length <= 100, 'invalid-argument', 'Selecciona entre 1 y 100 meses.');
+  const dataAccess = params.transactions.getDataAccess();
+  const config = await dataAccess.financialConfigs.getActive();
+  assertCondition(config, 'failed-precondition', 'No existe configuracion financiera activa.');
+  const lines = [];
+  for (const period of [...new Set(params.input.periods)]) {
+    assertCondition(/^\d{4}-(0[1-9]|1[0-2])$/.test(period), 'invalid-argument', 'Periodo invalido.');
+    const preview = await computeFeePreviewInternal({ dataAccess, memberId: params.input.memberId, period });
+    const charge = await dataAccess.memberFeeCharges.findDuplicate({ memberId: preview.billingMode === 'per_member' ? preview.memberId : preview.holderMemberId ?? null, familyGroupId: preview.billingMode === 'single_group_charge' ? preview.familyGroupId ?? null : null, period, billingMode: preview.billingMode });
+    const discount = calculateEarlyPaymentDiscount({ chargeAmountMinor: charge?.finalAmountMinor ?? preview.finalAmountMinor, config, chargePeriod: period, operationDate: params.input.operationDate });
+    const locked = charge ? getStoredSettlementAmount(charge) : null;
+    const settlement = locked ?? discount.paidAmountMinor;
+    const paid = charge ? resolveStoredPaidAmount(charge, settlement) : 0;
+    lines.push({ period, chargeId: charge?.id ?? null, status: charge?.status ?? 'unissued', baseAmountMinor: charge?.finalAmountMinor ?? preview.finalAmountMinor, discountAmountMinor: locked === null ? discount.discountAmountMinor : charge?.paymentDiscountAmountMinor ?? 0, paidAmountMinor: paid, payableAmountMinor: charge?.status === 'paid' || charge?.status === 'exempt' ? 0 : Math.max(settlement - paid, 0) });
+  }
+  return { lines, totalAmountMinor: lines.reduce((sum, line) => sum + line.payableAmountMinor, 0) };
 }

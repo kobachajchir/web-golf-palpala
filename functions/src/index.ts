@@ -17,6 +17,7 @@ export {
 } from './modules/executive-board/executive-board.callables.js';
 export {
   accounting,
+  accountingPreviewMemberFeePayment,
   accountingCheckServerExpenseDue,
   accountingCreateHandicapCharge,
   accountingCloseCashClosure,
@@ -27,6 +28,7 @@ export {
   accountingEditFinancialMovement,
   accountingEditInternalTransfer,
   accountingGenerateCuota,
+  accountingGenerateReport,
   accountingGenerateFeePreview,
   accountingLinkExternalReferenceToEmployee,
   accountingListEmployeePayrollCycle,
@@ -49,6 +51,7 @@ export {
   accountingTransferFunds,
   accountingReviewExpense,
   accountingReviewOvertimeEntry,
+  accountingPayOvertimeEntry,
   accountingSetCreditCommissionRule,
   accountingSetFinancialMovementBalanceInclusion,
   accountingSubmitExpense,

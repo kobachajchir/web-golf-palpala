@@ -1,5 +1,5 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { FINANCIAL_EXPENSE_CATEGORY_IDS } from '../../domain/constants.js';
+import { DEFAULT_FINANCIAL_EXPENSE_CATEGORIES, FINANCIAL_EXPENSE_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import type {
   Actor,
@@ -11,7 +11,7 @@ import type {
   OvertimeEntryDocument,
   SalaryPaymentDocument,
 } from '../../domain/models.js';
-import type { AccountingTransactionManager } from '../../domain/ports.js';
+import type { AccountingDataAccess, AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   ensureDirectivo,
@@ -27,8 +27,11 @@ import {
   parseRequiredIsoDate,
   parseRequiredString,
   parseRequiredStringArray,
+  toClubAccountingPeriod,
 } from '../shared.js';
-import { calculateAnnualBonusPreview, postSalaryPaymentUseCase, type AnnualBonusPreview } from './salary.use-cases.js';
+import { createPostedMovement } from '../movement-helpers.js';
+import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
+import { calculateAnnualBonusPreview, processSalaryPaymentInTransaction, type AnnualBonusPreview } from './salary.use-cases.js';
 
 export interface CreateOvertimeEntryInput {
   employeeId: string;
@@ -44,6 +47,12 @@ export interface ReviewOvertimeEntryInput {
   overtimeEntryId: string;
   decision: 'approved' | 'rejected';
   rejectionReason?: string | null | undefined;
+}
+
+export interface PayOvertimeEntryInput {
+  overtimeEntryId: string;
+  paymentMethodId: string;
+  operationDate?: Date | undefined;
 }
 
 export interface ListEmployeePayrollCycleInput {
@@ -87,6 +96,17 @@ function isApprovedDecision(value: string): value is ReviewOvertimeEntryInput['d
   return value === 'approved' || value === 'rejected';
 }
 
+async function listAllEmployeeOvertime(dataAccess: AccountingDataAccess, employeeId: string, period: string) {
+  const entries: Array<OvertimeEntryDocument & { id: string }> = [];
+  let cursorId: string | undefined;
+  do {
+    const page = await dataAccess.overtimeEntries.listPage({ employeeId, period, limit: 100, cursorId });
+    entries.push(...page.items);
+    cursorId = page.nextCursorId;
+  } while (cursorId);
+  return entries;
+}
+
 export async function createOvertimeEntryUseCase(params: {
   actor: Actor | null;
   input: CreateOvertimeEntryInput;
@@ -98,6 +118,12 @@ export async function createOvertimeEntryUseCase(params: {
     const employee = await dataAccess.employees.getById(params.input.employeeId);
     assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
     assertCondition(params.input.hours > 0, 'invalid-argument', 'hours debe ser mayor a 0.');
+    assertCondition(params.input.amountMinor > 0, 'invalid-argument', 'El monto de horas extra debe ser mayor a cero.');
+    assertCondition(
+      toClubAccountingPeriod(params.input.workDate) === params.input.period,
+      'invalid-argument',
+      'La fecha de las horas extra debe pertenecer al periodo seleccionado.',
+    );
 
     const overtimeEntryId = await dataAccess.overtimeEntries.create(
       {
@@ -133,7 +159,7 @@ export async function reviewOvertimeEntryUseCase(params: {
   return params.transactions.runInTransaction(async (dataAccess) => {
     const entry = await dataAccess.overtimeEntries.getById(params.input.overtimeEntryId);
     assertCondition(entry, 'not-found', `No existe overtime_entries/${params.input.overtimeEntryId}.`);
-    assertCondition(entry.status === 'submitted', 'failed-precondition', 'Solo se pueden revisar horas extra submitted.');
+    assertCondition(entry.status === 'submitted' || (entry.status === 'approved' && params.input.decision === 'rejected'), 'failed-precondition', 'Solo se pueden revisar horas extra pendientes de pago.');
 
     if (params.input.decision === 'rejected') {
       assertCondition(params.input.rejectionReason, 'invalid-argument', 'rejectionReason es obligatorio al rechazar horas extra.');
@@ -152,6 +178,69 @@ export async function reviewOvertimeEntryUseCase(params: {
     );
 
     return { overtimeEntryId: entry.id, status };
+  });
+}
+
+export async function payOvertimeEntryUseCase(params: {
+  actor: Actor | null;
+  input: PayOvertimeEntryInput;
+  transactions: AccountingTransactionManager;
+}): Promise<{ overtimeEntryId: string; movementId: string; duplicate: boolean }> {
+  const actor = ensureDirectivo(params.actor);
+  return params.transactions.runInTransaction(async (dataAccess) => {
+    const entry = await dataAccess.overtimeEntries.getById(params.input.overtimeEntryId);
+    assertCondition(entry, 'not-found', 'No encontramos el registro de horas extra.');
+    if (entry.status === 'liquidated') {
+      assertCondition(entry.linkedMovementId, 'failed-precondition', 'Las horas extra ya fueron liquidadas.');
+      return { overtimeEntryId: entry.id, movementId: entry.linkedMovementId, duplicate: true };
+    }
+    assertCondition(entry.status === 'submitted' || entry.status === 'approved', 'failed-precondition', 'Solo se pueden pagar horas extra pendientes o aprobadas.');
+    assertCondition(entry.hours > 0 && entry.amountMinor > 0, 'failed-precondition', 'El registro debe tener horas y monto mayores a cero.');
+
+    const operationDate = params.input.operationDate ?? new Date();
+    await assertCashOperationDateAllowed({ dataAccess, operationDate });
+    const [employee, storedCategory, paymentMethod, salaryConfiguration] = await Promise.all([
+      dataAccess.employees.getById(entry.employeeId),
+      dataAccess.financialExpenseCategories.getById(FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra),
+      dataAccess.paymentMethods.getById(params.input.paymentMethodId),
+      dataAccess.salaryConfigurations.getActiveByEmployeeId(entry.employeeId),
+    ]);
+    assertCondition(employee, 'not-found', 'No encontramos el empleado asociado.');
+    assertCondition(paymentMethod?.active, 'failed-precondition', 'Selecciona un medio de pago activo.');
+    assertCondition(params.input.paymentMethodId !== PAYMENT_METHOD_IDS.debitMacro, 'invalid-argument', 'Cuenta debito Macro solo esta disponible para cuotas societarias.');
+    assertCondition(salaryConfiguration?.allowOvertime !== false, 'failed-precondition', 'La configuracion salarial del empleado no permite horas extra.');
+    const defaultCategory = DEFAULT_FINANCIAL_EXPENSE_CATEGORIES.find((category) => category.id === FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra)!;
+    const category = storedCategory ?? { id: defaultCategory.id, ...defaultCategory.data };
+    assertCondition(category.active, 'failed-precondition', 'La categoria Horas extra esta inactiva.');
+    const employeeName = `${employee.lastName}, ${employee.firstName}`;
+    const movement = await createPostedMovement({
+      dataAccess,
+      actorUid: actor.uid,
+      movementType: 'expense',
+      categoryId: category.id,
+      categoryCodeSnapshot: category.id,
+      grossAmountMinor: entry.amountMinor,
+      operationDate,
+      originType: 'employee_overtime',
+      originCollection: 'overtime_entries',
+      originId: entry.id,
+      thirdPartyType: 'employee',
+      thirdPartyId: employee.id,
+      paymentMethodId: params.input.paymentMethodId,
+      prefetchedPaymentMethod: paymentMethod,
+      bancarizado: paymentMethod.bancarizado,
+      imputableImpositivo: false,
+      applyPaymentCommission: false,
+      metadata: { employeeName, overtimeHours: entry.hours, payrollPeriod: entry.period, workDate: entry.workDate.toDate().toISOString() },
+      notes: `Horas extra - ${employeeName} (${entry.period}): ${entry.reason}`,
+    });
+    await dataAccess.overtimeEntries.update(entry.id, {
+      status: 'liquidated',
+      linkedMovementId: movement.movementId,
+      approvedByUid: entry.approvedByUid ?? actor.uid,
+      approvedAt: entry.approvedAt ?? Timestamp.fromDate(new Date()),
+    }, actor.uid);
+    return { overtimeEntryId: entry.id, movementId: movement.movementId, duplicate: false };
   });
 }
 
@@ -175,7 +264,7 @@ export async function listEmployeePayrollCycleUseCase(params: {
   const [payrollCycle, salaryPayment, overtimeEntries, accountingLinks, certificates, annualBonusPreview] = await Promise.all([
     dataAccess.employeePayrollCycles.findByEmployeeAndPeriod(params.input.employeeId, params.input.period),
     dataAccess.salaryPayments.findByEmployeeAndPeriod(params.input.employeeId, params.input.period),
-    dataAccess.overtimeEntries.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
+    listAllEmployeeOvertime(dataAccess, params.input.employeeId, params.input.period),
     dataAccess.employeeAccountingLinks.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
     dataAccess.employeeCertificates.listPage({ employeeId: params.input.employeeId, period: params.input.period, limit: 100 }),
     calculateAnnualBonusPreview({ dataAccess, employeeId: params.input.employeeId, period: params.input.period as AccountingPeriod }),
@@ -184,7 +273,7 @@ export async function listEmployeePayrollCycleUseCase(params: {
   return {
     payrollCycle,
     salaryPayment,
-    overtimeEntries: overtimeEntries.items,
+    overtimeEntries,
     accountingLinks: accountingLinks.items,
     certificates: certificates.items,
     annualBonusPreview,
@@ -197,89 +286,93 @@ export async function postEmployeePayrollCycleUseCase(params: {
   transactions: AccountingTransactionManager;
 }): Promise<{ payrollCycleId: string; salaryPaymentId: string; financialMovementIds: string[]; duplicate: boolean }> {
   const actor = ensureDirectivo(params.actor);
-  const dataAccess = params.transactions.getDataAccess();
-  const employee = await dataAccess.employees.getById(params.input.employeeId);
-  assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
-
-  const approvedOvertimeEntries = await dataAccess.overtimeEntries.listApprovedByEmployeeAndPeriod(
-    params.input.employeeId,
-    params.input.period,
-  );
-  const overtimeHours = approvedOvertimeEntries.reduce((total, entry) => total + entry.hours, 0);
-  const overtimeAmountMinor = approvedOvertimeEntries.reduce((total, entry) => total + entry.amountMinor, 0);
-
-  const payment = await postSalaryPaymentUseCase({
-    actor,
-    input: {
-      employeeId: params.input.employeeId,
-      period: params.input.period,
-      salaryConfigurationId: params.input.salaryConfigurationId,
-      salaryGrossMinor: params.input.salaryGrossMinor,
-      overtimeHours,
-      overtimeAmountMinor,
-      bankedAmountMinor: params.input.bankedAmountMinor,
-      nonBankedAmountMinor: params.input.nonBankedAmountMinor,
-      linkedExternalReferenceIds: params.input.linkedExternalReferenceIds,
-      operationDate: params.input.operationDate,
-      notes: params.input.notes,
-    },
-    transactions: params.transactions,
-  });
 
   return params.transactions.runInTransaction(async (transactionDataAccess) => {
-    const salaryPayment = await transactionDataAccess.salaryPayments.getById(payment.salaryPaymentId);
-    assertCondition(salaryPayment, 'not-found', `No existe salary_payments/${payment.salaryPaymentId}.`);
-    const movementDocs = await Promise.all(
-      payment.financialMovementIds.map((movementId) => transactionDataAccess.financialMovements.getById(movementId)),
+    const employee = await transactionDataAccess.employees.getById(params.input.employeeId);
+    assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
+
+    const approvedOvertimeEntries = await transactionDataAccess.overtimeEntries.listApprovedByEmployeeAndPeriod(
+      params.input.employeeId,
+      params.input.period,
     );
-    const overtimeMovement = movementDocs.find((movement) => movement?.categoryCodeSnapshot === FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra);
+    const overtimeHours = approvedOvertimeEntries.reduce((total, entry) => total + entry.hours, 0);
+    const overtimeAmountMinor = approvedOvertimeEntries.reduce((total, entry) => total + entry.amountMinor, 0);
+    const linkedCertificateIds = (await transactionDataAccess.employeeCertificates.listPage({
+      employeeId: params.input.employeeId,
+      period: params.input.period,
+      limit: 100,
+    })).items.map((certificate) => certificate.id);
+    const existingCycle = await transactionDataAccess.employeePayrollCycles.findByEmployeeAndPeriod(
+      params.input.employeeId,
+      params.input.period,
+    );
+    if (existingCycle?.status === 'posted' && existingCycle.salaryPaymentId) {
+      return { payrollCycleId: existingCycle.id, salaryPaymentId: existingCycle.salaryPaymentId, financialMovementIds: existingCycle.financialMovementIds, duplicate: true };
+    }
+    const pendingOvertime = await transactionDataAccess.overtimeEntries.listPage({ employeeId: params.input.employeeId, period: params.input.period, status: 'submitted', limit: 1 });
+    assertCondition(pendingOvertime.items.length === 0, 'failed-precondition', 'Hay horas extra pendientes de aprobacion. Revisalas antes de generar el pago de sueldo.');
+
+    const payment = await processSalaryPaymentInTransaction({
+      dataAccess: transactionDataAccess,
+      actor,
+      input: {
+        employeeId: params.input.employeeId,
+        period: params.input.period,
+        salaryConfigurationId: params.input.salaryConfigurationId,
+        salaryGrossMinor: params.input.salaryGrossMinor,
+        overtimeHours,
+        overtimeAmountMinor,
+        bankedAmountMinor: params.input.bankedAmountMinor,
+        nonBankedAmountMinor: params.input.nonBankedAmountMinor,
+        linkedExternalReferenceIds: params.input.linkedExternalReferenceIds,
+        operationDate: params.input.operationDate,
+        notes: params.input.notes,
+      },
+    });
+
+    // A repeated payroll request must not overwrite totals or mark later entries as paid.
+    if (payment.duplicate && existingCycle) {
+      return { payrollCycleId: existingCycle.id, salaryPaymentId: payment.salaryPaymentId, financialMovementIds: payment.financialMovementIds, duplicate: true };
+    }
+    assertCondition(!payment.duplicate || approvedOvertimeEntries.length === 0, 'failed-precondition', 'El sueldo ya fue pagado. Usa Pagar ahora en las horas extra pendientes.');
 
     for (const overtimeEntry of approvedOvertimeEntries) {
       await transactionDataAccess.overtimeEntries.update(
         overtimeEntry.id,
         {
           status: 'liquidated',
-          linkedSalaryPaymentId: salaryPayment.id,
-          linkedMovementId: overtimeMovement?.id ?? null,
+          linkedSalaryPaymentId: payment.salaryPaymentId,
+          linkedMovementId: payment.overtimeMovementId,
         },
         actor.uid,
       );
     }
 
-    const linkedCertificateIds = (await transactionDataAccess.employeeCertificates.listPage({
-      employeeId: params.input.employeeId,
-      period: params.input.period,
-      limit: 100,
-    })).items.map((certificate) => certificate.id);
 
-    const existingCycle = await transactionDataAccess.employeePayrollCycles.findByEmployeeAndPeriod(
-      params.input.employeeId,
-      params.input.period,
-    );
     const cycleData = {
       employeeId: params.input.employeeId,
       period: params.input.period,
-      salaryPaymentId: salaryPayment.id,
-      salaryConfigurationId: salaryPayment.salaryConfigurationId,
-      salaryGrossMinor: salaryPayment.salaryGrossMinor,
-      overtimeTotalHours: overtimeHours,
-      overtimeTotalMinor: overtimeAmountMinor,
-      bankedAmountMinor: salaryPayment.bankedAmountMinor,
-      nonBankedAmountMinor: salaryPayment.nonBankedAmountMinor,
-      linkedReferenceIds: salaryPayment.linkedExternalReferenceIds ?? [],
+      salaryPaymentId: payment.salaryPaymentId,
+      salaryConfigurationId: payment.salaryConfigurationId,
+      salaryGrossMinor: payment.salaryGrossMinor,
+      overtimeTotalHours: payment.overtimeHours,
+      overtimeTotalMinor: payment.overtimeAmountMinor,
+      bankedAmountMinor: payment.bankedAmountMinor,
+      nonBankedAmountMinor: payment.nonBankedAmountMinor,
+      linkedReferenceIds: payment.linkedExternalReferenceIds,
       linkedCertificateIds,
-      financialMovementIds: salaryPayment.financialMovementIds,
+      financialMovementIds: payment.financialMovementIds,
       status: 'posted' as const,
       paidAt: Timestamp.fromDate(params.input.operationDate ?? new Date()),
-      notes: params.input.notes ?? salaryPayment.notes ?? null,
+      notes: params.input.notes ?? payment.notes,
     };
 
     if (existingCycle) {
       await transactionDataAccess.employeePayrollCycles.update(existingCycle.id, cycleData, actor.uid);
       return {
         payrollCycleId: existingCycle.id,
-        salaryPaymentId: salaryPayment.id,
-        financialMovementIds: salaryPayment.financialMovementIds,
+        salaryPaymentId: payment.salaryPaymentId,
+        financialMovementIds: payment.financialMovementIds,
         duplicate: payment.duplicate,
       };
     }
@@ -287,8 +380,8 @@ export async function postEmployeePayrollCycleUseCase(params: {
     const payrollCycleId = await transactionDataAccess.employeePayrollCycles.create(cycleData, actor.uid);
     return {
       payrollCycleId,
-      salaryPaymentId: salaryPayment.id,
-      financialMovementIds: salaryPayment.financialMovementIds,
+      salaryPaymentId: payment.salaryPaymentId,
+      financialMovementIds: payment.financialMovementIds,
       duplicate: payment.duplicate,
     };
   });
@@ -389,6 +482,15 @@ export function parseReviewOvertimeEntryInput(payload: unknown): ReviewOvertimeE
     overtimeEntryId: parseRequiredString(data, 'overtimeEntryId'),
     decision,
     rejectionReason: parseOptionalNullableString(data, 'rejectionReason'),
+  };
+}
+
+export function parsePayOvertimeEntryInput(payload: unknown): PayOvertimeEntryInput {
+  const data = assertIsRecord(payload);
+  return {
+    overtimeEntryId: parseRequiredString(data, 'overtimeEntryId'),
+    paymentMethodId: parseRequiredString(data, 'paymentMethodId'),
+    operationDate: parseOptionalIsoDate(data, 'operationDate'),
   };
 }
 

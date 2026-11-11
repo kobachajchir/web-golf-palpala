@@ -1203,6 +1203,15 @@ export function createFirestoreAccountingDataAccess(
   void clock;
 
   return {
+    operations: {
+      async get(key) {
+        const snapshot = await getSnapshot(db.collection('accounting_operations').doc(key), transaction);
+        return snapshot.exists ? snapshot.data() as { fingerprint: string; result: any } : null;
+      },
+      async set(key, fingerprint, result) {
+        await writeSet(db.collection('accounting_operations').doc(key), { fingerprint, result, createdAt: FieldValue.serverTimestamp() }, transaction);
+      },
+    },
     users: new FirestoreUsersReferenceStore(db, transaction),
     members: new FirestoreMembersReferenceStore(db, transaction),
     familyGroups: new FirestoreFamilyGroupsReferenceStore(db, transaction),

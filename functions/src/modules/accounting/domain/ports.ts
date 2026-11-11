@@ -396,6 +396,10 @@ export interface MemberFeeChargesStore {
 }
 
 export interface AccountingDataAccess {
+  operations?: {
+    get(key: string): Promise<{ fingerprint: string; result: any } | null>;
+    set(key: string, fingerprint: string, result: any): Promise<void>;
+  };
   users: UsersReferenceStore;
   members: MembersReferenceStore;
   familyGroups: FamilyGroupsReferenceStore;

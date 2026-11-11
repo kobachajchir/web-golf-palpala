@@ -55,7 +55,7 @@ async function resolveClosureMovements(params: {
   if (params.movementIds?.length) {
     const movements = await Promise.all(params.movementIds.map((movementId) => dataAccess.financialMovements.getById(movementId)));
     assertCondition(movements.every(Boolean), 'not-found', 'Uno o más financial_movements no existen.');
-    return movements.filter((movement): movement is EntityWithId<FinancialMovementDocument> => movement !== null);
+    return movements.filter((movement): movement is EntityWithId<FinancialMovementDocument> => movement !== null && movement.status === 'posted' && movement.installmentRole !== 'charge');
   }
 
   const page = await dataAccess.financialMovements.listPage({
@@ -64,7 +64,7 @@ async function resolveClosureMovements(params: {
     limit: 100,
   });
   const closureDay = toClubDayKey(params.closureDate);
-  return page.items.filter((movement) => toClubDayKey(movement.operationDate.toDate()) === closureDay);
+  return page.items.filter((movement) => movement.installmentRole !== 'charge' && toClubDayKey(movement.operationDate.toDate()) === closureDay);
 }
 
 export async function createCashClosureUseCase(params: {

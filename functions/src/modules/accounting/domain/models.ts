@@ -437,3 +437,34 @@ export interface FeePreview {
   holderMemberId?: DocId | null;
   explanation: string[];
 }
+
+export interface DeleteExternalReferencePayload {
+  referenceId: DocId;
+}
+
+export interface DeleteExternalReferenceResult {
+  success: boolean;
+}
+
+export type AccountingReportTemplate = 'categories' | 'green_fee' | 'member_dues' | 'custom';
+export type AccountingReportScope = 'period' | 'date_range';
+
+export interface GenerateAccountingReportPayload {
+  requestId: string;
+  title: string;
+  template: AccountingReportTemplate;
+  scope: AccountingReportScope;
+  period?: AccountingPeriod | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  movementTypes: FinancialMovementType[];
+  categoryIds: DocId[];
+  includePaidDues: boolean;
+  includeUnpaidPeriod: boolean;
+  includeUnpaidAccumulated: boolean;
+  notes?: string | null;
+}
+
+export interface GenerateAccountingReportResult {
+  reportId: DocId;
+}

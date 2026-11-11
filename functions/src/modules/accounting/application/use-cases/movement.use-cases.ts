@@ -143,6 +143,7 @@ export async function voidFinancialMovementUseCase(params: {
     const movement = await dataAccess.financialMovements.getById(params.input.movementId);
     assertCondition(movement, 'not-found', `No existe financial_movements/${params.input.movementId}.`);
     assertCondition(!movement.installmentPlanId, 'failed-precondition', 'Las cargas en cuotas se administran desde su detalle.');
+    assertCondition(movement.originType !== 'movement_reversal', 'failed-precondition', 'No se puede revertir un movimiento que fue generado como reverso de otro.');
 
     if (movement.status === 'voided' || movement.status === 'reversed') {
       return {
@@ -216,6 +217,10 @@ export async function voidFinancialMovementUseCase(params: {
       },
       actor.uid,
     );
+
+    if (movement.originCollection === ACCOUNTING_COLLECTIONS.overtimeEntries && movement.originId) {
+      await dataAccess.overtimeEntries.update(movement.originId, { status: 'approved', linkedMovementId: null }, actor.uid);
+    }
 
     if (movement.originCollection === 'member_fee_charges' && movement.originId) {
       const memberFeeCharge = await dataAccess.memberFeeCharges.getById(movement.originId);
@@ -297,6 +302,7 @@ export async function editFinancialMovementUseCase(params: {
     const movement = await dataAccess.financialMovements.getById(params.input.movementId);
     assertCondition(movement, 'not-found', `No existe financial_movements/${params.input.movementId}.`);
     assertCondition(!movement.installmentPlanId, 'failed-precondition', 'Las cargas en cuotas se administran desde su detalle.');
+    assertCondition(movement.originType !== 'movement_reversal', 'failed-precondition', 'No se pueden editar movimientos que fueron generados como reverso de otro.');
     assertCondition(movement.status === 'posted', 'failed-precondition', 'Solo se pueden editar movimientos posteados.');
     assertCondition(params.input.grossAmountMinor > 0, 'invalid-argument', 'El monto debe ser mayor a cero.');
     assertCondition(params.input.reason.trim().length >= 5, 'invalid-argument', 'El motivo de edicion debe tener al menos 5 caracteres.');
@@ -382,6 +388,9 @@ export async function editFinancialMovementUseCase(params: {
     };
 
     const isOvertime = params.input.categoryId === FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra;
+    if (movement.originCollection === ACCOUNTING_COLLECTIONS.overtimeEntries) {
+      assertCondition(isOvertime, 'invalid-argument', 'Un pago de horas extra debe conservar la categoria Horas extra.');
+    }
     const isInternalTransfer =
       params.input.categoryId === FINANCIAL_INCOME_CATEGORY_IDS.internalTransfer
       || params.input.categoryId === FINANCIAL_EXPENSE_CATEGORY_IDS.internalTransfer;
@@ -476,6 +485,10 @@ export async function editFinancialMovementUseCase(params: {
         },
         actor.uid,
       );
+    }
+
+    if (movement.originCollection === ACCOUNTING_COLLECTIONS.overtimeEntries && movement.originId) {
+      await dataAccess.overtimeEntries.update(movement.originId, { amountMinor: params.input.grossAmountMinor }, actor.uid);
     }
 
     if (movement.originCollection === ACCOUNTING_COLLECTIONS.expenseSubmissions && movement.originId) {

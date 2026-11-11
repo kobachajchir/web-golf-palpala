@@ -28,6 +28,7 @@ export const ACCOUNTING_COLLECTIONS = {
   advertisingContracts: 'advertising_contracts',
   handicapCharges: 'handicap_charges',
   memberFeeCharges: 'member_fee_charges',
+  accountingReports: 'accounting_reports',
 } as const;
 
 export const SYSTEM_ACTOR_UID = 'system';

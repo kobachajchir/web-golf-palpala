@@ -31,7 +31,7 @@ export interface UpsertSalaryConfigurationInput {
   baseAmountMinor: number;
   periodicity: SalaryPeriodicity;
   effectiveFrom: Date;
-  allowOvertime: boolean;
+  allowOvertime?: boolean | undefined;
   notes?: string | null | undefined;
 }
 
@@ -55,6 +55,21 @@ export interface PostSalaryPaymentInput {
   linkedExternalReferenceIds?: string[] | undefined;
   operationDate?: Date | undefined;
   notes?: string | null | undefined;
+}
+
+interface ProcessSalaryPaymentResult {
+  salaryPaymentId: string;
+  financialMovementIds: string[];
+  overtimeMovementId: string | null;
+  salaryConfigurationId: string;
+  salaryGrossMinor: number;
+  overtimeHours: number;
+  overtimeAmountMinor: number;
+  bankedAmountMinor: number;
+  nonBankedAmountMinor: number;
+  linkedExternalReferenceIds: string[];
+  notes: string | null;
+  duplicate: boolean;
 }
 
 export async function upsertSalaryConfigurationUseCase(params: {
@@ -89,7 +104,7 @@ export async function upsertSalaryConfigurationUseCase(params: {
         effectiveFrom: Timestamp.fromDate(params.input.effectiveFrom),
         effectiveTo: null,
         isActive: true,
-        allowOvertime: params.input.allowOvertime,
+        allowOvertime: params.input.allowOvertime ?? activeConfiguration?.allowOvertime ?? false,
         notes: params.input.notes ?? null,
         setByUid: actor.uid,
       },
@@ -100,43 +115,87 @@ export async function upsertSalaryConfigurationUseCase(params: {
   });
 }
 
-export async function postSalaryPaymentUseCase(params: {
-  actor: Actor | null;
+export async function processSalaryPaymentInTransaction(params: {
+  dataAccess: AccountingDataAccess;
+  actor: Actor;
   input: PostSalaryPaymentInput;
-  transactions: AccountingTransactionManager;
-}): Promise<{ salaryPaymentId: string; financialMovementIds: string[]; duplicate: boolean }> {
-  const actor = ensureDirectivo(params.actor);
+}): Promise<ProcessSalaryPaymentResult> {
+  const { dataAccess, actor, input } = params;
 
-  return params.transactions.runInTransaction(async (dataAccess) => {
-    const employee = await dataAccess.employees.getById(params.input.employeeId);
-    assertCondition(employee, 'not-found', `No existe employees/${params.input.employeeId}.`);
+  const employee = await dataAccess.employees.getById(input.employeeId);
+  assertCondition(employee, 'not-found', `No existe employees/${input.employeeId}.`);
 
-    const existingPayment = await dataAccess.salaryPayments.findByEmployeeAndPeriod(params.input.employeeId, params.input.period);
-    if (existingPayment?.status === 'posted') {
-      return {
-        salaryPaymentId: existingPayment.id,
-        financialMovementIds: existingPayment.financialMovementIds,
-        duplicate: true,
-      };
-    }
+  const existingPayment = await dataAccess.salaryPayments.findByEmployeeAndPeriod(input.employeeId, input.period);
+  if (existingPayment?.status === 'posted') {
+    const existingMovementDocs = await Promise.all(
+      existingPayment.financialMovementIds.map((movementId) => dataAccess.financialMovements.getById(movementId)),
+    );
+    return {
+      salaryPaymentId: existingPayment.id,
+      financialMovementIds: existingPayment.financialMovementIds,
+      overtimeMovementId: existingMovementDocs.find(
+        (movement) => movement?.categoryCodeSnapshot === FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra,
+      )?.id ?? null,
+      salaryConfigurationId: existingPayment.salaryConfigurationId,
+      salaryGrossMinor: existingPayment.salaryGrossMinor,
+      overtimeHours: existingPayment.overtimeHours ?? 0,
+      overtimeAmountMinor: existingPayment.overtimeAmountMinor ?? 0,
+      bankedAmountMinor: existingPayment.bankedAmountMinor,
+      nonBankedAmountMinor: existingPayment.nonBankedAmountMinor,
+      linkedExternalReferenceIds: existingPayment.linkedExternalReferenceIds ?? [],
+      notes: existingPayment.notes ?? null,
+      duplicate: true,
+    };
+  }
 
-    const salaryConfiguration = params.input.salaryConfigurationId
-      ? await dataAccess.salaryConfigurations.getById(params.input.salaryConfigurationId)
-      : await dataAccess.salaryConfigurations.getActiveByEmployeeId(params.input.employeeId);
-    assertCondition(salaryConfiguration, 'failed-precondition', 'No existe salary_configuration activa o indicada.');
-    assertCondition(salaryConfiguration.isActive || params.input.salaryConfigurationId === salaryConfiguration.id, 'failed-precondition', 'La configuración salarial indicada no está activa.');
+  const salaryConfiguration = input.salaryConfigurationId
+    ? await dataAccess.salaryConfigurations.getById(input.salaryConfigurationId)
+    : await dataAccess.salaryConfigurations.getActiveByEmployeeId(input.employeeId);
+  assertCondition(salaryConfiguration, 'failed-precondition', 'No existe salary_configuration activa o indicada.');
+  assertCondition(salaryConfiguration.isActive || input.salaryConfigurationId === salaryConfiguration.id, 'failed-precondition', 'La configuración salarial indicada no está activa.');
 
     const salaryCategory = await dataAccess.financialExpenseCategories.getById(FINANCIAL_EXPENSE_CATEGORY_IDS.sueldo);
     const overtimeCategory = await dataAccess.financialExpenseCategories.getById(FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra);
     assertCondition(salaryCategory, 'not-found', `No existe financial_expense_categories/${FINANCIAL_EXPENSE_CATEGORY_IDS.sueldo}.`);
     assertCondition(overtimeCategory, 'not-found', `No existe financial_expense_categories/${FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra}.`);
 
-    const salaryGrossMinor = params.input.salaryGrossMinor ?? salaryConfiguration.baseAmountMinor;
-    const bankedAmountMinor = params.input.bankedAmountMinor ?? salaryGrossMinor;
-    const nonBankedAmountMinor = params.input.nonBankedAmountMinor ?? 0;
-    const overtimeAmountMinor = params.input.overtimeAmountMinor ?? 0;
-    const overtimeHours = params.input.overtimeHours ?? null;
-    const operationDate = params.input.operationDate ?? new Date(`${params.input.period}-01T00:00:00.000Z`);
+  const salaryGrossMinor = input.salaryGrossMinor ?? salaryConfiguration.baseAmountMinor;
+  const bankedAmountMinor = input.bankedAmountMinor ?? salaryGrossMinor;
+  const nonBankedAmountMinor = input.nonBankedAmountMinor ?? 0;
+  const overtimeAmountMinor = input.overtimeAmountMinor ?? 0;
+  const overtimeHours = input.overtimeHours ?? null;
+  const operationDate = input.operationDate ?? new Date(`${input.period}-01T00:00:00.000Z`);
+  const linkedReferenceIds = input.linkedExternalReferenceIds ?? [];
+  const [bankedPaymentMethod, cashPaymentMethod, activeConfig, linkedExternalReferences] = await Promise.all([
+    bankedAmountMinor > 0
+      ? dataAccess.paymentMethods.getById(PAYMENT_METHOD_IDS.transferMacro)
+      : Promise.resolve(null),
+    nonBankedAmountMinor > 0 || overtimeAmountMinor > 0
+      ? dataAccess.paymentMethods.getById(PAYMENT_METHOD_IDS.cash)
+      : Promise.resolve(null),
+    overtimeAmountMinor > 0 ? dataAccess.financialConfigs.getActive() : Promise.resolve(null),
+    Promise.all(linkedReferenceIds.map((referenceId) => dataAccess.externalAccountingReferences.getById(referenceId))),
+  ]);
+
+  if (bankedAmountMinor > 0) {
+    assertCondition(bankedPaymentMethod, 'not-found', `No existe payment_methods/${PAYMENT_METHOD_IDS.transferMacro}.`);
+    assertCondition(bankedPaymentMethod.active, 'failed-precondition', `El medio de pago ${PAYMENT_METHOD_IDS.transferMacro} esta inactivo.`);
+  }
+  if (nonBankedAmountMinor > 0 || overtimeAmountMinor > 0) {
+    assertCondition(cashPaymentMethod, 'not-found', `No existe payment_methods/${PAYMENT_METHOD_IDS.cash}.`);
+    assertCondition(cashPaymentMethod.active, 'failed-precondition', `El medio de pago ${PAYMENT_METHOD_IDS.cash} esta inactivo.`);
+  }
+  if (overtimeAmountMinor > 0) {
+    assertCondition(activeConfig, 'failed-precondition', 'No existe una configuracion financiera activa.');
+    assertCondition(
+      !activeConfig.requireApprovalForOvertimePosting || hasExecutiveAccess(actor),
+      'permission-denied',
+      'Las horas extra requieren aprobacion del Comite Ejecutivo.',
+    );
+  }
+  linkedExternalReferences.forEach((externalReference, index) => {
+    assertCondition(externalReference, 'not-found', `No existe external_accounting_references/${linkedReferenceIds[index]}.`);
+  });
 
     assertCondition(
       bankedAmountMinor + nonBankedAmountMinor === salaryGrossMinor,
@@ -150,12 +209,9 @@ export async function postSalaryPaymentUseCase(params: {
     );
 
     const financialMovementIds: string[] = [];
+    let overtimeMovementId: string | null = null;
 
     if (bankedAmountMinor > 0) {
-      const bankedPaymentMethod = await dataAccess.paymentMethods.getById(PAYMENT_METHOD_IDS.transferMacro);
-      assertCondition(bankedPaymentMethod, 'not-found', `No existe payment_methods/${PAYMENT_METHOD_IDS.transferMacro}.`);
-      assertCondition(bankedPaymentMethod.active, 'failed-precondition', `El medio de pago ${PAYMENT_METHOD_IDS.transferMacro} esta inactivo.`);
-
       const bankedMovement = await createPostedMovement({
         dataAccess,
         actorUid: actor.uid,
@@ -169,12 +225,13 @@ export async function postSalaryPaymentUseCase(params: {
         originId: existingPayment?.id ?? null,
         thirdPartyType: 'employee',
         thirdPartyId: employee.id,
-        paymentMethodId: bankedPaymentMethod.id,
+        paymentMethodId: PAYMENT_METHOD_IDS.transferMacro,
+        prefetchedPaymentMethod: bankedPaymentMethod,
         bancarizado: true,
         imputableImpositivo: true,
-        metadata: { part: 'banked_salary' },
-        notes: params.input.notes ?? null,
-        applyPaymentCommission: false,
+      metadata: { part: 'banked_salary' },
+      notes: input.notes ?? null,
+      applyPaymentCommission: false,
       });
       financialMovementIds.push(bankedMovement.movementId);
     }
@@ -194,24 +251,17 @@ export async function postSalaryPaymentUseCase(params: {
         thirdPartyType: 'employee',
         thirdPartyId: employee.id,
         paymentMethodId: PAYMENT_METHOD_IDS.cash,
+        prefetchedPaymentMethod: cashPaymentMethod,
         bancarizado: false,
         imputableImpositivo: true,
-        metadata: { part: 'non_banked_salary' },
-        notes: params.input.notes ?? null,
-        applyPaymentCommission: false,
+      metadata: { part: 'non_banked_salary' },
+      notes: input.notes ?? null,
+      applyPaymentCommission: false,
       });
       financialMovementIds.push(cashSalaryMovement.movementId);
     }
 
     if (overtimeAmountMinor > 0) {
-      const activeConfig = await dataAccess.financialConfigs.getActive();
-      assertCondition(activeConfig, 'failed-precondition', 'No existe una configuración financiera activa.');
-      assertCondition(
-        !activeConfig.requireApprovalForOvertimePosting || hasExecutiveAccess(actor),
-        'permission-denied',
-        'Las horas extra requieren aprobación del Comité Ejecutivo.',
-      );
-
       const overtimeMovement = await createPostedMovement({
         dataAccess,
         actorUid: actor.uid,
@@ -226,40 +276,42 @@ export async function postSalaryPaymentUseCase(params: {
         thirdPartyType: 'employee',
         thirdPartyId: employee.id,
         paymentMethodId: PAYMENT_METHOD_IDS.cash,
+        prefetchedPaymentMethod: cashPaymentMethod,
         bancarizado: false,
         imputableImpositivo: false,
-        metadata: { overtimeHours },
-        notes: params.input.notes ?? null,
-        applyPaymentCommission: false,
+      metadata: { overtimeHours, employeeName: `${employee.lastName}, ${employee.firstName}`, payrollPeriod: input.period },
+      notes: input.notes ?? null,
+      applyPaymentCommission: false,
       });
       financialMovementIds.push(overtimeMovement.movementId);
+      overtimeMovementId = overtimeMovement.movementId;
     }
 
     const salaryPaymentId = await dataAccess.salaryPayments.create(
       {
-        employeeId: employee.id,
-        period: params.input.period,
-        salaryConfigurationId: salaryConfiguration.id,
-        salaryGrossMinor,
-        overtimeHours,
-        overtimeAmountMinor: overtimeAmountMinor || null,
-        overtimeBancarizado: false,
-        overtimeImputableImpositivo: false,
-        bankedAmountMinor,
-        nonBankedAmountMinor,
-        linkedExternalReferenceIds: params.input.linkedExternalReferenceIds ?? [],
-        financialMovementIds,
-        status: 'posted',
-        approvedByUid: actor.uid,
-        notes: params.input.notes ?? null,
+      employeeId: employee.id,
+      period: input.period,
+      salaryConfigurationId: salaryConfiguration.id,
+      salaryGrossMinor,
+      overtimeHours,
+      overtimeAmountMinor: overtimeAmountMinor || null,
+      overtimeBancarizado: false,
+      overtimeImputableImpositivo: false,
+      bankedAmountMinor,
+      nonBankedAmountMinor,
+      linkedExternalReferenceIds: input.linkedExternalReferenceIds ?? [],
+      financialMovementIds,
+      status: 'posted',
+      approvedByUid: actor.uid,
+      notes: input.notes ?? null,
       },
       actor.uid,
     );
 
-    if (params.input.linkedExternalReferenceIds?.length) {
-      const primaryMovementId = financialMovementIds[0] ?? null;
-      for (const referenceId of params.input.linkedExternalReferenceIds) {
-        const externalReference = await dataAccess.externalAccountingReferences.getById(referenceId);
+  if (linkedReferenceIds.length) {
+    const primaryMovementId = financialMovementIds[0] ?? null;
+    for (const [index, referenceId] of linkedReferenceIds.entries()) {
+        const externalReference = linkedExternalReferences[index];
         assertCondition(externalReference, 'not-found', `No existe external_accounting_references/${referenceId}.`);
         await dataAccess.externalAccountingReferences.update(
           referenceId,
@@ -272,11 +324,35 @@ export async function postSalaryPaymentUseCase(params: {
       }
     }
 
-    return {
-      salaryPaymentId,
-      financialMovementIds,
-      duplicate: false,
-    };
+  return {
+    salaryPaymentId,
+    financialMovementIds,
+    overtimeMovementId,
+    salaryConfigurationId: salaryConfiguration.id,
+    salaryGrossMinor,
+    overtimeHours: overtimeHours ?? 0,
+    overtimeAmountMinor,
+    bankedAmountMinor,
+    nonBankedAmountMinor,
+    linkedExternalReferenceIds: input.linkedExternalReferenceIds ?? [],
+    notes: input.notes ?? null,
+    duplicate: false,
+  };
+}
+
+export async function postSalaryPaymentUseCase(params: {
+  actor: Actor | null;
+  input: PostSalaryPaymentInput;
+  transactions: AccountingTransactionManager;
+}): Promise<{ salaryPaymentId: string; financialMovementIds: string[]; duplicate: boolean }> {
+  const actor = ensureDirectivo(params.actor);
+
+  return params.transactions.runInTransaction(async (dataAccess) => {
+    return processSalaryPaymentInTransaction({
+      dataAccess,
+      actor,
+      input: params.input,
+    });
   });
 }
 
@@ -522,7 +598,7 @@ export function parseUpsertSalaryConfigurationInput(payload: unknown): UpsertSal
     baseAmountMinor: parseRequiredAmountMinor(data, 'baseAmountMinor'),
     periodicity: parseRequiredString(data, 'periodicity') as SalaryPeriodicity,
     effectiveFrom: parseRequiredIsoDate(data, 'effectiveFrom'),
-    allowOvertime: parseOptionalBoolean(data, 'allowOvertime') ?? false,
+    allowOvertime: parseOptionalBoolean(data, 'allowOvertime'),
     notes: parseOptionalNullableString(data, 'notes'),
   };
 }

@@ -367,7 +367,8 @@ export function calculateEarlyPaymentDiscount(params: {
   const operationDay = getClubDayOfMonth(params.operationDate);
   const operationPeriod = toClubAccountingPeriod(params.operationDate);
   const isSameChargePeriod = !params.chargePeriod || params.chargePeriod === operationPeriod;
-  const qualifies = discountPctBps > 0 && isSameChargePeriod && operationDay >= 1 && operationDay <= discountDayOfMonth;
+  const isAdvance = Boolean(params.chargePeriod && params.chargePeriod > operationPeriod);
+  const qualifies = discountPctBps > 0 && (isAdvance || (isSameChargePeriod && operationDay >= 1 && operationDay <= discountDayOfMonth));
   const discountAmountMinor = qualifies ? calculateAmountFromBps(params.chargeAmountMinor, discountPctBps) : 0;
 
   return {

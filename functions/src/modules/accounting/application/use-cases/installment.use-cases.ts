@@ -1,8 +1,10 @@
 import { Timestamp } from 'firebase-admin/firestore';
-import { ACCOUNTING_COLLECTIONS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
+import { createHash } from 'node:crypto';
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
+import { ACCOUNTING_COLLECTIONS, FINANCIAL_INCOME_CATEGORY_IDS, PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
-import type { Actor, FinancialMovementType, ThirdPartyType } from '../../domain/models.js';
-import type { AccountingTransactionManager } from '../../domain/ports.js';
+import type { AccountingPeriod, Actor, EntityWithId, FinancialMovementDocument, FinancialMovementType, MemberFeeChargeDocument, ThirdPartyType } from '../../domain/models.js';
+import type { AccountingDataAccess, AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   calculateAmountFromBps,
@@ -19,6 +21,223 @@ import {
 } from '../shared.js';
 import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 import { createPostedMovement } from '../movement-helpers.js';
+import { buildMemberFeeChargeCreateData, computeFeePreviewInternal } from './fee.use-cases.js';
+
+type MemberFeeChargeSnapshot = { id: string } & Omit<
+  MemberFeeChargeDocument,
+  'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'
+>;
+
+type MemberFeePlanAllocation = {
+  chargeId: string | null;
+  period: AccountingPeriod;
+  settlementAmountMinor: number;
+  discountPctBps: number;
+  discountAmountMinor: number;
+  discountMode: 'automatic' | 'manual' | 'none';
+};
+
+function isAccountingPeriod(value: unknown): value is AccountingPeriod {
+  return typeof value === 'string' && /^\d{4}-\d{2}$/.test(value);
+}
+
+function readMemberFeePlanAllocations(metadata: Record<string, unknown> | null | undefined): MemberFeePlanAllocation[] {
+  const value = metadata?.memberFeeRenewalAllocations;
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const record = entry as Record<string, unknown>;
+    if (!isAccountingPeriod(record.period)
+      || typeof record.settlementAmountMinor !== 'number'
+      || !Number.isInteger(record.settlementAmountMinor)
+      || record.settlementAmountMinor <= 0) {
+      return [];
+    }
+    const discountMode = record.discountMode === 'automatic' || record.discountMode === 'manual'
+      ? record.discountMode
+      : 'none';
+    return [{
+      chargeId: typeof record.chargeId === 'string' && record.chargeId.trim() ? record.chargeId : null,
+      period: record.period,
+      settlementAmountMinor: record.settlementAmountMinor,
+      discountPctBps: typeof record.discountPctBps === 'number' ? record.discountPctBps : 0,
+      discountAmountMinor: typeof record.discountAmountMinor === 'number' ? record.discountAmountMinor : 0,
+      discountMode,
+    }];
+  });
+}
+
+function isOpenMemberFeeCharge(charge: EntityWithId<MemberFeeChargeDocument>) {
+  return charge.status === 'pending' || charge.status === 'overdue';
+}
+
+async function resolveLegacyMemberFeeAllocation(
+  dataAccess: AccountingDataAccess,
+  root: EntityWithId<FinancialMovementDocument>,
+): Promise<MemberFeePlanAllocation[]> {
+  const memberId = root.thirdPartyType === 'member' ? root.thirdPartyId : null;
+  const period = root.metadata?.periodMonth;
+  if (!memberId || !isAccountingPeriod(period)) return [];
+
+  const member = await dataAccess.members.getById(memberId);
+  if (!member) return [];
+  const pages = await Promise.all([
+    dataAccess.memberFeeCharges.listPage({ memberId, period, limit: 100 }),
+    ...(member.familyGroupId
+      ? [dataAccess.memberFeeCharges.listPage({ familyGroupId: member.familyGroupId, period, limit: 100 })]
+      : []),
+  ]);
+  const candidates = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
+  pages.flatMap((page) => page.items)
+    .filter(isOpenMemberFeeCharge)
+    .forEach((charge) => candidates.set(charge.id, charge));
+  if (candidates.size !== 1) return [];
+
+  const charge = [...candidates.values()][0]!;
+  return [{
+    chargeId: charge.id,
+    period,
+    settlementAmountMinor: charge.settlementAmountMinor ?? charge.finalAmountMinor,
+    discountPctBps: charge.paymentDiscountPctBps ?? 0,
+    discountAmountMinor: charge.paymentDiscountAmountMinor ?? 0,
+    discountMode: charge.paymentDiscountMode ?? 'none',
+  }];
+}
+
+type MemberFeeChargeWriteAction = 
+  | { type: 'create'; data: any }
+  | { type: 'update'; id: string; data: any };
+
+async function prepareCompletedMemberFeeRenewals(params: {
+  dataAccess: AccountingDataAccess;
+  actorUid: string;
+  root: EntityWithId<FinancialMovementDocument>;
+  paidAt: Date;
+}): Promise<MemberFeeChargeWriteAction[]> {
+  const actions: MemberFeeChargeWriteAction[] = [];
+  if (params.root.categoryId !== FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
+    && params.root.categoryCodeSnapshot !== FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria) {
+    return actions;
+  }
+
+  const memberId = typeof params.root.metadata?.memberFeeMemberId === 'string'
+    ? params.root.metadata.memberFeeMemberId
+    : params.root.thirdPartyType === 'member'
+      ? params.root.thirdPartyId
+      : null;
+  if (!memberId) return actions;
+
+  const member = await params.dataAccess.members.getById(memberId);
+  if (!member) return actions;
+  const storedAllocations = readMemberFeePlanAllocations(params.root.metadata);
+  const allocations = storedAllocations.length > 0
+    ? storedAllocations
+    : await resolveLegacyMemberFeeAllocation(params.dataAccess, params.root);
+
+  for (const allocation of allocations) {
+    let charge: MemberFeeChargeSnapshot | null = allocation.chargeId
+      ? await params.dataAccess.memberFeeCharges.getById(allocation.chargeId)
+      : null;
+
+    let createData: any = null;
+    if (!charge) {
+      const preview = await computeFeePreviewInternal({
+        dataAccess: params.dataAccess,
+        memberId,
+        period: allocation.period,
+      });
+      charge = await params.dataAccess.memberFeeCharges.findDuplicate({
+        memberId: preview.billingMode === 'per_member' ? preview.memberId : preview.holderMemberId ?? null,
+        familyGroupId: preview.billingMode === 'single_group_charge' ? preview.familyGroupId ?? null : null,
+        period: preview.period,
+        billingMode: preview.billingMode,
+      });
+      if (!charge) {
+        createData = buildMemberFeeChargeCreateData({
+          preview,
+          actorUid: params.actorUid,
+          dueDate: new Date(allocation.period + '-01T00:00:00-03:00'),
+          notes: 'Cuota creada al completar un plan de pagos parciales.',
+        });
+        charge = { ...createData, id: 'temp-id' };
+      }
+    }
+
+    const resolvedCharge = charge!;
+
+    const belongsToMember = resolvedCharge.memberId === memberId
+      || Boolean(member.familyGroupId && resolvedCharge.familyGroupId === member.familyGroupId);
+    assertCondition(
+      belongsToMember && resolvedCharge.period === allocation.period,
+      'failed-precondition',
+      'La renovacion vinculada al plan no corresponde al socio y periodo seleccionados.',
+    );
+    if (resolvedCharge.status === 'paid' || resolvedCharge.status === 'exempt') continue;
+
+    const paidFromRemaining = typeof resolvedCharge.remainingAmountMinor === 'number'
+      ? (resolvedCharge.settlementAmountMinor ?? resolvedCharge.finalAmountMinor) - resolvedCharge.remainingAmountMinor
+      : 0;
+    const previouslyPaidMinor = Math.max(
+      resolvedCharge.paidClubAmountMinor ?? 0,
+      resolvedCharge.paidAmountMinor ?? 0,
+      paidFromRemaining,
+      0,
+    );
+    const usesLegacyUnpaidSettlement = resolvedCharge.settlementAmountMinor === resolvedCharge.finalAmountMinor
+      && previouslyPaidMinor === 0
+      && (resolvedCharge.paymentDiscountAmountMinor ?? 0) === 0;
+    const settlementAmountMinor = usesLegacyUnpaidSettlement
+      ? allocation.settlementAmountMinor
+      : resolvedCharge.settlementAmountMinor ?? allocation.settlementAmountMinor;
+    const paidAmountMinor = Math.min(previouslyPaidMinor + allocation.settlementAmountMinor, settlementAmountMinor);
+    const completed = paidAmountMinor >= settlementAmountMinor;
+
+    const updatePayload = {
+      status: completed ? 'paid' : resolvedCharge.status,
+      paidAt: completed ? Timestamp.fromDate(params.paidAt) : resolvedCharge.paidAt ?? null,
+      paidAmountMinor,
+      settlementAmountMinor,
+      paidClubAmountMinor: paidAmountMinor,
+      remainingAmountMinor: Math.max(settlementAmountMinor - paidAmountMinor, 0),
+      paymentDiscountPctBps: allocation.discountPctBps,
+      paymentDiscountAmountMinor: allocation.discountAmountMinor,
+      paymentDiscountMode: allocation.discountMode,
+      _completed: completed,
+      _previousPaymentMovementIds: resolvedCharge.paymentMovementIds ?? [],
+      _previousPaidMovementId: resolvedCharge.paidMovementId ?? null,
+    };
+
+    if (createData) {
+      actions.push({ type: 'create', data: { ...createData, ...updatePayload } });
+    } else {
+      actions.push({ type: 'update', id: resolvedCharge.id, data: updatePayload });
+    }
+  }
+  return actions;
+}
+
+async function applyCompletedMemberFeeRenewals(params: {
+  dataAccess: AccountingDataAccess;
+  actorUid: string;
+  actions: MemberFeeChargeWriteAction[];
+  paymentMovementId: string;
+  paymentMovementIds: string[];
+}) {
+  for (const action of params.actions) {
+    const { _completed, _previousPaymentMovementIds, _previousPaidMovementId, ...payload } = action.data;
+    const finalPayload = {
+      ...payload,
+      paidMovementId: _completed ? params.paymentMovementId : _previousPaidMovementId,
+      paymentMovementIds: [...new Set([..._previousPaymentMovementIds, ...params.paymentMovementIds])],
+    };
+    if (action.type === 'create') {
+      await params.dataAccess.memberFeeCharges.create(finalPayload, params.actorUid);
+    } else {
+      await params.dataAccess.memberFeeCharges.update(action.id, finalPayload, params.actorUid);
+    }
+  }
+}
 
 export interface CreateInstallmentPlanInput {
   movementType: FinancialMovementType;
@@ -35,6 +254,7 @@ export interface CreateInstallmentPlanInput {
 }
 
 export interface RegisterInstallmentPaymentInput {
+  idempotencyKey?: string | undefined;
   installmentPlanId: string;
   paymentMethodId: string;
   operationDate: Date;
@@ -222,6 +442,13 @@ export async function registerInstallmentPaymentUseCase(params: {
   const actor = ensureStaff(params.actor);
 
   return params.transactions.runInTransaction(async (dataAccess) => {
+    const operationKey = params.input.idempotencyKey ? createHash('sha256').update(actor.uid + ':partial:' + params.input.idempotencyKey).digest('hex') : null;
+    const fingerprint = createHash('sha256').update(JSON.stringify(params.input)).digest('hex');
+    const previous = operationKey ? await dataAccess.operations?.get(operationKey) : null;
+    if (previous) {
+      assertCondition(previous.fingerprint === fingerprint, 'invalid-argument', 'La clave de pago ya fue utilizada con otros datos.');
+      return { ...previous.result, duplicate: true };
+    }
     await assertCashOperationDateAllowed({ dataAccess, operationDate: params.input.operationDate });
     const root = await dataAccess.financialMovements.getById(params.input.installmentPlanId);
     assertCondition(root, 'not-found', `No existe la carga ${params.input.installmentPlanId}.`);
@@ -264,6 +491,24 @@ export async function registerInstallmentPaymentUseCase(params: {
       'La referencia es obligatoria para medios distintos de efectivo.',
     );
 
+    const activeCommissionRule = await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(paymentMethod.id);
+
+    const paidAmountMinor = currentPaidAmountMinor + scheduledAmountMinor;
+    const paidCount = postedPayments.length + 1;
+    const completed = paidAmountMinor >= totalAmountMinor;
+
+    let memberFeeActions: MemberFeeChargeWriteAction[] = [];
+    if (completed) {
+      memberFeeActions = await prepareCompletedMemberFeeRenewals({
+        dataAccess,
+        actorUid: actor.uid,
+        root,
+        paidAt: params.input.operationDate,
+      });
+    }
+
+    const membershipStatus = completed && root.thirdPartyType === 'member' && root.thirdPartyId
+      ? await prepareMemberFeeStatus(dataAccess, root.thirdPartyId, memberFeeActions.map((action) => ({ id: action.type === 'update' ? action.id : undefined, period: action.data.period, status: action.data.status }))) : null;
     const movement = await createPostedMovement({
       dataAccess,
       actorUid: actor.uid,
@@ -278,6 +523,8 @@ export async function registerInstallmentPaymentUseCase(params: {
       thirdPartyType: root.thirdPartyType ?? null,
       thirdPartyId: root.thirdPartyId ?? null,
       paymentMethodId: paymentMethod.id,
+      prefetchedPaymentMethod: paymentMethod,
+      prefetchedActiveCommissionRule: activeCommissionRule,
       bancarizado: paymentMethod.bancarizado,
       imputableImpositivo: root.imputableImpositivo,
       metadata: {
@@ -298,9 +545,6 @@ export async function registerInstallmentPaymentUseCase(params: {
     const receiptNumber = root.movementType === 'income'
       ? buildReceiptNumber(params.input.operationDate, movement.movementId)
       : null;
-    const paidAmountMinor = currentPaidAmountMinor + scheduledAmountMinor;
-    const paidCount = postedPayments.length + 1;
-    const completed = paidAmountMinor >= totalAmountMinor;
 
     await dataAccess.financialMovements.update(
       movement.movementId,
@@ -348,7 +592,19 @@ export async function registerInstallmentPaymentUseCase(params: {
       actor.uid,
     );
 
-    return {
+    if (completed) {
+      await applyCompletedMemberFeeRenewals({
+        dataAccess,
+        actorUid: actor.uid,
+        actions: memberFeeActions,
+        paymentMovementId: movement.movementId,
+        paymentMovementIds: [...postedPayments.map((payment) => payment.id), movement.movementId],
+      });
+    }
+
+    if (membershipStatus && root.thirdPartyId) await dataAccess.members.update(root.thirdPartyId, membershipStatus, actor.uid);
+    const result = {
+      duplicate: false,
       movementId: movement.movementId,
       installmentPlanId: root.id,
       installmentNumber: nextInstallmentNumber,
@@ -361,6 +617,8 @@ export async function registerInstallmentPaymentUseCase(params: {
       completed,
       receiptNumber,
     };
+    if (operationKey) await dataAccess.operations?.set(operationKey, fingerprint, result);
+    return result;
   });
 }
 
@@ -452,6 +710,7 @@ export function parseRegisterInstallmentPaymentInput(payload: unknown): Register
   const notes = parseOptionalNullableString(data, 'notes');
   return {
     installmentPlanId: parseRequiredString(data, 'installmentPlanId'),
+    idempotencyKey: typeof data.idempotencyKey === 'string' ? data.idempotencyKey : undefined,
     paymentMethodId: parseRequiredString(data, 'paymentMethodId'),
     operationDate: parseRequiredIsoDate(data, 'operationDate'),
     amountMinor: data.amountMinor === undefined ? undefined : parseRequiredAmountMinor(data, 'amountMinor'),
