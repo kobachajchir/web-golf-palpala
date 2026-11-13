@@ -513,7 +513,7 @@ export function AccountingCashClosuresPage({ onChanged }: { onChanged?: () => vo
           {closuresForDay.map((closure) => (
             <article key={closure.id} className="accounting-row accounting-row--actions">
               <div className="accounting-row__main"><strong>{formatTimestamp(closure.closureDate)}</strong><small>{closure.movementIds.length} movimientos - inicial {formatCurrency(closure.openingBalanceMinor ?? 0)} - efectivo esperado {formatCurrency(closure.cashExpectedMinor)}</small></div>
-              <div className="accounting-row__meta"><span className={`status-chip status-chip--${closure.status}`}>{closure.status}</span><strong>{formatCurrency(closure.differenceMinor ?? 0)}</strong></div>
+              <div className="accounting-row__meta"><span className={`status-chip status-chip--${closure.status}`}>{closure.status === 'open' ? 'Abierta' : 'Cerrada'}</span><strong>{formatCurrency(closure.differenceMinor ?? 0)}</strong></div>
               {closure.status === 'open' && (
                 <div className="accounting-inline-actions">
                   <label className="form-field accounting-close-field"><span>Contado</span><input value={closeAmounts[closure.id] ?? ''} onChange={(event) => setCloseAmounts((current) => ({ ...current, [closure.id]: event.target.value }))} /></label>

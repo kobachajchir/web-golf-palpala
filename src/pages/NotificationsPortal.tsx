@@ -1,3 +1,4 @@
+import { accountingErrorMessage } from '../features/accounting/utils/accountingErrors';
 import { formatCurrency as formatAccountingCurrency } from '../features/accounting/utils/accountingFormatters';
 import { SelectionPlaceholder } from '../components/SelectionPlaceholder';
 import { getMovementStatusLabel, getPaymentMethodDisplayName } from '../features/accounting/utils/paymentMethods';
@@ -372,7 +373,7 @@ export function NotificationsPortal() {
         });
       },
       (snapshotError) => {
-        setError(snapshotError.message);
+        setError(accountingErrorMessage(snapshotError));
         setLoadingOwnItems(false);
       },
     );
@@ -397,7 +398,7 @@ export function NotificationsPortal() {
         return result.items.find((item) => item.id === current.id) ?? current;
       });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'No pudimos cargar notificaciones.');
+      setError(accountingErrorMessage(loadError));
     } finally {
       setLoadingAdminItems(false);
     }
@@ -487,7 +488,7 @@ export function NotificationsPortal() {
     try {
       await markRead(delivery);
     } catch (readError) {
-      setError(readError instanceof Error ? readError.message : 'No pudimos marcar la notificacion como leida.');
+      setError(accountingErrorMessage(readError));
     }
   };
 
@@ -499,7 +500,7 @@ export function NotificationsPortal() {
       await notificationsCallables.dismiss(delivery.id);
       patchDeliveryStatus(delivery.id, 'dismissed');
     } catch (dismissError) {
-      setError(dismissError instanceof Error ? dismissError.message : 'No pudimos descartar la notificacion.');
+      setError(accountingErrorMessage(dismissError));
     } finally {
       setActionLoading(false);
     }
@@ -530,7 +531,7 @@ export function NotificationsPortal() {
         void loadAdminItems();
       }
     } catch (executeError) {
-      setError(executeError instanceof Error ? executeError.message : 'No pudimos ejecutar la accion.');
+      setError(accountingErrorMessage(executeError));
     } finally {
       setActionLoading(false);
       setPendingActionDelivery(null);
