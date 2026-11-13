@@ -98,4 +98,15 @@ Límites: no se indujo un timeout real de navegador ni una carrera entre dos pes
 
 Versión de hosting previa: `sites/webgolfclub/versions/b6229965befd0b9f`, release del 11/11/2026 a las 21:09:40 UTC. Se conserva en el historial de Firebase para reversión. La publicación debe incluir primero funciones compatibles y después el sitio generado desde este árbol de trabajo. No restaurar pantallas desde `HEAD` sobre archivos nuevos.
 
-Estado de publicación: pendiente de registrar el resultado del despliegue. El cierre de código y de publicación no equivale a haber conciliado los seis casos históricos.
+Estado de publicación: completada el 13/11/2026 a las 12:10:33 UTC (09:10:33 de Argentina).
+
+- 92 funciones contables activas y actualizadas, incluidas las exportaciones agrupadas y planas compatibles.
+- El primer despliegue recibió límites temporales 429 de Google Cloud. Se comprobaron las funciones publicadas; las dos variantes del generador de reportes se reintentaron por separado y finalizaron correctamente antes de publicar hosting.
+- Hosting: `sites/webgolfclub/versions/77e8128c08a6e92c`.
+- Release: `sites/webgolfclub/channels/live/releases/1794571833438000`.
+- Sitio: https://webgolfclub.web.app.
+- JavaScript publicado: `/assets/index-Dyt6yYlC.js`. La respuesta HTTP fue 200 y su SHA-256 coincidió con el artefacto local. El artefacto usa el proyecto de producción y no contiene el identificador del proyecto demo.
+- Se comprobaron en producción los índices requeridos por socio/período, grupo familiar/período y período/estado/fecha de cierre; estaban en estado READY y no requirieron cambios.
+- Código subido a `origin/ImplementingSystem`. Commits principales: `b95d299` (integridad y recuperación auditada), `58d6323` (interfaz y flujo compartido), `495382f` (inventario, procedimientos y evidencias) y `6a7cbf2` (últimos textos y errores en español).
+
+No se efectuaron cobros, anulaciones ni asociaciones de cuotas en producción. El cierre de código y de publicación no equivale a haber conciliado los seis casos históricos. Se mantienen operables y señalados para asociación explícita cuando existan comprobantes suficientes.
