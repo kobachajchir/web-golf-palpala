@@ -2394,3 +2394,54 @@ button.summary-card.is-selected strong {
   border-color: var(--primary-dark);
   background: var(--accounting-dark-panel-active) !important;
 }
+
+
+/* Report generator: permanent, readable controls in both themes. */
+.accounting-reports-page .accounting-report-generator {
+  display: grid;
+  gap: 18px;
+  padding: clamp(16px, 3vw, 28px);
+}
+.accounting-reports-page .accounting-reports-form {
+  display: block;
+}
+.accounting-reports-page .accounting-report-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.accounting-reports-page .accounting-report-controls > .form-field--wide,
+.accounting-reports-page .accounting-report-controls > .accounting-report-fieldset,
+.accounting-reports-page .accounting-report-controls > .form-actions,
+.accounting-reports-page .accounting-report-controls > [role] {
+  grid-column: 1 / -1;
+}
+.accounting-reports-page .accounting-report-controls :is(input, select, textarea) {
+  color: var(--text);
+  background-color: var(--field-bg);
+  border: 1px solid var(--line);
+}
+.accounting-reports-page .accounting-report-controls :is(.form-field, .check-field, legend) {
+  color: var(--text);
+}
+.accounting-reports-page .accounting-report-controls .check-field input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+.accounting-reports-page .accounting-report-fieldset {
+  background: var(--field-bg);
+}
+.accounting-reports-page .accounting-report-controls .field-help {
+  grid-column: 1 / -1;
+}
+@media (max-width: 700px) {
+  .accounting-reports-page .accounting-report-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -252,7 +252,7 @@ export function AccountingReportsV2Page() {
   const [incomeCategories, setIncomeCategories] = useState<IncomeCategoryOption[]>(getFallbackIncomeCategories);
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategoryOption[]>(getFallbackExpenseCategories);
   const [expandedSection, setExpandedSection] = useState<string | null>(reportId ? 'detail' : 'generate');
-  const [showCategories, setShowCategories] = useState(false);
+  const [showCategories, setShowCategories] = useState(true);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -266,6 +266,7 @@ export function AccountingReportsV2Page() {
   }, [reportId]);
 
   useEffect(() => {
+    setExpandedSection(reportId ? 'detail' : 'generate');
     setSelectedReport(null);
     void load().catch((error) => setNotice({ kind: 'error', message: accountingErrorMessage(error) }));
     return () => { loadSequence.current++; };
@@ -294,7 +295,7 @@ export function AccountingReportsV2Page() {
     setForm((current) => ({
       ...current,
       template,
-      title: templateTitle(template),
+      title: current.title === templateTitle(current.template) ? templateTitle(template) : current.title,
       categoryIds: [],
       movementTypes: { income: true, expense: template !== 'green_fee' && template !== 'member_dues' },
       includePaidDues: template === 'member_dues',
@@ -323,8 +324,13 @@ export function AccountingReportsV2Page() {
       setNotice({ kind: 'error', message: 'Revisa el rango de fechas.' });
       return;
     }
+    if ((form.template === 'categories' || form.template === 'custom') && !form.movementTypes.income && !form.movementTypes.expense) {
+      setNotice({ kind: 'error', message: 'Seleccioná Ingresos, Egresos o ambos para generar el reporte.' });
+      return;
+    }
     setIsGenerating(true);
     setNotice(null);
+    try {
     const reportRequest = {
         title: form.title.trim(),
         template: form.template,
@@ -348,14 +354,15 @@ export function AccountingReportsV2Page() {
       : crypto.randomUUID();
     reportRequestAttempt.current = { fingerprint, requestId };
     try { window.localStorage.setItem('accounting:report-attempt', JSON.stringify(reportRequestAttempt.current)); } catch { /* copia en memoria */ }
-    try {
       const createdReportId = await generateReport({ requestId, ...reportRequest });
       reportRequestAttempt.current = null;
       try { window.localStorage.removeItem('accounting:report-attempt'); } catch { /* copia en memoria */ }
       setNotice({ kind: 'success', message: 'Reporte generado exitosamente.' });
       navigate(`/accounting/reports/${createdReportId}`);
     } catch (error) {
-      setNotice({ kind: 'error', message: accountingErrorMessage(error) });
+      setNotice({ kind: 'error', message: /deadline-exceeded|unavailable|network/i.test(String((error as { code?: string })?.code ?? ''))
+        ? 'La generación está demorada. Revisá el historial o volvé a emitir con los mismos datos: se conservará la solicitud para evitar duplicados.'
+        : accountingErrorMessage(error) });
     } finally {
       setIsGenerating(false);
     }
@@ -500,36 +507,32 @@ export function AccountingReportsV2Page() {
         <article className="summary-card"><span>Persistencia</span><strong>Snapshot</strong><small>Los emitidos no cambian</small></article>
       </section>
 
-      <AccountingCollapsibleSections
-        openId={expandedSection}
-        onOpenChange={setExpandedSection}
-        sections={[
-          {
-            id: 'generate',
-            title: 'Emitir un reporte',
-            eyebrow: 'Generador',
-            helper: 'Plantillas y modo personalizado',
-            content: (
-              <form className="accounting-entry-form accounting-reports-form" onSubmit={handleGenerate}>
-                <div className="form-field form-field--wide" style={{ gridColumn: '1 / -1' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '1rem' }}>
-                    {TEMPLATE_OPTIONS.map((template) => (
-                      <button
-                        key={template.id}
-                        type="button"
-                        className={`summary-card ${form.template === template.id ? 'is-selected' : ''}`}
-                        aria-pressed={form.template === template.id}
-                        onClick={() => selectTemplate(template.id)}
-                        style={{ padding: '12px', textAlign: 'left', minHeight: 'auto', border: form.template === template.id ? '2px solid var(--primary)' : '1px solid var(--border)' }}
-                      >
-                        <strong style={{ fontSize: '14px', display: 'block', marginBottom: '4px' }}>{template.title}</strong>
-                        <small style={{ fontSize: '12px' }}>{template.helper}</small>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <label className="form-field form-field--wide" style={{ gridColumn: '1 / -1' }}><span>Nombre del reporte</span><input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></label>
+      <section className="floating-card accounting-report-generator">
+        <h2>Generar reporte</h2>
+              <form className="accounting-entry-form accounting-reports-form" onSubmit={handleGenerate} aria-busy={isGenerating}>
+                <fieldset className="accounting-report-controls" disabled={isGenerating}>
+                <AccountingInlineNotice notice={notice} />
+                <label className="form-field form-field--wide">
+                  <span>Nombre del reporte</span>
+                  <input name="reportTitle" required placeholder="Por ejemplo: Ingresos y egresos de noviembre" value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} />
+                </label>
+                <label className="form-field form-field--wide">
+                  <span>Contenido del reporte</span>
+                  <select value={form.template} onChange={(event) => selectTemplate(event.target.value as AccountingReportTemplate)}>
+                    {TEMPLATE_OPTIONS.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
+                  </select>
+                  <small>{TEMPLATE_OPTIONS.find((template) => template.id === form.template)?.helper}</small>
+                </label>
+                <fieldset className="accounting-report-fieldset">
+                  <legend>Ingresos y egresos</legend>
+                  {(['income', 'expense'] as const).map((type) => (
+                    <label className="check-field" key={type}>
+                      <input type="checkbox" checked={form.movementTypes[type]} onChange={(event) => setForm((current) => ({ ...current, template: current.template === 'green_fee' || current.template === 'member_dues' ? 'custom' : current.template, movementTypes: { ...current.movementTypes, [type]: event.target.checked } }))} />
+                      <span>{type === 'income' ? 'Ingresos' : 'Egresos'}</span>
+                    </label>
+                  ))}
+                  {(form.template === 'green_fee' || form.template === 'member_dues') && <p className="field-help">Esta plantilla incluye ingresos. Cambiar estas opciones pasa al reporte personalizado para combinar otros movimientos.</p>}
+                </fieldset>
                 <label className="form-field"><span>Tipo de fecha</span><select value={form.scope} onChange={(event) => setForm((current) => ({ ...current, scope: event.target.value as ReportScope }))}><option value="period">Periodo mensual</option><option value="date_range">Rango de fechas</option></select></label>
                 {form.scope === 'period' ? (
                   <AccountingMonthPicker period={normalizeAccountingPeriod(form.period)} onChange={(period) => setForm((current) => ({ ...current, period }))} />
@@ -542,12 +545,6 @@ export function AccountingReportsV2Page() {
 
                 {(form.template === 'categories' || form.template === 'custom') && (
                   <>
-                    <fieldset className="accounting-report-fieldset">
-                      <legend>Movimientos</legend>
-                      {(['income', 'expense'] as const).map((type) => (
-                        <label className="check-field" key={type}><input type="checkbox" checked={form.movementTypes[type]} onChange={(event) => setForm((current) => ({ ...current, movementTypes: { ...current.movementTypes, [type]: event.target.checked } }))} /><span>{type === 'income' ? 'Ingresos' : 'Egresos'}</span></label>
-                      ))}
-                    </fieldset>
                     <fieldset className="accounting-report-fieldset form-field--wide">
                       <legend>Categorias a incluir</legend>
                       <p className="field-help" style={{ marginBottom: '1rem' }}>Si no marcas ninguna, se incluyen todas las categorias del tipo seleccionado.</p>
@@ -608,10 +605,14 @@ export function AccountingReportsV2Page() {
                 )}
 
                 <label className="form-field form-field--wide"><span>Notas institucionales</span><textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></label>
-                <div className="form-actions form-actions--right form-field--wide"><UiActionButton type="submit" disabled={isGenerating}>{isGenerating ? 'Generando snapshot...' : 'Emitir reporte'}</UiActionButton></div>
+                <div className="form-actions form-actions--right form-field--wide"><UiActionButton type="submit" disabled={isGenerating}>{isGenerating ? 'Generando reporte…' : 'Generar reporte'}</UiActionButton></div>
+                </fieldset>
               </form>
-            ),
-          },
+      </section>
+      <AccountingCollapsibleSections
+        openId={expandedSection}
+        onOpenChange={setExpandedSection}
+        sections={[
           {
             id: 'history',
             title: 'Historial institucional',

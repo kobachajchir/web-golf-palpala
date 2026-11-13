@@ -110,3 +110,13 @@ Estado de publicación: completada el 13/11/2026 a las 12:10:33 UTC (09:10:33 de
 - Código subido a `origin/ImplementingSystem`. Commits principales: `b95d299` (integridad y recuperación auditada), `58d6323` (interfaz y flujo compartido), `495382f` (inventario, procedimientos y evidencias) y `6a7cbf2` (últimos textos y errores en español).
 
 No se efectuaron cobros, anulaciones ni asociaciones de cuotas en producción. El cierre de código y de publicación no equivale a haber conciliado los seis casos históricos. Se mantienen operables y señalados para asociación explícita cuando existan comprobantes suficientes.
+
+
+### Corrección de acceso al generador y pronto pago (13/11/2026)
+
+- El generador de reportes queda siempre visible, independiente del historial. Al volver del detalle ya no conserva una sección inexistente que escondía el formulario.
+- Nombre obligatorio al principio del formulario; cambiar de plantilla conserva el nombre personalizado. Ingresos y egresos quedan visibles y seleccionables. Modificar los tipos de una plantilla específica pasa expresamente a modo personalizado. Las categorías se muestran inicialmente.
+- Controles con contraste según el tema, formulario bloqueado durante la emisión y mensajes dentro del generador. La preparación de la solicitud queda dentro de `try/finally`, evitando que un error del navegador deje el botón en Generando indefinidamente.
+- Consulta de solo lectura: los reportes guardados conservan sus títulos; no se encontraron solicitudes recientes de generación ni errores de ejecución en los registros consultados. No se afirma haber reproducido el bloqueo reportado por el cliente ni haber confirmado su causa en el backend.
+- Para cuotas futuras se muestra el descuento automático y su importe en lugar de una casilla deshabilitada. La casilla opcional del mes actual solo aparece dentro de su plazo. No cambia el cálculo del servidor.
+- No se ejecutaron tests ni recorridos funcionales nuevos en esta corrección, de acuerdo con la instrucción del usuario. La compilación se realiza únicamente para preparar la publicación web.
