@@ -469,6 +469,11 @@ export function ManualIncomeForm({
     () => selectedPendingRenewalLines.reduce((total, renewal) => total + renewal.payableAmountMinor, 0),
     [selectedPendingRenewalLines],
   );
+  const paymentPeriod = operationDate.slice(0, 7);
+  const selectedAdvanceLines = selectedPendingRenewalLines.filter((line) => line.period && line.period > paymentPeriod);
+  const selectedAdvanceDiscountMinor = selectedAdvanceLines.reduce((total, line) => total + line.discountAmountMinor, 0);
+  const selectedCurrentPeriod = selectedPendingRenewalLines.some((line) => line.period === paymentPeriod);
+  const currentEarlyPaymentWindowOpen = Number(operationDate.slice(8, 10)) <= (activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10);
   const greenFeePreview = useMemo(() => {
     if (!isGreenFeeCategory || !activeConfig) return null;
     const isSaturday = new Date(`${operationDate}T12:00:00-03:00`).getDay() === 6;
@@ -1319,18 +1324,30 @@ export function ManualIncomeForm({
                     </label>
                   ))}
                 </div>
-                <label className="checkbox-row renewal-payment-discount-toggle">
-                  <input
-                    type="checkbox"
-                    checked={applyEarlyPaymentDiscount}
-                    disabled={memberFeePeriod !== operationDate.slice(0, 7) || Number(operationDate.slice(8, 10)) > (activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10)}
-                    onChange={(event) => setApplyEarlyPaymentDiscount(event.target.checked)}
-                  />
-                  <span>
-                    Aplicar descuento por pronto pago ({formatBps(activeConfig?.earlyPaymentDiscountPctBps ?? 0)})
-                    <small>Los meses futuros reciben el descuento por pago a tiempo. El mes actual conserva su fecha límite y las cuotas atrasadas su importe.</small>
-                  </span>
-                </label>
+                {selectedAdvanceLines.length > 0 && (
+                  <div className="profile-note" role="status" aria-live="polite">
+                    <strong>{selectedAdvanceDiscountMinor > 0
+                      ? `Descuento por pronto pago de meses adelantados aplicado: -${formatCurrency(selectedAdvanceDiscountMinor)}`
+                      : 'Importe de los meses adelantados calculado'}</strong>
+                    <p>El descuento del adelanto se aplica automáticamente en cada cuota. No necesitás activar una casilla.</p>
+                  </div>
+                )}
+                {selectedCurrentPeriod && (currentEarlyPaymentWindowOpen ? (
+                  <label className="checkbox-row renewal-payment-discount-toggle">
+                    <input
+                      type="checkbox"
+                      checked={applyEarlyPaymentDiscount}
+                      onChange={(event) => setApplyEarlyPaymentDiscount(event.target.checked)}
+                    />
+                    <span>
+                      Aplicar pronto pago al mes actual ({formatBps(activeConfig?.earlyPaymentDiscountPctBps ?? 0)})
+                      <small>Disponible hasta el día {activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10}. Esta opción no modifica los descuentos de meses adelantados.</small>
+                    </span>
+                  </label>
+                ) : (
+                  <p className="profile-note">El plazo de pronto pago del mes actual finalizó el día {activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10}. Los meses adelantados mantienen su descuento automático.</p>
+                ))}
+                {selectedPendingRenewalLines.length === 0 && <p className="profile-note">Seleccioná las cuotas para ver sus descuentos y el total a cobrar.</p>}
                 {selectedPendingRenewalLines.length === 1 && (
                   <details><summary>Opciones avanzadas: ajustar saldo</summary><label className="checkbox-row renewal-payment-discount-toggle">
                     <input
