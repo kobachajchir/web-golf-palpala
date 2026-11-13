@@ -39,6 +39,7 @@ export interface MemberFeePaymentAllocationInput {
 }
 
 export interface RegisterMemberFeeBatchPaymentInput {
+  expectedCommissionPctBps?: number | undefined;
   allocations: MemberFeePaymentAllocationInput[];
   paymentMethodId: string;
   operationDate: Date;
@@ -138,10 +139,10 @@ function resolveChargeSettlement(params: {
   let discountPctBps = 0;
   let discountAmountMinor = 0;
   let discountMode: SettlementResolution['discountMode'] = 'none';
-  if (params.applyEarlyPaymentDiscount === true && isCurrentPeriodCharge) {
+  if (params.applyEarlyPaymentDiscount === true && isCurrentPeriodCharge && preview.qualifies) {
     discountPctBps = params.config.earlyPaymentDiscountPctBps ?? 0;
     discountAmountMinor = calculateAmountFromBps(charge.finalAmountMinor, discountPctBps);
-    discountMode = preview.qualifies ? 'automatic' : 'manual';
+    discountMode = 'automatic';
   } else if (preview.qualifies && (charge.period > paymentAccountingPeriod || params.applyEarlyPaymentDiscount === undefined)) {
     discountPctBps = preview.discountPctBps;
     discountAmountMinor = preview.discountAmountMinor;
@@ -231,7 +232,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
     const fingerprint = createHash('sha256').update(JSON.stringify(params.input)).digest('hex');
     const previous = operationKey ? await dataAccess.operations?.get(operationKey) : null;
     if (previous) {
-      assertCondition(previous.fingerprint === fingerprint, 'already-exists', 'Ya se registro un cobro con esta operacion (posiblemente tras un corte o una demora). Revisa los movimientos del socio antes de volver a cobrar.', { movementId: previous.result?.movementId ?? null });
+      assertCondition(previous.fingerprint === fingerprint, 'already-exists', 'Ya se registro un cobro con esta operacion (posiblemente tras un corte o una demora). Revisa los movimientos del socio antes de volver a cobrar.', { businessCode: 'OPERATION_ALREADY_RECORDED', action: 'CHECK_OPERATION', movementId: previous.result?.movementId ?? null });
       return { ...previous.result, duplicate: true };
     }
     await assertCashOperationDateAllowed({ dataAccess, operationDate: params.input.operationDate });
@@ -244,6 +245,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
     assertCondition(category?.active, 'failed-precondition', 'La categoria cuota societaria no esta activa.');
     assertCondition(paymentMethod?.active, 'failed-precondition', 'El medio de pago no esta activo.');
     assertCondition(activeConfig, 'failed-precondition', 'No existe una configuracion financiera activa.');
+    assertCondition(params.input.expectedCommissionPctBps === undefined || params.input.expectedCommissionPctBps === (activeCommissionRule?.percentageBps ?? 0), 'failed-precondition', 'La comisión cambió desde la consulta. Actualizá los importes antes de confirmar.', { businessCode: 'QUOTE_CHANGED', action: 'REFRESH_QUOTE' });
     const paymentReference = params.input.paymentReference?.trim() || null;
     assertCondition(
       paymentMethod.id === PAYMENT_METHOD_IDS.cash || Boolean(paymentReference),
@@ -314,7 +316,7 @@ export async function registerMemberFeeBatchPaymentUseCase(params: {
 
       const previouslyPaidMinor = resolveStoredPaidAmount(charge, settlementAmountMinor);
       const availableMinor = Math.max(settlementAmountMinor - previouslyPaidMinor, 0);
-      assertCondition(inputAllocation.expectedAvailableMinor === undefined || inputAllocation.expectedAvailableMinor === availableMinor, 'failed-precondition', 'El importe de la cuota cambio. Actualiza la vista previa antes de confirmar.');
+      assertCondition(inputAllocation.expectedAvailableMinor === undefined || inputAllocation.expectedAvailableMinor === availableMinor, 'failed-precondition', 'El importe de la cuota cambio. Actualiza la vista previa antes de confirmar.', { businessCode: 'QUOTE_CHANGED', action: 'REFRESH_QUOTE' });
       assertCondition(availableMinor > 0, 'failed-precondition', `La cuota ${charge.period} no tiene saldo pendiente.`);
       const appliedAmountMinor = inputAllocation.amountMinor ?? availableMinor;
       assertCondition(appliedAmountMinor > 0, 'invalid-argument', 'El importe parcial debe ser mayor a cero.');
@@ -486,11 +488,12 @@ export function parseRegisterMemberFeeBatchPaymentInput(payload: unknown): Regis
     paymentReference: parseOptionalNullableString(data, 'paymentReference'),
     notes: parseOptionalNullableString(data, 'notes'),
     idempotencyKey: parseOptionalString(data, 'idempotencyKey'),
+    ...(typeof data.expectedCommissionPctBps === 'number' ? { expectedCommissionPctBps: data.expectedCommissionPctBps } : {}),
   };
 }
 export async function previewMemberFeePaymentUseCase(params: {
   actor: Actor | null;
-  input: { memberId: string; periods: string[]; operationDate: Date; applyEarlyPaymentDiscount?: boolean | undefined };
+  input: { memberId: string; periods: string[]; operationDate: Date; applyEarlyPaymentDiscount?: boolean | undefined; paymentMethodId?: string | undefined };
   transactions: AccountingTransactionManager;
 }) {
   ensureStaff(params.actor);
@@ -498,13 +501,27 @@ export async function previewMemberFeePaymentUseCase(params: {
   const dataAccess = params.transactions.getDataAccess();
   const config = await dataAccess.financialConfigs.getActive();
   assertCondition(config, 'failed-precondition', 'No existe configuracion financiera activa.');
+  const member = await dataAccess.members.getById(params.input.memberId);
+  assertCondition(member, 'not-found', 'No encontramos al socio seleccionado.');
   const lines = [];
   for (const period of [...new Set(params.input.periods)].sort()) {
     assertCondition(/^\d{4}-(0[1-9]|1[0-2])$/.test(period), 'invalid-argument', 'Periodo invalido.');
-    const preview = await computeFeePreviewInternal({ dataAccess, memberId: params.input.memberId, period });
-    const charge = await dataAccess.memberFeeCharges.findDuplicate({ memberId: preview.billingMode === 'per_member' ? preview.memberId : preview.holderMemberId ?? null, familyGroupId: preview.billingMode === 'single_group_charge' ? preview.familyGroupId ?? null : null, period, billingMode: preview.billingMode });
+    const chargesById = new Map<string, EntityWithId<MemberFeeChargeDocument>>();
+    for (const filter of [{ memberId: params.input.memberId }, ...(member.familyGroupId ? [{ familyGroupId: member.familyGroupId }] : [])]) {
+      let cursorId: string | undefined;
+      do {
+        const page = await dataAccess.memberFeeCharges.listPage({ ...filter, period: period as AccountingPeriod, limit: 100, ...(cursorId ? { cursorId } : {}) });
+        for (const charge of page.items) {
+          if (charge.status !== 'cancelled' && (charge.memberId === params.input.memberId || (charge.billingMode === 'single_group_charge' && charge.familyGroupId === member.familyGroupId))) chargesById.set(charge.id, charge);
+        }
+        cursorId = page.nextCursorId;
+      } while (cursorId);
+    }
+    const generatedPreview = chargesById.size ? null : await computeFeePreviewInternal({ dataAccess, memberId: params.input.memberId, period });
+    const charges = chargesById.size ? [...chargesById.values()] : [null];
+    for (const charge of charges) {
     const settlement = resolveChargeSettlement({
-      charge: charge ?? { finalAmountMinor: preview.finalAmountMinor, period: period as AccountingPeriod },
+      charge: charge ?? { finalAmountMinor: generatedPreview!.finalAmountMinor, period: period as AccountingPeriod },
       config,
       operationDate: params.input.operationDate,
       applyEarlyPaymentDiscount: params.input.applyEarlyPaymentDiscount,
@@ -517,7 +534,7 @@ export async function previewMemberFeePaymentUseCase(params: {
       chargeId: charge?.id ?? null,
       status: charge?.status ?? 'unissued',
       activePartialPlanId,
-      baseAmountMinor: charge?.finalAmountMinor ?? preview.finalAmountMinor,
+      baseAmountMinor: charge?.finalAmountMinor ?? generatedPreview!.finalAmountMinor,
       settlementAmountMinor: settlement.settlementAmountMinor,
       discountPctBps: settlement.discountPctBps,
       discountAmountMinor: settlement.discountAmountMinor,
@@ -526,5 +543,7 @@ export async function previewMemberFeePaymentUseCase(params: {
       payableAmountMinor: closed ? 0 : Math.max(settlement.settlementAmountMinor - paid, 0),
     });
   }
-  return { lines, totalAmountMinor: lines.reduce((sum, line) => sum + line.payableAmountMinor, 0) };
+  }
+  const commissionRule = params.input.paymentMethodId ? await dataAccess.paymentCommissionRules.getActiveByPaymentMethodId(params.input.paymentMethodId) : null;
+  return { lines, totalAmountMinor: lines.reduce((sum, line) => sum + line.payableAmountMinor, 0), ...(params.input.paymentMethodId ? { paymentMethodId: params.input.paymentMethodId, commissionPctBps: commissionRule?.percentageBps ?? 0 } : {}) };
 }

@@ -1,3 +1,4 @@
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import {
   ACCOUNTING_TIME_ZONE_OFFSET,
@@ -124,49 +125,11 @@ export async function markMembershipRenewalsUseCase(params: {
           generatedCount += 1;
         }
 
-        const renewalIsAlreadySettled = result.status === 'paid' || result.status === 'exempt';
-        if (renewalIsAlreadySettled) {
-          const [pendingCharges, overdueCharges] = await Promise.all([
-            params.transactions.getDataAccess().memberFeeCharges.listPage({
-              memberId: member.id,
-              status: 'pending',
-              limit: 1,
-            }),
-            params.transactions.getDataAccess().memberFeeCharges.listPage({
-              memberId: member.id,
-              status: 'overdue',
-              limit: 1,
-            }),
-          ]);
-          if (pendingCharges.items.length > 0 || overdueCharges.items.length > 0) {
-            continue;
-          }
-          const nextRenewalDueAt = Timestamp.fromDate(calculateMembershipRenewalDueDateFromPeriod(period));
-          if (
-            member.membershipRenewalStatus !== 'current'
-            || !dueAt
-            || dueAt.toMillis() <= renewalDueAt.toMillis()
-          ) {
-            await params.transactions.getDataAccess().members.update(
-              member.id,
-              {
-                membershipRenewalStatus: 'current',
-                membershipRenewalDueAt: nextRenewalDueAt,
-              },
-              actor.uid,
-            );
-          }
-        } else if (shouldMark) {
-          await params.transactions.getDataAccess().members.update(
-            member.id,
-            {
-              membershipRenewalStatus: 'needs_renewal',
-              membershipRenewalDueAt: renewalDueAt,
-            },
-            actor.uid,
-          );
-          markedCount += 1;
-        }
+        await params.transactions.runInTransaction(async (dataAccess) => {
+          const status = await prepareMemberFeeStatus(dataAccess, member.id, [], params.now ?? new Date());
+          await dataAccess.members.update(member.id, status, actor.uid);
+          if (shouldMark && status.membershipRenewalStatus === 'needs_renewal') markedCount += 1;
+        });
       } catch (error) {
         skippedCount += 1;
         failures.push({

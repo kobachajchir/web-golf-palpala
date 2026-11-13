@@ -1160,6 +1160,7 @@ class InMemoryMemberFeeChargesStore implements MemberFeeChargesStore {
 }
 
 export class InMemoryAccountingTransactionManager implements AccountingTransactionManager {
+  public readonly operations = new Map<string, { fingerprint: string; result: any }>();
   public readonly users = new Map<string, EntityWithId<ReferencedUserDocument>>();
   public readonly members = new Map<string, EntityWithId<ReferencedMemberDocument>>();
   public readonly familyGroups = new Map<string, EntityWithId<ReferencedFamilyGroupDocument>>();
@@ -1209,6 +1210,10 @@ export class InMemoryAccountingTransactionManager implements AccountingTransacti
   };
 
   public readonly dataAccess: AccountingDataAccess = {
+    operations: {
+      get: async (key) => this.operations.get(key) ?? null,
+      set: async (key, fingerprint, result) => { this.operations.set(key, { fingerprint, result }); },
+    },
     users: new InMemoryUsersReferenceStore(this.users),
     members: new InMemoryMembersReferenceStore(this.members),
     familyGroups: new InMemoryFamilyGroupsReferenceStore(this.familyGroups),

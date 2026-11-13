@@ -468,6 +468,7 @@ export async function emitMemberPaymentNotification(params: {
     sourceModule: 'accounting',
     sourceCollection: 'financial_movements',
     sourceId: params.movementId,
+    dedupeKey: `member-payment-receipt:${params.movementId}`,
     title: params.receiptNumber ? `Recibo ${params.receiptNumber} disponible` : 'Recibo disponible',
     body: `Se registró un pago al club por ${formatAmountMinor(params.amountMinor)}.`,
     severity: 'success',
@@ -496,7 +497,8 @@ export function formatAmountMinor(amountMinor: number): string {
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: amountMinor % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
   }).format(amountMinor / 100);
 }
 

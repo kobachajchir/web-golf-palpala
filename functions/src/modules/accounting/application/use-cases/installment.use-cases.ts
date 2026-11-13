@@ -571,7 +571,7 @@ export async function registerInstallmentPaymentUseCase(params: {
     const fingerprint = createHash('sha256').update(JSON.stringify(params.input)).digest('hex');
     const previous = operationKey ? await dataAccess.operations?.get(operationKey) : null;
     if (previous) {
-      assertCondition(previous.fingerprint === fingerprint, 'already-exists', 'Ya se registro un abono con esta operacion (posiblemente tras un corte o una demora). Revisa el detalle del plan antes de volver a cobrar.', { movementId: previous.result?.movementId ?? null });
+      assertCondition(previous.fingerprint === fingerprint, 'already-exists', 'Ya se registro un abono con esta operacion (posiblemente tras un corte o una demora). Revisa el detalle del plan antes de volver a cobrar.', { businessCode: 'OPERATION_ALREADY_RECORDED', action: 'CHECK_OPERATION', movementId: previous.result?.movementId ?? null });
       return { ...previous.result, duplicate: true };
     }
     await assertCashOperationDateAllowed({ dataAccess, operationDate: params.input.operationDate });
@@ -760,13 +760,15 @@ export async function listMyReceiptsUseCase(params: {
     return { receipts: [] };
   }
 
-  const page = await params.transactions.getDataAccess().financialMovements.listPage({
-    thirdPartyType: 'member',
-    thirdPartyId: actor.user.profileId,
-    limit: 100,
-  });
-  const receipts = page.items
-    .filter((movement) => movement.movementType === 'income')
+  const movements: Array<EntityWithId<FinancialMovementDocument>> = [];
+  let cursorId: string | undefined;
+  do {
+    const page = await params.transactions.getDataAccess().financialMovements.listPage({ thirdPartyType: 'member', thirdPartyId: actor.user.profileId, limit: 100, ...(cursorId ? { cursorId } : {}) });
+    movements.push(...page.items);
+    cursorId = page.nextCursorId;
+  } while (cursorId);
+  const receipts = movements
+    .filter((movement) => movement.movementType === 'income' && movement.installmentRole !== 'charge')
     .map((movement) => {
       const receiptNumber = typeof movement.metadata?.receiptNumber === 'string'
         ? movement.metadata.receiptNumber.trim()

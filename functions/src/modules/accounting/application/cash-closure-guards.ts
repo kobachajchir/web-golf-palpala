@@ -71,6 +71,13 @@ export async function assertCashOperationDateAllowed(params: {
     'No se pueden registrar movimientos con fecha futura.',
   );
 
+  let cursorId: string | undefined;
+  do {
+    const page = await params.dataAccess.cashClosures.listPage({ period: operationDay.slice(0, 7), status: 'closed', limit: 100, ...(cursorId ? { cursorId } : {}) });
+    assertCondition(!page.items.some((closure) => getClosureDayKey(closure) === operationDay), 'failed-precondition', 'La caja de esa jornada ya está cerrada. Elegí una jornada abierta para registrar el movimiento.');
+    cursorId = page.nextCursorId;
+  } while (cursorId);
+
   const openClosures = await params.dataAccess.cashClosures.listOpen();
   const previousOpenClosure = getOpenClosureBefore(openClosures, operationDay);
   if (previousOpenClosure) {

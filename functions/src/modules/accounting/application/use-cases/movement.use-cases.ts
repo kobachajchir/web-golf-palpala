@@ -1,4 +1,6 @@
+import { assertCashOperationDateAllowed } from '../cash-closure-guards.js';
 import { Timestamp } from 'firebase-admin/firestore';
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
 import {
   ACCOUNTING_COLLECTIONS,
   FINANCIAL_EXPENSE_CATEGORY_IDS,
@@ -142,7 +144,7 @@ export async function voidFinancialMovementUseCase(params: {
   return params.transactions.runInTransaction(async (dataAccess) => {
     const movement = await dataAccess.financialMovements.getById(params.input.movementId);
     assertCondition(movement, 'not-found', `No existe financial_movements/${params.input.movementId}.`);
-    assertCondition(!movement.installmentPlanId, 'failed-precondition', 'Las cargas en cuotas se administran desde su detalle.');
+    assertCondition(!movement.installmentPlanId || movement.installmentRole === 'payment', 'failed-precondition', 'El plan principal no representa un cobro. Anulá los abonos desde sus movimientos.');
     assertCondition(movement.originType !== 'movement_reversal', 'failed-precondition', 'No se puede revertir un movimiento que fue generado como reverso de otro.');
 
     if (movement.status === 'voided' || movement.status === 'reversed') {
@@ -152,6 +154,36 @@ export async function voidFinancialMovementUseCase(params: {
       };
     }
 
+    if (movement.status === 'posted') await assertCashOperationDateAllowed({ dataAccess, operationDate: new Date() });
+    const root = movement.installmentPlanId ? await dataAccess.financialMovements.getById(movement.installmentPlanId) : null;
+    if (movement.installmentPlanId) assertCondition(root && (root.metadata?.partialPaymentMode === 'flexible' || root.installmentCount === 0), 'failed-precondition', 'Este plan usa cuotas programadas. La anulación requiere revisar su cronograma con administración.');
+    const planPayments = root ? (await dataAccess.financialMovements.listByInstallmentPlanId(root.id)).filter((payment) => payment.installmentRole === 'payment' && payment.status === 'posted') : [];
+    const planPaidAfterReversal = planPayments.filter((payment) => payment.id !== movement.id).reduce((sum, payment) => sum + payment.netAmountMinor, 0);
+    const planPaymentIds = new Set(planPayments.map((payment) => payment.id));
+    const planWasComplete = Boolean(root && root.status === 'posted');
+    const rootAllocations = root && Array.isArray(root.metadata?.memberFeeRenewalAllocations) ? root.metadata.memberFeeRenewalAllocations as Array<{ chargeId: string; settlementAmountMinor: number }> : [];
+    const handicapToReopen = movement.originCollection === 'handicap_charges' && movement.originId ? await dataAccess.handicapCharges.getById(movement.originId) : null;
+    // Prepare every linked read before the first transaction write.
+    const allocationList = root ? rootAllocations.filter((allocation) => allocation.chargeId).map((allocation) => ({ chargeId: allocation.chargeId, appliedClubAmountMinor: planWasComplete ? allocation.settlementAmountMinor : 0 })) : Array.isArray(movement.metadata?.paymentAllocations) ? movement.metadata.paymentAllocations as Array<{ chargeId: string; appliedClubAmountMinor: number }> : [];
+    const chargeIds = [...new Set([...allocationList.map((a) => a.chargeId), ...(movement.originCollection === 'member_fee_charges' && movement.originId ? [movement.originId] : [])])];
+    const feePatches = [];
+    for (const chargeId of chargeIds) {
+      const charge = await dataAccess.memberFeeCharges.getById(chargeId);
+      assertCondition(charge, 'failed-precondition', 'No pudimos identificar la cuota para anular el cobro. Revisá el vínculo antes de continuar.');
+      const allocation = allocationList.find((a) => a.chargeId === chargeId);
+      const settlement = charge.settlementAmountMinor ?? charge.finalAmountMinor;
+      const previousPaid = Math.max(charge.paidClubAmountMinor ?? 0, charge.paidAmountMinor ?? 0, charge.remainingAmountMinor !== undefined && charge.remainingAmountMinor !== null ? settlement - charge.remainingAmountMinor : 0, charge.status === 'paid' ? settlement : 0);
+      const applied = allocation?.appliedClubAmountMinor ?? movement.netAmountMinor;
+      assertCondition(Number.isSafeInteger(applied) && applied >= 0 && (root || applied > 0) && applied <= previousPaid, 'failed-precondition', 'El importe aplicado no coincide con el saldo de la cuota. Revisá los comprobantes antes de anular.');
+      const paid = previousPaid - applied;
+      const remaining = Math.max((charge.settlementAmountMinor ?? charge.finalAmountMinor) - paid, 0);
+      feePatches.push({ charge, patch: { status: remaining === 0 && !root ? 'paid' as const : 'pending' as const, activePartialPlanId: root?.id ?? charge.activePartialPlanId ?? null, paidClubAmountMinor: paid, paidAmountMinor: paid, remainingAmountMinor: remaining, paymentMovementIds: (charge.paymentMovementIds ?? []).filter((id) => root ? !planPaymentIds.has(id) : id !== movement.id), paidMovementId: null, paidAt: null } });
+    }
+    const memberPatches = new Map();
+    for (const item of feePatches) {
+      const memberId = item.charge.memberId ?? item.charge.holderMemberId;
+      if (memberId && !memberPatches.has(memberId)) memberPatches.set(memberId, await prepareMemberFeeStatus(dataAccess, memberId, feePatches.map((x) => ({ id: x.charge.id, period: x.charge.period, status: x.patch.status }))));
+    }
     if (movement.status !== 'posted') {
       await dataAccess.financialMovements.update(
         movement.id,
@@ -222,61 +254,11 @@ export async function voidFinancialMovementUseCase(params: {
       await dataAccess.overtimeEntries.update(movement.originId, { status: 'approved', linkedMovementId: null }, actor.uid);
     }
 
-    if (movement.originCollection === 'member_fee_charges' && movement.originId) {
-      const memberFeeCharge = await dataAccess.memberFeeCharges.getById(movement.originId);
-      await dataAccess.memberFeeCharges.update(
-        movement.originId,
-        {
-          status: 'pending',
-          paidMovementId: null,
-          paidAt: null,
-          paidAmountMinor: null,
-          paymentDiscountPctBps: null,
-          paymentDiscountAmountMinor: null,
-        },
-        actor.uid,
-      );
-
-      const memberIdToUpdate = memberFeeCharge?.memberId ?? memberFeeCharge?.holderMemberId ?? null;
-      if (memberIdToUpdate) {
-        await dataAccess.members.update(
-          memberIdToUpdate,
-          {
-            membershipRenewalStatus: 'needs_renewal',
-            membershipRenewalDueAt: null,
-            lastFeePaymentAt: null,
-            lastFeePaidAmountMinor: null,
-            lastFeeDiscountPctBps: null,
-            lastFeeDiscountAmountMinor: null,
-          },
-          actor.uid,
-        );
-      }
-    }
-
-    if (movement.originCollection === 'handicap_charges' && movement.originId) {
-      const handicapCharge = await dataAccess.handicapCharges.getById(movement.originId);
-      if (handicapCharge) {
-        await dataAccess.handicapCharges.update(
-          handicapCharge.id,
-          movement.movementType === 'income'
-            ? { incomeMovementId: null, status: 'pending_collection' }
-            : { expenseMovementId: null, status: handicapCharge.incomeMovementId ? 'collected' : 'pending_collection' },
-          actor.uid,
-        );
-      }
-    }
-
-    if (movement.originCollection === 'expense_submissions' && movement.originId) {
-      await dataAccess.expenseSubmissions.update(
-        movement.originId,
-        {
-          status: 'approved',
-          linkedMovementId: null,
-        },
-        actor.uid,
-      );
-    }
+    if (handicapToReopen) await dataAccess.handicapCharges.update(handicapToReopen.id, movement.movementType === 'income' ? { incomeMovementId: null, status: 'pending_collection' } : { expenseMovementId: null, status: handicapToReopen.incomeMovementId ? 'collected' : 'pending_collection' }, actor.uid);
+    if (movement.originCollection === 'expense_submissions' && movement.originId) await dataAccess.expenseSubmissions.update(movement.originId, { status: 'approved', linkedMovementId: null }, actor.uid);
+    if (root) await dataAccess.financialMovements.update(root.id, { status: 'pending', installmentPaidAmountMinor: planPaidAfterReversal, installmentPaidCount: planPayments.filter((payment) => payment.id !== movement.id).length }, actor.uid);
+    for (const item of feePatches) await dataAccess.memberFeeCharges.update(item.charge.id, item.patch, actor.uid);
+    for (const [memberId, patch] of memberPatches) await dataAccess.members.update(memberId, patch, actor.uid);
 
     return {
       movementId: movement.id,
@@ -304,6 +286,7 @@ export async function editFinancialMovementUseCase(params: {
     assertCondition(!movement.installmentPlanId, 'failed-precondition', 'Las cargas en cuotas se administran desde su detalle.');
     assertCondition(movement.originType !== 'movement_reversal', 'failed-precondition', 'No se pueden editar movimientos que fueron generados como reverso de otro.');
     assertCondition(movement.status === 'posted', 'failed-precondition', 'Solo se pueden editar movimientos posteados.');
+    assertCondition(movement.originCollection !== 'member_fee_charges' && !Array.isArray(movement.metadata?.paymentAllocations), 'failed-precondition', 'Para corregir un cobro de cuotas, anulá el movimiento y registrá el cobro correcto. Así se conserva el saldo y la auditoría.');
     assertCondition(params.input.grossAmountMinor > 0, 'invalid-argument', 'El monto debe ser mayor a cero.');
     assertCondition(params.input.reason.trim().length >= 5, 'invalid-argument', 'El motivo de edicion debe tener al menos 5 caracteres.');
 

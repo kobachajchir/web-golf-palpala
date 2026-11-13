@@ -17,6 +17,8 @@ export {
 } from './modules/executive-board/executive-board.callables.js';
 export {
   accounting,
+  accountingRecoverMemberFeePlan,
+  accountingGetOperationStatus,
   accountingPreviewMemberFeePayment,
   accountingCheckServerExpenseDue,
   accountingCreateHandicapCharge,

@@ -1,3 +1,4 @@
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import { FINANCIAL_INCOME_CATEGORY_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
@@ -328,7 +329,7 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
         movement.movementType === 'income'
         && movement.categoryCodeSnapshot === FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria
         && movement.status === 'posted'
-        && movement.installmentRole !== 'payment')
+        && movement.installmentRole !== 'charge')
       .sort((left, right) => left.operationDate.toMillis() - right.operationDate.toMillis());
     const feeMovementById = new Map(feeMovements.map((movement) => [movement.id, movement]));
     const chargeCache = new Map(periodCharges.map((charge) => [charge.id, charge]));
@@ -366,43 +367,6 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
         continue;
       }
 
-      if (movement.installmentRole === 'charge' && movement.installmentPlanId === movement.id) {
-        const totalAmountMinor = movement.installmentTotalAmountMinor ?? movement.netAmountMinor;
-        const paidAmountMinor = movement.installmentPaidAmountMinor ?? 0;
-        const planPeriod = isRecord(movement.metadata) && typeof movement.metadata.periodMonth === 'string'
-          ? movement.metadata.periodMonth
-          : null;
-        if (paidAmountMinor < totalAmountMinor || !movement.thirdPartyId || planPeriod !== params.input.period) {
-          skipped.push({ movementId: movement.id, reason: 'El plan parcial no esta completo o no identifica el periodo de la renovacion.' });
-          continue;
-        }
-
-        const memberCharges = await listChargesForMember(dataAccess, movement.thirdPartyId);
-        const openCandidates = memberCharges.filter((charge) =>
-          charge.period === planPeriod && isOpenChargeStatus(charge.status));
-        if (openCandidates.length !== 1) {
-          skipped.push({
-            movementId: movement.id,
-            reason: openCandidates.length > 1
-              ? 'Hay mas de una cuota candidata para el socio y periodo del plan parcial.'
-              : 'No existe una cuota pendiente para el socio y periodo del plan parcial.',
-          });
-          continue;
-        }
-        const charge = openCandidates[0]!;
-        allocations.push({
-          movement,
-          charge,
-          source: 'fully_paid_total',
-          appliedAmountMinor: Math.min(paidAmountMinor, charge.settlementAmountMinor ?? charge.finalAmountMinor),
-          settlementAmountMinor: charge.settlementAmountMinor ?? charge.finalAmountMinor,
-          discountPctBps: charge.paymentDiscountPctBps ?? 0,
-          discountAmountMinor: charge.paymentDiscountAmountMinor ?? 0,
-          discountMode: charge.paymentDiscountMode ?? 'none',
-        });
-        continue;
-      }
-
       if (movement.originCollection === 'member_fee_charges' && movement.originId) {
         let charge = chargeCache.get(movement.originId) ?? null;
         if (!charge) {
@@ -423,78 +387,7 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
         continue;
       }
 
-      if (movement.originType !== 'manual_income' || movement.thirdPartyType !== 'member' || !movement.thirdPartyId) {
-        skipped.push({ movementId: movement.id, reason: 'El movimiento no tiene un vinculo inequivoco con una renovacion.' });
-        continue;
-      }
-      const memberCharges = (periodChargesByMemberId.get(movement.thirdPartyId) ?? [])
-        .filter((charge) => charge.billingMode === 'per_member');
-      const openCandidates = memberCharges.filter((charge) => isOpenChargeStatus(charge.status));
-      if (openCandidates.length > 1) {
-        skipped.push({
-          movementId: movement.id,
-          reason: 'Hay mas de una cuota candidata para el mismo socio y periodo.',
-        });
-        continue;
-      }
-
-      let charge = openCandidates[0] ?? memberCharges.find((candidate) =>
-        candidate.paymentMovementIds?.includes(movement.id)
-        || candidate.paidMovementId === movement.id) ?? null;
-      if (!charge) {
-        const duplicate = await dataAccess.memberFeeCharges.findDuplicate({
-          memberId: movement.thirdPartyId,
-          familyGroupId: null,
-          period: params.input.period,
-          billingMode: 'per_member',
-        });
-        if (duplicate) {
-          charge = duplicate;
-          chargeCache.set(charge.id, charge);
-        }
-      }
-      if (!charge) {
-        const member = await dataAccess.members.getById(movement.thirdPartyId);
-        if (!member || member.status !== 'active' || member.membershipBillingExempt) {
-          skipped.push({
-            movementId: movement.id,
-            reason: 'El socio no existe, no esta activo o esta exento de cuota societaria.',
-          });
-          continue;
-        }
-        const reconstructed = buildMissingChargeSnapshot({
-          movement,
-          member,
-          config: activeConfig,
-          period: params.input.period,
-        });
-        if (reconstructed.preview.billingMode !== 'per_member' || reconstructed.charge.finalAmountMinor <= 0) {
-          skipped.push({
-            movementId: movement.id,
-            reason: 'La configuracion vigente no permite reconstruir una cuota individual para este socio.',
-          });
-          continue;
-        }
-        const inferred = inferSettlementFromMovement(movement, reconstructed.charge, activeConfig);
-        const clubAmountMinor = movementClubAmountMinor(movement);
-        if (clubAmountMinor <= 0 || clubAmountMinor > inferred.settlementAmountMinor) {
-          skipped.push({
-            movementId: movement.id,
-            reason: 'El importe del movimiento no es compatible con la cuota reconstruida.',
-          });
-          continue;
-        }
-        charge = reconstructed.charge;
-        chargeCache.set(charge.id, charge);
-        periodChargesByMemberId.set(movement.thirdPartyId, [...memberCharges, charge]);
-      }
-      allocations.push({
-        movement,
-        charge,
-        source: 'period_member',
-        appliedAmountMinor: movementClubAmountMinor(movement),
-        ...inferSettlementFromMovement(movement, charge, activeConfig),
-      });
+      skipped.push({ movementId: movement.id, reason: 'Sin vínculo explícito a una cuota. Seleccioná la asociación administrativa mediante comprobantes; no se infiere por mes de cobro.' });
     }
 
     const planned = new Map<string, PlannedCharge>();
@@ -581,6 +474,7 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
       linkedMovements.forEach((movement) => {
         if (!movement
           || movement.status !== 'posted'
+          || movement.installmentRole === 'charge'
           || movement.movementType !== 'income'
           || movement.categoryCodeSnapshot !== FINANCIAL_INCOME_CATEGORY_IDS.cuotaSocietaria) return;
         feeMovementById.set(movement.id, movement);
@@ -590,6 +484,7 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
           relatedAllocations.push({ movement, charge, source: 'payment_allocation', ...explicitAllocation });
           return;
         }
+        if (movement.originCollection !== 'member_fee_charges' || movement.originId !== charge.id) return;
         relatedAllocations.push({
           movement,
           charge,
@@ -659,35 +554,10 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
         .map((item) => chargeMemberId(item.charge))
         .filter((value): value is string => Boolean(value)),
     )];
-    const memberPatches = new Map<string, {
-      keepsOpenDebt: boolean;
-      latestPaymentAt: Timestamp;
-      latestPaidAmountMinor: number;
-      latestPaidPeriod: AccountingPeriod;
-    }>();
+    const memberPatches = new Map<string, Awaited<ReturnType<typeof prepareMemberFeeStatus>>>();
     for (const memberId of affectedMemberIds) {
-      const memberCharges = await listChargesForMember(dataAccess, memberId);
-      const hasReconstructedOpenCharge = [...executionPlans.values()].some((repair) =>
-        chargeMemberId(repair.charge) === memberId && repair.remainingAmountMinor > 0);
-      const simulatedOpen = hasReconstructedOpenCharge || memberCharges.some((charge) => {
-        const repair = executionPlans.get(charge.id);
-        if (repair) return repair.remainingAmountMinor > 0;
-        return isOpenChargeStatus(charge.status) && (charge.remainingAmountMinor ?? charge.finalAmountMinor) > 0;
-      });
-      const memberRepairs = repairs
-        .filter((repair) => repair.memberId === memberId && executionPlans.has(repair.chargeId))
-        .map((repair) => ({ repair, movement: feeMovementById.get(repair.movementId) }))
-        .filter((item): item is { repair: ReconcileMemberFeeRenewalsResult['repairs'][number]; movement: EntityWithId<FinancialMovementDocument> } => Boolean(item.movement))
-        .sort((left, right) => right.movement.operationDate.toMillis() - left.movement.operationDate.toMillis());
-      const latest = memberRepairs[0];
-      if (latest) {
-        memberPatches.set(memberId, {
-          keepsOpenDebt: simulatedOpen,
-          latestPaymentAt: latest.movement.operationDate,
-          latestPaidAmountMinor: latest.repair.appliedAmountMinor,
-          latestPaidPeriod: latest.repair.chargePeriod,
-        });
-      }
+      const changes = [...executionPlans.values()].filter((repair) => chargeMemberId(repair.charge) === memberId).map((repair) => ({ id: repair.charge.id, period: repair.charge.period, status: repair.remainingAmountMinor === 0 ? 'paid' : repair.charge.status }));
+      memberPatches.set(memberId, await prepareMemberFeeStatus(dataAccess, memberId, changes));
     }
 
     const skippedMemberIdByMovementId = new Map(
@@ -765,14 +635,7 @@ export async function reconcileMemberFeeRenewalsUseCase(params: {
         }
       }
       for (const [memberId, patch] of memberPatches) {
-        await dataAccess.members.update(memberId, {
-          membershipRenewalStatus: patch.keepsOpenDebt ? 'needs_renewal' : 'current',
-          membershipRenewalDueAt: patch.keepsOpenDebt
-            ? undefined
-            : Timestamp.fromDate(calculateMembershipRenewalDueDateFromPeriod(patch.latestPaidPeriod)),
-          lastFeePaymentAt: patch.latestPaymentAt,
-          lastFeePaidAmountMinor: patch.latestPaidAmountMinor,
-        }, actor.uid);
+        await dataAccess.members.update(memberId, patch, actor.uid);
       }
       repairs.forEach((repair) => {
         repair.chargeId = createdChargeIds.get(repair.chargeId) ?? repair.chargeId;

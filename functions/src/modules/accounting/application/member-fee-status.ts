@@ -26,7 +26,7 @@ function chargeAppliesToMember(
   return charge.memberId === memberId;
 }
 
-export async function prepareMemberFeeStatus(dataAccess: AccountingDataAccess, memberId: string, updates: Array<{ id?: string | undefined; period?: string; status: string }>) {
+export async function prepareMemberFeeStatus(dataAccess: AccountingDataAccess, memberId: string, updates: Array<{ id?: string | undefined; period?: string; status: string }>, asOf = new Date()) {
   const member = await dataAccess.members.getById(memberId);
   const familyGroupId = member?.familyGroupId ?? null;
   // Las consultas por socio y por grupo familiar se solapan: se deduplica por id.
@@ -51,11 +51,12 @@ export async function prepareMemberFeeStatus(dataAccess: AccountingDataAccess, m
   }
   const rows = [...rowsById.values(), ...extraRows];
 
-  // Si un mismo mes tiene una cuota saldada, el mes se considera cubierto aunque exista otra copia.
-  const settledPeriods = new Set(rows.filter((row) => SETTLED_STATUSES.has(row.status)).map((row) => row.period));
-  const current = toClubAccountingPeriod(new Date());
+  // Cada cargo abierto conserva su deuda, incluso si hay otro cargo pagado en el mismo mes.
+  const openPeriods = new Set(rows.filter((row) => OPEN_STATUSES.has(row.status)).map((row) => row.period));
+  const settledPeriods = new Set(rows.filter((row) => SETTLED_STATUSES.has(row.status) && !openPeriods.has(row.period)).map((row) => row.period));
+  const current = toClubAccountingPeriod(asOf);
   const debt = rows
-    .filter((row) => row.period <= current && OPEN_STATUSES.has(row.status) && !settledPeriods.has(row.period))
+    .filter((row) => row.period <= current && OPEN_STATUSES.has(row.status))
     .sort((a, b) => a.period.localeCompare(b.period));
   let next = current;
   for (let count = 0; count < 12000 && settledPeriods.has(next); count++) {

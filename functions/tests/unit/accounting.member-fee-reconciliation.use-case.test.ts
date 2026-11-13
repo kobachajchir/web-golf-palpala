@@ -72,12 +72,14 @@ function directivoActor() {
   return createAccountingActor('board-1', ['directivo'], { directivo: true });
 }
 
-test('la vista previa encuentra el cobro legado sin modificar contabilidad ni cuota', async () => {
+test('la vista previa encuentra el cobro vinculado sin modificar contabilidad ni cuota', async () => {
   const manager = new InMemoryAccountingTransactionManager();
   seedActiveFinancialConfig(manager);
   seedAccountingMember(manager, 'member-1');
   seedCharge(manager);
   seedLegacyMovement(manager);
+  manager.financialMovements.get('movement-1')!.originCollection = 'member_fee_charges';
+  manager.financialMovements.get('movement-1')!.originId = 'fee-1';
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
@@ -86,7 +88,7 @@ test('la vista previa encuentra el cobro legado sin modificar contabilidad ni cu
   });
 
   assert.equal(result.repairedChargeCount, 1);
-  assert.equal(result.repairs[0]?.source, 'period_member');
+  assert.equal(result.repairs[0]?.source, 'origin_charge');
   assert.equal(manager.memberFeeCharges.get('fee-1')?.status, 'pending');
   assert.equal(result.repairs[0]?.memberName, 'Club, Socio');
   assert.equal(result.repairs[0]?.memberNumber, 'member-1');
@@ -99,6 +101,8 @@ test('la ejecucion descuenta la renovacion y conserva intacto el movimiento', as
   seedAccountingMember(manager, 'member-1');
   seedCharge(manager);
   seedLegacyMovement(manager);
+  manager.financialMovements.get('movement-1')!.originCollection = 'member_fee_charges';
+  manager.financialMovements.get('movement-1')!.originId = 'fee-1';
 
   const result = await reconcileMemberFeeRenewalsUseCase({
     actor: directivoActor(),
@@ -110,7 +114,7 @@ test('la ejecucion descuenta la renovacion y conserva intacto el movimiento', as
   assert.equal(manager.memberFeeCharges.get('fee-1')?.status, 'paid');
   assert.equal(manager.memberFeeCharges.get('fee-1')?.paidMovementId, 'movement-1');
   assert.deepEqual(manager.memberFeeCharges.get('fee-1')?.paymentMovementIds, ['movement-1']);
-  assert.equal(manager.members.get('member-1')?.membershipRenewalStatus, 'current');
+  assert.equal(manager.members.get('member-1')?.membershipRenewalStatus, 'needs_renewal');
   assert.equal(manager.financialMovements.get('movement-1')?.netAmountMinor, 11_000_000);
 });
 
@@ -135,7 +139,7 @@ test('no infiere una renovacion cuando hay mas de una cuota candidata', async ()
   assert.equal(result.skipped[0]?.memberNumber, 'member-1');
   assert.equal(manager.memberFeeCharges.get('fee-2')?.status, 'pending');
 });
-test('reconstruye una renovacion faltante solo cuando socio, periodo e importe son inequivocos', async () => {
+test('no crea cuotas por coincidir socio, mes e importe del movimiento', async () => {
   const manager = new InMemoryAccountingTransactionManager();
   seedActiveFinancialConfig(manager);
   seedAccountingMember(manager, 'member-1');
@@ -148,15 +152,12 @@ test('reconstruye una renovacion faltante solo cuando socio, periodo e importe s
   });
 
   const reconstructed = manager.memberFeeCharges.get('member-fee-charge-1');
-  assert.equal(result.repairedChargeCount, 1);
-  assert.equal(result.repairs[0]?.chargeId, 'member-fee-charge-1');
-  assert.equal(reconstructed?.memberId, 'member-1');
-  assert.equal(reconstructed?.period, '2026-05');
-  assert.equal(reconstructed?.status, 'paid');
-  assert.equal(reconstructed?.paidMovementId, 'movement-1');
+  assert.equal(result.repairedChargeCount, 0);
+  assert.equal(result.ambiguousCount, 1);
+  assert.equal(reconstructed, undefined);
   assert.equal(manager.financialMovements.get('movement-1')?.netAmountMinor, 11_000_000);
 });
-test('reconstruye como pagada una cuota con pronto pago historico dentro del dia 10', async () => {
+test('no infiere cuota ni descuento historico sin comprobante asociado', async () => {
   const manager = new InMemoryAccountingTransactionManager();
   seedActiveFinancialConfig(manager);
   seedAccountingMember(manager, 'member-1');
@@ -174,9 +175,7 @@ test('reconstruye como pagada una cuota con pronto pago historico dentro del dia
   });
 
   const reconstructed = manager.memberFeeCharges.get('member-fee-charge-1');
-  assert.equal(result.repairs[0]?.completed, true);
-  assert.equal(reconstructed?.status, 'paid');
-  assert.equal(reconstructed?.settlementAmountMinor, 9_900_000);
-  assert.equal(reconstructed?.paymentDiscountAmountMinor, 1_100_000);
-  assert.equal(reconstructed?.paymentDiscountPctBps, 1_000);
+  assert.equal(result.repairedChargeCount, 0);
+  assert.equal(result.ambiguousCount, 1);
+  assert.equal(reconstructed, undefined);
 });

@@ -114,7 +114,7 @@ export function parseGenerateAccountingReportInput(payload: unknown): GenerateAc
 function reportRange(input: GenerateAccountingReportPayload) {
   if (input.scope === 'period') {
     const [year, month] = input.period!.split('-').map(Number);
-    const lastDay = new Date(year, month, 0).getDate();
+    const lastDay = new Date(year!, month!, 0).getDate();
     return {
       dateFrom: `${input.period}-01`,
       dateTo: `${input.period}-${String(lastDay).padStart(2, '0')}`,
@@ -227,6 +227,7 @@ export async function generateAccountingReportUseCase(params: {
   if (existing.exists) {
     const existingData = existing.data();
     const failed = existingData?.status === 'failed';
+    assertCondition(existingData?.requestFingerprint === requestFingerprint, 'already-exists', 'Este identificador de reporte ya se usó con otros datos. Generá una solicitud nueva.');
     // Un informe fallido no tiene contenido: se puede regenerar con los datos actuales.
     // Uno existente (o en curso) solo se devuelve si corresponde exactamente a esta solicitud.
     if (!failed) {

@@ -2,7 +2,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { PAYMENT_METHOD_IDS } from '../../domain/constants.js';
 import { assertCondition } from '../../domain/errors.js';
 import type { Actor, CashClosureDocument, EntityWithId, FinancialMovementDocument } from '../../domain/models.js';
-import type { AccountingTransactionManager } from '../../domain/ports.js';
+import type { AccountingDataAccess, AccountingTransactionManager } from '../../domain/ports.js';
 import {
   assertIsRecord,
   ensureStaff,
@@ -48,11 +48,12 @@ function signedMovementAmount(movement: EntityWithId<FinancialMovementDocument>)
 
 async function resolveClosureMovements(params: {
   transactions: AccountingTransactionManager;
+  dataAccess?: AccountingDataAccess;
   period: string;
   closureDate: Date;
   movementIds?: string[];
 }): Promise<Array<EntityWithId<FinancialMovementDocument>>> {
-  const dataAccess = params.transactions.getDataAccess();
+  const dataAccess = params.dataAccess ?? params.transactions.getDataAccess();
   if (params.movementIds?.length) {
     const movements = await Promise.all(params.movementIds.map((movementId) => dataAccess.financialMovements.getById(movementId)));
     assertCondition(movements.every(Boolean), 'not-found', 'Uno o más financial_movements no existen.');
@@ -146,12 +147,23 @@ export async function closeCashClosureUseCase(params: {
     const cashClosure = await dataAccess.cashClosures.getById(params.input.cashClosureId);
     assertCondition(cashClosure, 'not-found', `No existe cash_closures/${params.input.cashClosureId}.`);
     assertCondition(cashClosure.status === 'open', 'failed-precondition', 'Solo se pueden cerrar cajas abiertas.');
-    const differenceMinor = params.input.cashCountedMinor - cashClosure.cashExpectedMinor;
+    const movements = await resolveClosureMovements({ transactions: params.transactions, dataAccess, period: cashClosure.period, closureDate: cashClosure.closureDate.toDate() });
+    const expectedByPaymentMethod = movements.reduce<Record<string, number>>((totals, movement) => {
+      const key = movement.paymentMethodCodeSnapshot ?? 'sin_medio';
+      totals[key] = (totals[key] ?? 0) + signedMovementAmount(movement);
+      return totals;
+    }, {});
+    expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] = (expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] ?? 0) + (cashClosure.openingBalanceMinor ?? 0);
+    const cashExpectedMinor = expectedByPaymentMethod[PAYMENT_METHOD_IDS.cash] ?? 0;
+    const differenceMinor = params.input.cashCountedMinor - cashExpectedMinor;
 
     await dataAccess.cashClosures.update(
       cashClosure.id,
       {
         status: 'closed',
+        cashExpectedMinor,
+        expectedByPaymentMethod,
+        movementIds: movements.map((movement) => movement.id),
         closedByUid: actor.uid,
         closedAt: Timestamp.fromDate(new Date()),
         cashCountedMinor: params.input.cashCountedMinor,

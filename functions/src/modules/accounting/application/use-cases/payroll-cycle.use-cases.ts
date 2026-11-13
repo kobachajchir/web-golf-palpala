@@ -100,7 +100,7 @@ async function listAllEmployeeOvertime(dataAccess: AccountingDataAccess, employe
   const entries: Array<OvertimeEntryDocument & { id: string }> = [];
   let cursorId: string | undefined;
   do {
-    const page = await dataAccess.overtimeEntries.listPage({ employeeId, period, limit: 100, cursorId });
+    const page = await dataAccess.overtimeEntries.listPage({ employeeId, period, limit: 100, ...(cursorId ? { cursorId } : {}) });
     entries.push(...page.items);
     cursorId = page.nextCursorId;
   } while (cursorId);

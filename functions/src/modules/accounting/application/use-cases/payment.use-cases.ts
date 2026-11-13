@@ -1,3 +1,4 @@
+import { prepareMemberFeeStatus } from '../member-fee-status.js';
 import { Timestamp } from 'firebase-admin/firestore';
 import {
   DEFAULT_FINANCIAL_EXPENSE_CATEGORIES,
@@ -303,6 +304,11 @@ export async function registerPaymentUseCase(params: {
       ?? null;
     const effectiveGrossAmountMinor = feePaymentSnapshot?.paidAmountMinor ?? params.input.grossAmountMinor;
 
+    const memberFeeStatus = memberFeeChargeToPay && feeMemberId
+      ? await prepareMemberFeeStatus(dataAccess, feeMemberId, [{ id: memberFeeChargeToPay.id, period: memberFeeChargeToPay.period, status: 'paid' }])
+      : null;
+    if (memberFeeChargeToPay) assertCondition((memberFeeChargeToPay.paidClubAmountMinor ?? memberFeeChargeToPay.paidAmountMinor ?? 0) === 0, 'failed-precondition', 'Esta cuota tiene abonos anteriores. Continuá desde Cobros de socios para pagar solamente el saldo.');
+
     const movement = await createPostedMovement({
       dataAccess,
       actorUid: actor.uid,
@@ -385,6 +391,10 @@ export async function registerPaymentUseCase(params: {
           paidMovementId: movement.movementId,
           paidAt: Timestamp.fromDate(params.input.operationDate),
           paidAmountMinor: effectiveGrossAmountMinor,
+          paidClubAmountMinor: effectiveGrossAmountMinor,
+          remainingAmountMinor: 0,
+          settlementAmountMinor: effectiveGrossAmountMinor,
+          paymentMovementIds: [movement.movementId],
           paymentDiscountPctBps: feePaymentSnapshot?.discountPctBps ?? 0,
           paymentDiscountAmountMinor: feePaymentSnapshot?.discountAmountMinor ?? 0,
         },
@@ -397,8 +407,7 @@ export async function registerPaymentUseCase(params: {
           memberIdToUpdate,
           {
             lastFeePaymentAt: Timestamp.fromDate(params.input.operationDate),
-            membershipRenewalDueAt: Timestamp.fromDate(calculateMembershipRenewalDueDate(params.input.operationDate)),
-            membershipRenewalStatus: 'current',
+            ...memberFeeStatus,
             lastFeePaidAmountMinor: effectiveGrossAmountMinor,
             lastFeeDiscountPctBps: feePaymentSnapshot?.discountPctBps ?? 0,
             lastFeeDiscountAmountMinor: feePaymentSnapshot?.discountAmountMinor ?? 0,

@@ -26,6 +26,6 @@ export async function assertChargeNotLockedByPartialPlan(
     !activePlanId || activePlanId === allowedPlanId,
     'failed-precondition',
     `La cuota ${charge.period} tiene un plan de pagos parciales activo. Registra los abonos restantes desde el detalle del plan en lugar de cobrarla por otra via.`,
-    { installmentPlanId: activePlanId },
+    { businessCode: 'ACTIVE_PAYMENT_PLAN', action: 'OPEN_PLAN', installmentPlanId: activePlanId },
   );
 }

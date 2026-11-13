@@ -1,7 +1,9 @@
+import { recoverMemberFeePlanUseCase } from '../application/use-cases/member-fee-recovery.use-cases.js';
+import { createHash } from 'node:crypto';
 import { logger } from 'firebase-functions';
 import { previewMemberFeePaymentUseCase } from '../application/use-cases/member-fee-payment.use-cases.js';
 import { assertIsRecord, parseRequiredString, parseRequiredStringArray, parseRequiredIsoDate } from '../application/shared.js';
-import { onCall } from 'firebase-functions/v2/https';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import {
   ACCOUNTING_TIME_ZONE,
@@ -174,8 +176,11 @@ async function getActorFromCallableRequest(
 }
 
 function withCallableLogging(functionName: string, error: unknown): never {
-  logger.error(`${functionName} failed`, error);
-  throw toHttpsError(error);
+  const supportReference = createHash('sha256').update(`${functionName}:${Date.now()}:${Math.random()}`).digest('hex').slice(0, 12);
+  logger.error(`${functionName} failed`, { supportReference, error });
+  const translated = toHttpsError(error);
+  if (translated.code === 'internal') throw new HttpsError('internal', 'No pudimos completar la operación.', { businessCode: 'INTERNAL_ERROR', supportReference });
+  throw translated;
 }
 
 export const accountingUpsertFinancialConfig = onCall(async (request) => {
@@ -872,11 +877,34 @@ export const accountingPreviewMemberFeePayment = onCall(async (request) => {
   try {
     const actor = await getActorFromCallableRequest(request.auth);
     const data = assertIsRecord(request.data);
-    return await previewMemberFeePaymentUseCase({ actor, input: { memberId: parseRequiredString(data, 'memberId'), periods: parseRequiredStringArray(data, 'periods'), operationDate: parseRequiredIsoDate(data, 'operationDate'), applyEarlyPaymentDiscount: typeof data.applyEarlyPaymentDiscount === 'boolean' ? data.applyEarlyPaymentDiscount : undefined }, transactions });
+    return await previewMemberFeePaymentUseCase({ actor, input: { memberId: parseRequiredString(data, 'memberId'), periods: parseRequiredStringArray(data, 'periods'), operationDate: parseRequiredIsoDate(data, 'operationDate'), paymentMethodId: typeof data.paymentMethodId === 'string' ? data.paymentMethodId : undefined, applyEarlyPaymentDiscount: typeof data.applyEarlyPaymentDiscount === 'boolean' ? data.applyEarlyPaymentDiscount : undefined }, transactions });
   } catch (error) { withCallableLogging('accountingPreviewMemberFeePayment', error); }
 });
 
+export const accountingRecoverMemberFeePlan = onCall(async (request) => {
+  try {
+    const actor = await getActorFromCallableRequest(request.auth);
+    const data = assertIsRecord(request.data);
+    return await recoverMemberFeePlanUseCase({ actor, input: { planId: parseRequiredString(data, 'planId'), chargeIds: data.chargeIds === undefined ? [] : parseRequiredStringArray(data, 'chargeIds'), execute: data.execute === true, reason: typeof data.reason === 'string' ? data.reason : '', expectedRevision: typeof data.expectedRevision === 'string' ? data.expectedRevision : '' }, transactions });
+  } catch (error) { withCallableLogging('accountingRecoverMemberFeePlan', error); }
+});
+
+export const accountingGetOperationStatus = onCall(async (request) => {
+  try {
+    const actor = await getActorFromCallableRequest(request.auth);
+    ensureStaff(actor);
+    const data = assertIsRecord(request.data);
+    const key = parseRequiredString(data, 'operationKey');
+    const prefix = data.kind === 'partial' ? 'partial:' : '';
+    const id = createHash('sha256').update(actor!.uid + ':' + prefix + key).digest('hex');
+    const operation = await transactions.getDataAccess().operations?.get(id);
+    return operation ? { status: 'completed', result: operation.result } : { status: 'unknown', result: null };
+  } catch (error) { withCallableLogging('accountingGetOperationStatus', error); }
+});
+
 export const accounting = {
+  recoverMemberFeePlan: accountingRecoverMemberFeePlan,
+  getOperationStatus: accountingGetOperationStatus,
   previewMemberFeePayment: accountingPreviewMemberFeePayment,
   upsertFinancialConfig: accountingUpsertFinancialConfig,
   setCreditCommissionRule: accountingSetCreditCommissionRule,

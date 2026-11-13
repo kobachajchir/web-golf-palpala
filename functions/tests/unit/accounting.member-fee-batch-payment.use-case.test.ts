@@ -1,3 +1,4 @@
+import { toClubAccountingPeriod } from '../../src/modules/accounting/application/shared.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Timestamp } from 'firebase-admin/firestore';
@@ -44,7 +45,7 @@ function seedPendingCharge(
   });
 }
 
-test('un lote descuenta solo la cuota del mes y crea un unico movimiento por lo cobrado', async () => {
+test('despues del dia limite no fuerza descuentos en cuotas actuales ni atrasadas', async () => {
   const manager = new InMemoryAccountingTransactionManager();
   seedActiveFinancialConfig(manager);
   seedAccountingMember(manager, 'member-1');
@@ -68,16 +69,16 @@ test('un lote descuenta solo la cuota del mes y crea un unico movimiento por lo 
     transactions: manager,
   });
 
-  assert.equal(result.netAmountMinor, 20_900_000);
-  assert.equal(result.grossAmountMinor, 20_900_000);
+  assert.equal(result.netAmountMinor, 22_000_000);
+  assert.equal(result.grossAmountMinor, 22_000_000);
   assert.equal(manager.memberFeeCharges.get('fee-overdue')?.paymentDiscountAmountMinor, 0);
   assert.equal(manager.memberFeeCharges.get('fee-overdue')?.paidClubAmountMinor, 11_000_000);
-  assert.equal(manager.memberFeeCharges.get('fee-current')?.paymentDiscountAmountMinor, 1_100_000);
-  assert.equal(manager.memberFeeCharges.get('fee-current')?.paidClubAmountMinor, 9_900_000);
+  assert.equal(manager.memberFeeCharges.get('fee-current')?.paymentDiscountAmountMinor, 0);
+  assert.equal(manager.memberFeeCharges.get('fee-current')?.paidClubAmountMinor, 11_000_000);
   assert.equal(manager.financialMovements.size, 1);
 });
 
-test('una cuota futura pagada antes de comenzar renueva desde el periodo cobrado', async () => {
+test('pagar una cuota futura no cubre periodos omitidos', async () => {
   const manager = new InMemoryAccountingTransactionManager();
   seedActiveFinancialConfig(manager);
   seedAccountingMember(manager, 'member-1');
@@ -99,8 +100,8 @@ test('una cuota futura pagada antes de comenzar renueva desde el periodo cobrado
   assert.deepEqual(result.completedChargeIds, ['fee-august']);
   assert.equal(manager.memberFeeCharges.get('fee-august')?.settlementAmountMinor, 7_000_000);
   assert.equal(manager.memberFeeCharges.get('fee-august')?.status, 'paid');
-  assert.equal(manager.members.get('member-1')?.membershipRenewalStatus, 'current');
-  assert.equal(manager.members.get('member-1')?.membershipRenewalDueAt?.toDate().toISOString(), '2026-09-01T03:00:00.000Z');
+  assert.equal(manager.members.get('member-1')?.membershipRenewalStatus, 'needs_renewal');
+  assert.equal(manager.members.get('member-1')?.membershipRenewalDueAt?.toDate().toISOString(), `${toClubAccountingPeriod(new Date())}-01T03:00:00.000Z`);
 });
 
 test('el cobro adelantado crea una unica cuota futura y la emision posterior no la duplica', async () => {

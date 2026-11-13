@@ -39,6 +39,7 @@ async function setupPayrollFixture() {
   seedActiveFinancialConfig(manager);
   seedAccountingEmployee(manager, 'employee-1');
   seedExpenseCategory(manager, FINANCIAL_EXPENSE_CATEGORY_IDS.sueldo);
+  seedExpenseCategory(manager, FINANCIAL_EXPENSE_CATEGORY_IDS.f931);
   seedExpenseCategory(manager, FINANCIAL_EXPENSE_CATEGORY_IDS.horasExtra, {
     defaultBancarizado: false,
     defaultImputableImpositivo: false,
@@ -123,6 +124,9 @@ test('F931 se registra como referencia externa y aparece vinculado en el ciclo m
   const reference = await recordExternalReferenceUseCase({
     actor: admin,
     input: {
+      requestId: 'f931-test-payment-2026-05',
+      operationDate: new Date('2026-05-15T03:00:00Z'),
+      paymentMethodId: PAYMENT_METHOD_IDS.cash,
       referenceType: 'F931',
       providerName: 'AFIP',
       period: '2026-05',
