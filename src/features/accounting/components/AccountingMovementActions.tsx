@@ -1,3 +1,4 @@
+import { accountingErrorMessage } from '../utils/accountingErrors';
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { IconActionMenu } from '../../../components/IconActionMenu';
 import { UiActionButton } from '../../../components/UiActionButton';
@@ -495,7 +496,9 @@ export function AccountingMovementActions({
     </>
   ), [movement]);
 
-  if (!canManage || movement.installmentPlanId) {
+  const isFlexibleAbono = movement.installmentRole === 'payment' && movement.metadata?.partialPaymentMode === 'flexible';
+  const canEdit = canEditOrDelete && !movement.installmentPlanId && movement.originCollection !== 'member_fee_charges' && !Array.isArray(movement.metadata?.paymentAllocations);
+  if (!canManage || (movement.installmentPlanId && !isFlexibleAbono)) {
     return null;
   }
 
@@ -613,7 +616,7 @@ export function AccountingMovementActions({
               balanceInclusionMenuItem,
             ]
           : [
-              ...(canEditOrDelete ? [{
+              ...(canEdit ? [{
                 id: 'edit',
                 label: 'Editar movimiento',
                 accent: true,
@@ -626,7 +629,7 @@ export function AccountingMovementActions({
               balanceInclusionMenuItem,
               ...(canEditOrDelete ? [{
                 id: 'delete',
-                label: 'Eliminar movimiento',
+                label: 'Anular movimiento',
                 danger: true,
                 onSelect: () => {
                   setMenuOpen(false);

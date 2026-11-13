@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { accountingErrorMessage } from '../utils/accountingErrors';
 import { UiActionButton } from '../../../components/UiActionButton';
 import {
   createFinancialExpenseCategoriesRepository,
@@ -244,6 +245,8 @@ export function AccountingReportsV2Page() {
   const [notice, setNotice] = useState<AccountingNotice>(null);
   const [form, setForm] = useState(initialForm);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const loadSequence = useRef(0);
   // El id se reutiliza solo para reintentar exactamente la misma solicitud.
   const reportRequestAttempt = useRef<{ fingerprint: string; requestId: string } | null>(null);
   const [incomeCategories, setIncomeCategories] = useState<IncomeCategoryOption[]>(getFallbackIncomeCategories);
@@ -251,17 +254,22 @@ export function AccountingReportsV2Page() {
   const [expandedSection, setExpandedSection] = useState<string | null>(reportId ? 'detail' : 'generate');
   const [showCategories, setShowCategories] = useState(false);
 
-  const load = async () => {
-    const nextReports = await listReportHistory();
-    setReports(nextReports);
-    setSelectedReport(reportId ? await getReportHistoryItem(reportId) : null);
-  };
+  const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
+    setLoadingReport(true);
+    try {
+      const [nextReports, detail] = await Promise.all([listReportHistory(), reportId ? getReportHistoryItem(reportId) : Promise.resolve(null)]);
+      if (sequence !== loadSequence.current) return;
+      setReports(nextReports);
+      setSelectedReport(detail);
+    } finally { if (sequence === loadSequence.current) setLoadingReport(false); }
+  }, [reportId]);
 
   useEffect(() => {
-    void load().catch((error) => {
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos cargar los reportes.' });
-    });
-  }, [reportId]);
+    setSelectedReport(null);
+    void load().catch((error) => setNotice({ kind: 'error', message: accountingErrorMessage(error) }));
+    return () => { loadSequence.current++; };
+  }, [load]);
 
   useEffect(() => {
     void Promise.all([
@@ -275,6 +283,12 @@ export function AccountingReportsV2Page() {
       setExpenseCategories(getFallbackExpenseCategories());
     });
   }, []);
+
+  useEffect(() => {
+    if (!reportId || selectedReport?.status !== 'generating') return;
+    const timer = window.setInterval(() => { void load().catch((error) => setNotice({ kind: 'error', message: accountingErrorMessage(error) })); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [load, reportId, selectedReport?.status]);
 
   const selectTemplate = (template: AccountingReportTemplate) => {
     setForm((current) => ({
@@ -300,6 +314,7 @@ export function AccountingReportsV2Page() {
 
   const handleGenerate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isGenerating) return;
     if (!form.title.trim()) {
       setNotice({ kind: 'error', message: 'Ingresa un nombre para el reporte.' });
       return;
@@ -327,18 +342,20 @@ export function AccountingReportsV2Page() {
         notes: form.notes.trim() || null,
       };
     const fingerprint = JSON.stringify(reportRequest);
+    try { reportRequestAttempt.current = JSON.parse(window.localStorage.getItem('accounting:report-attempt') ?? 'null'); } catch { /* usa la copia en memoria */ }
     const requestId = reportRequestAttempt.current?.fingerprint === fingerprint
       ? reportRequestAttempt.current.requestId
       : crypto.randomUUID();
     reportRequestAttempt.current = { fingerprint, requestId };
+    try { window.localStorage.setItem('accounting:report-attempt', JSON.stringify(reportRequestAttempt.current)); } catch { /* copia en memoria */ }
     try {
-      await generateReport({ requestId, ...reportRequest });
+      const createdReportId = await generateReport({ requestId, ...reportRequest });
       reportRequestAttempt.current = null;
+      try { window.localStorage.removeItem('accounting:report-attempt'); } catch { /* copia en memoria */ }
       setNotice({ kind: 'success', message: 'Reporte generado exitosamente.' });
-      setExpandedSection('history');
-      void load();
+      navigate(`/accounting/reports/${createdReportId}`);
     } catch (error) {
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos generar el reporte.' });
+      setNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setIsGenerating(false);
     }
@@ -348,7 +365,8 @@ export function AccountingReportsV2Page() {
     if (!selectedReport) {
       return (
         <div className="accounting-shell accounting-reports-page">
-          <AccountingEmptyState title="Reporte no encontrado">
+          <AccountingInlineNotice notice={notice} />
+          <AccountingEmptyState title={loadingReport ? "Cargando reporte…" : notice?.kind === 'error' ? "No pudimos cargar el reporte" : "Reporte no encontrado"}>
             <UiActionButton to="/accounting/reports" variant="secondary">Volver a reportes</UiActionButton>
           </AccountingEmptyState>
         </div>
@@ -358,7 +376,7 @@ export function AccountingReportsV2Page() {
       return (
         <div className="accounting-shell accounting-reports-page">
           <AccountingEmptyState title="Generando reporte">
-            <p style={{ marginTop: '0.5rem', color: 'var(--muted)' }}>Por favor, aguarda unos instantes y recarga la pagina.</p>
+            <p style={{ marginTop: '0.5rem', color: 'var(--muted)' }}>Estamos generando el informe. El resultado se actualizará automáticamente.</p>
             <UiActionButton to="/accounting/reports" variant="secondary">Volver a reportes</UiActionButton>
           </AccountingEmptyState>
         </div>
@@ -368,7 +386,7 @@ export function AccountingReportsV2Page() {
       return (
         <div className="accounting-shell accounting-reports-page">
           <AccountingEmptyState title="Reporte fallido">
-            <p style={{ marginTop: '0.5rem', color: 'var(--error)' }}>{selectedReport.errorMessage ?? 'Ocurrio un error al generar este reporte.'}</p>
+            <p style={{ marginTop: '0.5rem', color: 'var(--error)' }}>{accountingErrorMessage({ message: selectedReport.errorMessage })}</p>
             <UiActionButton to="/accounting/reports" variant="secondary">Volver a reportes</UiActionButton>
           </AccountingEmptyState>
         </div>

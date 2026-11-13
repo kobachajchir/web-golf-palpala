@@ -1,3 +1,4 @@
+import { accountingErrorMessage } from '../utils/accountingErrors';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { ModalCloseIcon } from '../../../components/ModalCloseIcon';
@@ -51,7 +52,7 @@ function overtimeDateForPeriod(period: string) {
 
 const OVERTIME_STATUS_LABELS: Record<OvertimeEntryStatus, string> = {
   submitted: 'Pendiente de aprobacion',
-  approved: 'Aprobada, pendiente de pago',
+  approved: 'Lista para pagar',
   rejected: 'Rechazada',
   liquidated: 'Pagada',
 };
@@ -256,7 +257,7 @@ export function AccountingEmployeeCyclePage() {
       setOvertimeModalOpen(false);
       await employeePeriod.reload();
     } catch (error) {
-      setOvertimeNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos guardar las horas extra.' });
+      setOvertimeNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setSavingOvertime(false);
     }
@@ -271,7 +272,7 @@ export function AccountingEmployeeCyclePage() {
       setNotice({ kind: 'success', message: 'Horas extra aprobadas. Se incluiran al generar el pago de sueldo o puedes pagarlas ahora.' });
       await employeePeriod.reload();
     } catch (error) {
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos aprobar las horas extra.' });
+      setNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setOvertimeActionId(null);
     }
@@ -299,7 +300,7 @@ export function AccountingEmployeeCyclePage() {
       setPayOvertimeEntryId(null);
       await employeePeriod.reload();
     } catch (error) {
-      setOvertimePaymentNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos registrar el pago de horas extra.' });
+      setOvertimePaymentNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setOvertimeActionId(null);
     }
@@ -319,7 +320,7 @@ export function AccountingEmployeeCyclePage() {
       setNotice({ kind: 'success', message: 'Horas extra rechazadas. Quedan en el historial y no se incluyen en los importes a pagar.' });
       await employeePeriod.reload();
     } catch (error) {
-      setOvertimeRejectionNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos rechazar las horas extra.' });
+      setOvertimeRejectionNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setOvertimeActionId(null);
     }
@@ -357,7 +358,7 @@ export function AccountingEmployeeCyclePage() {
       setSalaryModalOpen(false);
       await employeePeriod.reload();
     } catch (error) {
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos actualizar el sueldo.' });
+      setNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setSavingSalary(false);
     }
@@ -401,7 +402,7 @@ export function AccountingEmployeeCyclePage() {
       setAnnualBonusForm((current) => ({ ...current, notes: '' }));
       await employeePeriod.reload();
     } catch (error) {
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos registrar el aguinaldo.' });
+      setNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setPostingAnnualBonus(false);
     }
@@ -438,7 +439,7 @@ export function AccountingEmployeeCyclePage() {
       await employeePeriod.reload();
     } catch (error) {
       setConfirmPayrollOpen(false);
-      setNotice({ kind: 'error', message: error instanceof Error ? error.message : 'No pudimos postear la liquidacion.' });
+      setNotice({ kind: 'error', message: accountingErrorMessage(error) });
     } finally {
       setPostingPayroll(false);
     }

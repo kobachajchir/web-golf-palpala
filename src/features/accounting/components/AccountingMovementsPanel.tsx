@@ -8,7 +8,7 @@ import { AccountingEmptyState } from './AccountingEmptyState';
 import type { PaymentMethod } from '../types/payment';
 import type { ExpenseCategoryOption, IncomeCategoryOption } from '../utils/accountingCategories';
 import { getCategoryLabel } from '../utils/accountingCategories';
-import { getMovementBalanceRowClassName, isMovementExcludedFromBalance } from '../utils/balanceInclusion';
+import { getMovementBalanceRowClassName, isMovementExcludedFromBalance, movementCountsTowardBalance } from '../utils/balanceInclusion';
 import {
   formatCurrency,
   formatTimestamp,
@@ -166,7 +166,7 @@ function ChevronIcon() {
 }
 
 function MovementSummary({ movements }: { movements: Array<EntityWithId<FinancialMovementDocument>> }) {
-  const posted = movements.filter((movement) => movement.status !== 'voided');
+  const posted = movements.filter((movement) => movementCountsTowardBalance(movement) && movement.installmentRole !== 'charge');
   const resultMovements = posted.filter((movement) => (
     movement.originType !== 'internal_transfer'
     && !isMovementExcludedFromBalance(movement)
@@ -365,7 +365,7 @@ export function AccountingMovementsPanel({
 
   return (
     <div className="accounting-movements-panel">
-      <MovementSummary movements={filteredMovements} />
+      <MovementSummary movements={filteredMovements.map((item) => item.movement)} />
       <section className="floating-card accounting-panel accounting-centered-panel">
         <div className="accounting-section-header">
           <div>

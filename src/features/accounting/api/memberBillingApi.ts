@@ -1,3 +1,4 @@
+import { createMembersRepository } from '../../../modules/users/infrastructure/firestore/repositories';
 import type { AccountingPeriod } from '../../../modules/accounting/domain/models';
 import type { EntityWithId, MemberFeeChargeDocument } from '../../../modules/accounting/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
@@ -18,11 +19,13 @@ function isCharge(charge: EntityWithId<MemberFeeChargeDocument> | null): charge 
 }
 export async function getMemberOpenItems(memberId: string, period?: AccountingPeriod): Promise<OpenItem[]> {
   const repository = createMemberFeeChargesRepository();
-  const [memberCharges, holderCharges] = await Promise.all([
-    repository.listByMember(memberId, 25),
-    repository.listByHolderMember(memberId, 25),
+  const member = await createMembersRepository().getById(memberId);
+  const [memberCharges, holderCharges, groupCharges] = await Promise.all([
+    repository.listAllByMember(memberId),
+    repository.listAllByHolderMember(memberId),
+    member?.familyGroupId ? repository.listAllByFamilyGroup(member.familyGroupId) : Promise.resolve([]),
   ]);
-  const charges = [...new Map([...memberCharges, ...holderCharges].map((charge) => [charge.id, charge])).values()];
+  const charges = [...new Map([...memberCharges, ...holderCharges, ...groupCharges].filter((charge) => charge.memberId === memberId || charge.billingMode === 'single_group_charge').map((charge) => [charge.id, charge])).values()];
   return charges
     .filter((charge) => {
       const isOpen = charge.status === 'pending' || charge.status === 'overdue';
@@ -54,7 +57,7 @@ export async function generateMembershipFee({
 export async function registerManualPayment(request: ManualPaymentRequest): Promise<ManualPaymentReceipt> {
   const repository = createMemberFeeChargesRepository();
   const charges = await Promise.all(request.openItemIds.map((openItemId) => repository.getById(openItemId)));
-  const validCharges = charges.filter(isCharge).filter((charge) => charge.status === 'pending' || charge.status === 'overdue');
+  const validCharges = charges.filter(isCharge);
   const periodAllocations = request.periodAllocations ?? [];
 
   if (validCharges.length === 0 && periodAllocations.length === 0) {
@@ -64,7 +67,7 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
   // La clave pertenece a la operacion de cobro del socio y se persiste hasta que la pantalla
   // confirme el resultado (ver pendingOperationKeys). Reintentos y recargas reutilizan la misma.
   const operationScope = request.operationScope ?? memberFeePaymentOperationScope(request.memberId);
-  const requestKey = getOrCreateOperationKey(operationScope);
+  const requestKey = getOrCreateOperationKey(operationScope, request);
   const result = await accountingCallables.registerMemberFeeBatchPayment({
     allocations: [...validCharges.map((charge) => {
       const amountMinor = request.allocationAmountsByChargeId?.[charge.id];
@@ -96,6 +99,7 @@ export async function registerManualPayment(request: ManualPaymentRequest): Prom
     operationDate: buildArgentinaDateIso(request.paymentDate),
     notes: request.notes?.trim() || null,
     idempotencyKey: requestKey,
+    ...(request.expectedCommissionPctBps !== undefined ? { expectedCommissionPctBps: request.expectedCommissionPctBps } : {}),
   });
 
   return {

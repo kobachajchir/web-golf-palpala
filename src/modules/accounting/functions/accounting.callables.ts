@@ -98,12 +98,23 @@ export type MemberFeePaymentQuoteLine = {
   payableAmountMinor: number;
 };
 
-export type MemberFeePaymentQuote = { lines: MemberFeePaymentQuoteLine[]; totalAmountMinor: number };
+export type MemberFeePaymentQuote = { commissionPctBps?: number; paymentMethodId?: string; lines: MemberFeePaymentQuoteLine[]; totalAmountMinor: number };
+
+export type MemberFeePlanRecoveryResult = {
+  planId: string; memberId: string; memberName: string; effectivePaidAmountMinor: number; capitalAmountMinor: number;
+  complete: boolean; revision: string; applied: boolean;
+  payments: Array<{ id: string; amountMinor: number; receiptNumber: string | null }>;
+  candidates: Array<{ id: string; period: string; status: string; amountMinor: number }>;
+  changes: Array<{ chargeId: string; period: string; before: { status: string; paidAmountMinor: number; remainingAmountMinor: number }; after: { paidAmountMinor: number; remainingAmountMinor: number } }>;
+};
 
 export function createAccountingCallables(functionsInstance?: Functions) {
   const functionsRef = getAccountingFunctions(functionsInstance);
 
   return {
+    async recoverMemberFeePlan(payload: { planId: string; chargeIds?: string[]; execute?: boolean; reason?: string; expectedRevision?: string }) {
+      return (await httpsCallable<typeof payload, MemberFeePlanRecoveryResult>(functionsRef, 'accountingRecoverMemberFeePlan')(payload)).data;
+    },
     async upsertFinancialConfig(payload: UpsertFinancialConfigPayload) {
       return (await httpsCallable<UpsertFinancialConfigPayload, UpsertFinancialConfigResult>(
         functionsRef,
@@ -134,8 +145,18 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.generateCuota,
       )(payload)).data;
     },
-    async previewMemberFeePayment(payload: { memberId: string; periods: string[]; operationDate: string; applyEarlyPaymentDiscount?: boolean }) {
-      return (await httpsCallable<typeof payload, MemberFeePaymentQuote>(functionsRef, 'accountingPreviewMemberFeePayment')(payload)).data;
+    async previewMemberFeePayment(payload: { memberId: string; periods: string[]; operationDate: string; paymentMethodId?: string; applyEarlyPaymentDiscount?: boolean }) {
+      const periods = [...new Set(payload.periods)];
+      if (!periods.length) throw new Error('Seleccioná al menos un período para consultar.');
+      const lines: MemberFeePaymentQuoteLine[] = [];
+      let commissionPctBps: number | undefined;
+      for (let offset = 0; offset < periods.length; offset += 100) {
+        const quote = (await httpsCallable<typeof payload, MemberFeePaymentQuote>(functionsRef, 'accountingPreviewMemberFeePayment')({ ...payload, periods: periods.slice(offset, offset + 100) })).data;
+        if (commissionPctBps !== undefined && quote.commissionPctBps !== commissionPctBps) throw new Error('La comisión cambió. Actualizá los importes antes de confirmar.');
+        commissionPctBps = quote.commissionPctBps;
+        lines.push(...quote.lines);
+      }
+      return { lines, totalAmountMinor: lines.reduce((sum, line) => sum + line.payableAmountMinor, 0), ...(commissionPctBps !== undefined ? { commissionPctBps } : {}) };
     },
     async generateReport(payload: GenerateAccountingReportPayload) {
       return (await httpsCallable<GenerateAccountingReportPayload, GenerateAccountingReportResult>(
@@ -143,6 +164,9 @@ export function createAccountingCallables(functionsInstance?: Functions) {
         ACCOUNTING_CALLABLE_NAMES.generateReport,
         { timeout: 600000 },
       )(payload)).data;
+    },
+    async getOperationStatus(payload: { operationKey: string; kind?: 'partial' | 'fee' }) {
+      return (await httpsCallable<typeof payload, { status: 'completed' | 'unknown'; result: Record<string, unknown> | null }>(functionsRef, 'accountingGetOperationStatus')(payload)).data;
     },
     async registerPayment(payload: RegisterPaymentPayload) {
       return (await httpsCallable<RegisterPaymentPayload, RegisterPaymentResult>(

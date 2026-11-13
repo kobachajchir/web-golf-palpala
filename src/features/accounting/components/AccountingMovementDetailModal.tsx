@@ -1,5 +1,7 @@
+import { SelectionPlaceholder } from '../../../components/SelectionPlaceholder';
+import { accountingErrorMessage } from '../utils/accountingErrors';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import type { EntityWithId, FinancialMovementDocument } from '../../../modules/accounting/domain/models';
+import type { EntityWithId, RegisterInstallmentPaymentPayload, FinancialMovementDocument } from '../../../modules/accounting/domain/models';
 import { createAccountingCallables } from '../../../modules/accounting/functions/accounting.callables';
 import { createFinancialMovementsRepository } from '../../../modules/accounting/infrastructure/firestore/repositories';
 import type { EmployeeDocument, MemberDocument } from '../../../modules/users/domain/models';
@@ -13,9 +15,9 @@ import {
   timestampToDate,
 } from '../utils/accountingFormatters';
 import { getCategoryLabel } from '../utils/accountingCategories';
-import { calculatePaymentCommission, getPaymentMethodDisplayName } from '../utils/paymentMethods';
+import { calculatePaymentCommission, getMovementStatusLabel, getPaymentMethodDisplayName } from '../utils/paymentMethods';
 import { isMovementExcludedFromBalance } from '../utils/balanceInclusion';
-import { getOrCreateOperationKey, installmentPaymentOperationScope, isDefinitiveServerRejection, releaseOperationKey } from '../utils/pendingOperationKeys';
+import { getOrCreateOperationKey, getPendingOperationPayload, peekOperationKey, installmentPaymentOperationScope, isDefinitiveServerRejection, releaseOperationKey } from '../utils/pendingOperationKeys';
 import { AccountingOperationModal } from './AccountingOperationModal';
 import { InstallmentProgress } from './InstallmentProgress';
 import { PaymentCommissionSummary } from './PaymentCommissionSummary';
@@ -110,6 +112,7 @@ export function AccountingMovementDetailModal({
   const [linkedMovements, setLinkedMovements] = useState<Array<EntityWithId<FinancialMovementDocument>>>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [savingInstallment, setSavingInstallment] = useState(false);
+  const [inspectedMovement, setInspectedMovement] = useState<EntityWithId<FinancialMovementDocument> | null>(null);
   const [installmentError, setInstallmentError] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState(paymentMethods[0]?.id ?? '');
   const [paymentReference, setPaymentReference] = useState('');
@@ -163,6 +166,7 @@ export function AccountingMovementDetailModal({
   const completed = Boolean(rootMovement && (isFlexiblePartialPlan
     ? planRemainingAmountMinor === 0
     : (rootMovement.installmentPaidCount ?? 0) >= installmentCount));
+  useEffect(() => { setInspectedMovement(null); }, [rootMovement?.id]);
   const selectedPaymentMethod = paymentMethods.find((method) => method.id === paymentMethodId) ?? null;
   const nextInstallmentIndex = rootMovement?.installmentPaidCount ?? 0;
   const nextSchedule = schedule[nextInstallmentIndex] ?? {};
@@ -202,6 +206,7 @@ export function AccountingMovementDetailModal({
 
   const handleInstallmentSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (savingInstallment) return;
     if (!rootMovement || !paymentMethodId) {
       setInstallmentError('Selecciona un medio de pago.');
       return;
@@ -213,32 +218,31 @@ export function AccountingMovementDetailModal({
     setSavingInstallment(true);
     setInstallmentError('');
     const operationScope = installmentPaymentOperationScope(rootMovement.id);
-    const operationKey = getOrCreateOperationKey(operationScope);
+    let operationKey: string | null = null;
     try {
-      await accountingCallables.registerInstallmentPayment({
-        idempotencyKey: operationKey,
+      const payload = {
         installmentPlanId: rootMovement.id,
         paymentMethodId,
         operationDate: buildArgentinaDateIso(todayInputValue()),
         ...(isFlexiblePartialPlan ? { amountMinor: parsedPartialAmountMinor } : {}),
         paymentReference: paymentReference.trim() || null,
         notes: paymentNotes.trim() || null,
-      });
+      };
+      operationKey = getOrCreateOperationKey(operationScope, payload);
+      await accountingCallables.registerInstallmentPayment({ ...payload, idempotencyKey: operationKey });
       releaseOperationKey(operationScope, operationKey);
       setPaymentReference('');
       setPaymentNotes('');
       await Promise.all([loadPlan(), Promise.resolve(onChanged?.())]);
     } catch (error) {
-      if (isDefinitiveServerRejection(error)) releaseOperationKey(operationScope, operationKey);
-      setInstallmentError(error instanceof Error ? error.message : 'No pudimos registrar la cuota.');
+      if (operationKey && isDefinitiveServerRejection(error)) releaseOperationKey(operationScope, operationKey);
+      setInstallmentError(accountingErrorMessage(error));
     } finally {
       setSavingInstallment(false);
     }
   };
 
-  return (
-    <AccountingOperationModal title="Detalle del movimiento" onClose={onClose}>
-      <section className="accounting-movement-detail">
+  const renderMovementDetails = (movement: EntityWithId<FinancialMovementDocument>) => <div className="accounting-movement-detail">
         {isMovementExcludedFromBalance(movement) && (
           <div className="profile-note accounting-balance-exclusion-note">
             Este movimiento esta visible para auditoria, pero no se cuenta en el balance.
@@ -284,8 +288,13 @@ export function AccountingMovementDetailModal({
           />
         )}
 
-        {rootMovement && (
-          <section className="accounting-installment-detail">
+  </div>;
+
+  return (
+    <AccountingOperationModal title="Detalle del movimiento" onClose={onClose}>
+      <section className={rootMovement ? 'accounting-master-detail master-detail-layout' : 'accounting-movement-detail'}>
+        {rootMovement ? (<>
+          <section className="accounting-installment-detail master-detail-list">
             <div className="accounting-section-header accounting-section-header--plain">
               <div>
                 <p className="eyebrow">{isFlexiblePartialPlan ? 'Pagos parciales' : 'Cuotas'}</p>
@@ -293,7 +302,6 @@ export function AccountingMovementDetailModal({
               </div>
               <strong>{isFlexiblePartialPlan ? `${formatCurrency(planRemainingAmountMinor)} pendientes` : `${rootMovement.installmentPaidCount ?? 0} de ${installmentCount} pagadas`}</strong>
             </div>
-            {!isFlexiblePartialPlan && <InstallmentProgress movement={rootMovement} />}
             <dl className="description-list accounting-installment-summary">
               <div><dt>Importe base</dt><dd>{formatCurrency(rootMovement.installmentBaseAmountMinor ?? 0)}</dd></div>
               <div><dt>Interes total</dt><dd>{((rootMovement.installmentInterestPctBps ?? 0) / 100).toFixed(2)}% - {formatCurrency(rootMovement.installmentInterestAmountMinor ?? 0)}</dd></div>
@@ -303,59 +311,53 @@ export function AccountingMovementDetailModal({
               <div><dt>Total</dt><dd>{formatCurrency(rootMovement.installmentTotalAmountMinor ?? rootMovement.netAmountMinor)}</dd></div>
             </dl>
 
-            <div className="accounting-table-wrap">
-              <table className="accounting-data-table accounting-installment-table">
-                <thead><tr><th>Item</th><th>Periodo</th><th>Interes</th><th>Medio</th><th>Estado</th><th>Monto</th><th>Accion</th></tr></thead>
-                <tbody>
-                  <tr>
-                    <td><span className="status-chip status-chip--charge">CARGA</span></td>
-                    <td>{rootMovement.accountingPeriod}</td>
-                    <td>{formatCurrency(rootMovement.installmentInterestAmountMinor ?? 0)}</td>
-                    <td>Sin medio</td>
-                    <td><span className={`status-chip status-chip--${completed ? 'paid' : 'pending'}`}>{completed ? 'Completa' : 'Pendiente'}</span></td>
-                    <td>{formatCurrency(rootMovement.installmentTotalAmountMinor ?? rootMovement.netAmountMinor)}</td>
-                    <td><button type="button" className="btn-secondary" onClick={() => onSelectMovement?.(rootMovement)}>Ver movimiento</button></td>
-                  </tr>
-                  {isFlexiblePartialPlan && paidInstallments.map((payment, index) => (
-                    <tr key={payment.id}>
-                      <td><strong>Pago {index + 1}</strong></td>
-                      <td>{payment.accountingPeriod}</td>
-                      <td>{formatCurrency(typeof payment.metadata?.monthlyInterestAmountMinor === 'number' ? payment.metadata.monthlyInterestAmountMinor : 0)}</td>
-                      <td>{getPaymentMethodDisplayName(payment.paymentMethodCodeSnapshot)}</td>
-                      <td><span className="status-chip status-chip--paid">Registrado</span></td>
-                      <td>{formatCurrency(payment.installmentScheduledAmountMinor ?? payment.netAmountMinor)}</td>
-                      <td><button type="button" className="btn-secondary" onClick={() => onSelectMovement?.(payment)}>Ver movimiento</button></td>
-                    </tr>
-                  ))}
-                  {!isFlexiblePartialPlan && Array.from({ length: installmentCount }, (_, index) => {
-                    const installmentNumber = index + 1;
-                    const payment = paidInstallments.find((entry) => entry.installmentNumber === installmentNumber) ?? null;
-                    const scheduled = schedule[index] ?? {};
-                    const amountMinor = typeof scheduled.amountMinor === 'number'
-                      ? scheduled.amountMinor
-                      : payment?.installmentScheduledAmountMinor ?? 0;
-                    const interestMinor = typeof scheduled.interestAmountMinor === 'number'
-                      ? scheduled.interestAmountMinor
-                      : typeof payment?.metadata?.monthlyInterestAmountMinor === 'number'
-                        ? payment.metadata.monthlyInterestAmountMinor
-                        : 0;
-                    return (
-                      <tr key={installmentNumber}>
-                        <td><strong>Cuota {installmentNumber}/{installmentCount}</strong></td>
-                        <td>{formatPeriod(scheduled.period)}</td>
-                        <td>{formatCurrency(interestMinor)}</td>
-                        <td>{payment ? getPaymentMethodDisplayName(payment.paymentMethodCodeSnapshot) : 'A definir'}</td>
-                        <td><span className={`status-chip status-chip--${payment ? 'paid' : 'pending'}`}>{payment ? 'Pagada' : 'Pendiente'}</span></td>
-                        <td>{formatCurrency(amountMinor)}</td>
-                        <td>{payment ? <button type="button" className="btn-secondary" onClick={() => onSelectMovement?.(payment)}>Ver movimiento</button> : 'Sin movimiento'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="master-detail-list" aria-label="Pagos del plan">
+              <button type="button" className={`master-detail-item ${inspectedMovement?.id === rootMovement.id ? 'master-detail-item--selected' : ''}`} aria-pressed={inspectedMovement?.id === rootMovement.id} onClick={() => setInspectedMovement(rootMovement)}>
+                <strong>Plan de pagos</strong><span>Total {formatCurrency(planTotalAmountMinor)}</span><small>{completed ? 'Completado' : 'Con saldo pendiente'}</small>
+              </button>
+              {linkedMovements.filter((item) => item.installmentRole === 'payment').sort((a, b) => (a.installmentNumber ?? 0) - (b.installmentNumber ?? 0)).map((payment, index) => <button type="button" key={payment.id} className={`master-detail-item ${inspectedMovement?.id === payment.id ? 'master-detail-item--selected' : ''}`} aria-pressed={inspectedMovement?.id === payment.id} onClick={() => setInspectedMovement(payment)}>
+                <strong>Abono {index + 1} · {formatCurrency(payment.netAmountMinor)}</strong>
+                <span>{formatMovementDateTime(payment.operationDate)} · {getPaymentMethodDisplayName(payment.paymentMethodCodeSnapshot)}</span>
+                <small>{getMovementStatusLabel(payment.status)}{typeof payment.metadata?.receiptNumber === 'string' ? ` · ${payment.metadata.receiptNumber}` : ''}</small>
+              </button>)}
+              {paidInstallments.length === 0 && <p>Todavía no se registraron abonos.</p>}
+              {!isFlexiblePartialPlan && <p>{Math.max(installmentCount - paidInstallments.length, 0)} cuotas del cronograma pendientes.</p>}
             </div>
 
-            {!completed && (
+            {rootMovement.categoryCodeSnapshot === 'cuota_societaria' && !Array.isArray(rootMovement.metadata?.memberFeeRenewalAllocations) && <div className="profile-note" role="status">Este plan antiguo todavía no identifica las cuotas cubiertas. Sus abonos se conservan; la asociación por comprobantes está disponible en <a href="/accounting/member-dues?tab=reconciliation">Sincronización de cuotas</a>. No se cancelarán meses por la fecha del pago.</div>}
+            {!completed && (<>
+              {rootMovement && peekOperationKey(installmentPaymentOperationScope(rootMovement.id)) && <button type="button" className="btn-secondary" disabled={savingInstallment} onClick={async () => {
+                const scope = installmentPaymentOperationScope(rootMovement.id);
+                const key = peekOperationKey(scope);
+                if (!key) return;
+                setSavingInstallment(true);
+                try {
+                  const status = await accountingCallables.getOperationStatus({ operationKey: key, kind: 'partial' });
+                  if (status.status === 'completed') {
+                    releaseOperationKey(scope, key);
+                    setInstallmentError('Este abono ya estaba registrado. No se generó otro movimiento.');
+                    await loadPlan();
+                  } else {
+                    setInstallmentError('Todavía no pudimos confirmar el resultado. Reintentá el mismo abono conservando los datos.');
+                  }
+                } catch (error) { setInstallmentError(accountingErrorMessage(error)); }
+                finally { setSavingInstallment(false); }
+              }}>Consultar estado del abono</button>}
+              {rootMovement && getPendingOperationPayload<RegisterInstallmentPaymentPayload>(installmentPaymentOperationScope(rootMovement.id)) && <button type="button" className="btn-secondary" disabled={savingInstallment} onClick={async () => {
+                const scope = installmentPaymentOperationScope(rootMovement.id);
+                const key = peekOperationKey(scope);
+                const original = getPendingOperationPayload<RegisterInstallmentPaymentPayload>(scope);
+                if (!key || !original) return;
+                setSavingInstallment(true);
+                try {
+                  await accountingCallables.registerInstallmentPayment({ ...original, idempotencyKey: key });
+                  releaseOperationKey(scope, key);
+                  setInstallmentError('Abono confirmado con los datos originales. No se duplicó el movimiento.');
+                  await loadPlan();
+                  await Promise.resolve(onChanged?.());
+                } catch (error) { setInstallmentError(accountingErrorMessage(error)); }
+                finally { setSavingInstallment(false); }
+              }}>Reintentar el abono original</button>}
               <form ref={paymentFormRef} className="accounting-entry-form accounting-installment-payment-form" onSubmit={handleInstallmentSubmit}>
                 <div className="accounting-section-header accounting-section-header--plain form-field--wide">
                   <div><p className="eyebrow">{isFlexiblePartialPlan ? 'Nuevo pago parcial' : 'Siguiente cuota'}</p><h4>{isFlexiblePartialPlan ? 'Registrar pago' : `Registrar cuota ${(rootMovement.installmentPaidCount ?? 0) + 1}`}</h4></div>
@@ -382,16 +384,20 @@ export function AccountingMovementDetailModal({
                     breakdown={selectedPaymentMethod.activeCommissionBreakdown ?? []}
                   />
                 )}
-                {installmentError && <div className="error-message form-field--wide">{installmentError}</div>}
+                {installmentError && <div className="error-message form-field--wide" role="alert" tabIndex={-1}>{installmentError}</div>}
                 <div className="form-actions form-actions--right form-field--wide">
                   <button type="submit" className="btn-primary" disabled={savingInstallment || loadingPlan || !paymentMethodId}>
                     {savingInstallment ? 'Registrando...' : isFlexiblePartialPlan ? 'Registrar pago parcial' : 'Registrar cuota'}
                   </button>
                 </div>
               </form>
-            )}
+            </>)}
           </section>
-        )}
+          <aside className="master-detail-preview" aria-label="Movimiento asociado" aria-live="polite">
+            <InstallmentProgress movement={rootMovement} />
+            {inspectedMovement ? renderMovementDetails(linkedMovements.find((item) => item.id === inspectedMovement.id) ?? inspectedMovement) : <SelectionPlaceholder title="Todavía no seleccionaste un movimiento">Seleccioná un pago de la izquierda para ver el movimiento asociado acá.</SelectionPlaceholder>}
+          </aside>
+        </>) : renderMovementDetails(movement)}
       </section>
     </AccountingOperationModal>
   );

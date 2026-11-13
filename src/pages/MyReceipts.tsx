@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AccountingOperationModal } from '../features/accounting/components/AccountingOperationModal';
+import { SelectionPlaceholder } from '../components/SelectionPlaceholder';
+import { accountingErrorMessage } from '../features/accounting/utils/accountingErrors';
 import { PaymentCommissionSummary } from '../features/accounting/components/PaymentCommissionSummary';
 import { formatCurrency } from '../features/accounting/utils/accountingFormatters';
 import { getCategoryLabel } from '../features/accounting/utils/accountingCategories';
@@ -42,7 +43,7 @@ export function MyReceipts() {
       })
       .catch((reason) => {
         if (active) {
-          setError(reason instanceof Error ? reason.message : 'No pudimos cargar tus recibos.');
+          setError(accountingErrorMessage(reason));
         }
       })
       .finally(() => {
@@ -56,7 +57,7 @@ export function MyReceipts() {
   }, []);
 
   const totalReceivedMinor = useMemo(
-    () => receipts.reduce((total, receipt) => total + receipt.grossAmountMinor, 0),
+    () => receipts.filter((receipt) => receipt.status === 'posted').reduce((total, receipt) => total + receipt.grossAmountMinor, 0),
     [receipts],
   );
 
@@ -70,51 +71,25 @@ export function MyReceipts() {
         </div>
         <div className="accounting-hero__actions">
           <div className="accounting-hero__summary">
-            <span>{receipts.length} comprobantes</span>
+            <span>{receipts.length} comprobantes</span><small>Total de pagos vigentes</small>
             <strong>{formatCurrency(totalReceivedMinor)}</strong>
           </div>
         </div>
       </section>
 
-      <section className="floating-card accounting-full-width-section">
-        <div className="accounting-section-header accounting-section-header--plain">
-          <div>
-            <p className="eyebrow">Historial</p>
-            <h2>Recibos emitidos a tu nombre</h2>
-          </div>
-        </div>
-
-        {loading && <div className="accounting-empty-state">Cargando comprobantes...</div>}
-        {error && <div className="error-message">{error}</div>}
-        {!loading && !error && receipts.length === 0 && (
-          <div className="accounting-empty-state">Todavia no hay recibos emitidos a tu nombre.</div>
-        )}
-        {!loading && receipts.length > 0 && (
-          <div className="accounting-table-wrap">
-            <table className="accounting-data-table my-receipts-table">
-              <thead>
-                <tr><th>Recibo</th><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Estado</th><th>Total pagado</th><th>Accion</th></tr>
-              </thead>
-              <tbody>
-                {receipts.map((receipt) => (
-                  <tr key={receipt.id}>
-                    <td data-label="Recibo"><strong>{receipt.receiptNumber}</strong></td>
-                    <td data-label="Fecha">{formatReceiptDate(receipt.operationDate)}</td>
-                    <td data-label="Concepto">{receipt.concept || getCategoryLabel(receipt.categoryId)}</td>
-                    <td data-label="Medio">{getPaymentMethodDisplayName(receipt.paymentMethodId)}</td>
-                    <td data-label="Estado"><span className="status-chip status-chip--paid">{getMovementStatusLabel(receipt.status)}</span></td>
-                    <td data-label="Total pagado"><strong>{formatCurrency(receipt.grossAmountMinor)}</strong></td>
-                    <td data-label="Accion"><button type="button" className="btn-secondary" onClick={() => setSelectedReceipt(receipt)}>Ver detalle</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="master-detail-layout">
+      <section className="floating-card accounting-panel master-detail-list">
+        <h2>Historial de recibos</h2>
+        {loading && <p role="status">Cargando comprobantes…</p>}
+        {error && <div className="error-message" role="alert">{error}</div>}
+        {!loading && !error && receipts.length === 0 && <p>Todavía no hay recibos emitidos a tu nombre.</p>}
+        {receipts.map((receipt) => <button type="button" key={receipt.id} className={`master-detail-item ${selectedReceipt?.id === receipt.id ? 'master-detail-item--selected' : ''}`} aria-pressed={selectedReceipt?.id === receipt.id} onClick={() => setSelectedReceipt(receipt)}>
+          <strong>{receipt.receiptNumber}</strong><span>{receipt.concept || getCategoryLabel(receipt.categoryId)}</span><small>{formatReceiptDate(receipt.operationDate)}</small><strong>{formatCurrency(receipt.grossAmountMinor)}</strong>
+        </button>)}
       </section>
-
-      {selectedReceipt && (
-        <AccountingOperationModal title="Detalle del recibo" onClose={() => setSelectedReceipt(null)}>
+      <aside className="floating-card accounting-panel master-detail-preview" aria-label="Detalle del recibo">
+      {selectedReceipt ? (
+        <>
           <section className="accounting-movement-detail my-receipt-detail">
             <div className="accounting-movement-detail__hero accounting-movement-detail__hero--income">
               <span>Recibo {selectedReceipt.receiptNumber}</span>
@@ -140,8 +115,9 @@ export function MyReceipts() {
               />
             )}
           </section>
-        </AccountingOperationModal>
-      )}
+        </>
+      ) : <SelectionPlaceholder title="Todavía no seleccionaste un recibo">Elegí un comprobante de la lista para ver su detalle acá.</SelectionPlaceholder>}
+      </aside></div>
     </div>
   );
 }

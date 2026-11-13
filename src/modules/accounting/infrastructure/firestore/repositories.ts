@@ -6,12 +6,16 @@ import {
   getDocs,
   limit,
   orderBy,
+  startAfter,
+  documentId,
   query,
   where,
   type CollectionReference,
   type DocumentData,
   type Firestore,
   type Query,
+  type QueryDocumentSnapshot,
+  type QuerySnapshot,
 } from 'firebase/firestore';
 import { firestore } from '../../../../lib/firebase';
 import {
@@ -62,6 +66,16 @@ function createRepository<T extends DocumentData>(db: Firestore, path: string) {
     async listByQuery(queryRef: Query<T>): Promise<Array<EntityWithId<T>>> {
       const snapshot = await getDocs(queryRef);
       return snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as EntityWithId<T>);
+    },
+    async listAllByQuery(queryRef: Query<T>): Promise<Array<EntityWithId<T>>> {
+      const items: Array<EntityWithId<T>> = [];
+      let cursor: QueryDocumentSnapshot<T> | undefined;
+      do {
+        const page: QuerySnapshot<T> = await getDocs(query(queryRef, orderBy(documentId()), ...(cursor ? [startAfter(cursor)] : []), limit(100)));
+        items.push(...page.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as EntityWithId<T>));
+        cursor = page.size === 100 ? page.docs.at(-1) : undefined;
+      } while (cursor);
+      return items;
     },
     async countByQuery(queryRef: Query<T>): Promise<number> {
       return (await getCountFromServer(queryRef)).data().count;
@@ -387,6 +401,15 @@ export function createMemberFeeChargesRepository(db: Firestore = requireFirestor
         ),
       );
       return sortByPeriodDesc(items);
+    },
+    async listAllByFamilyGroup(familyGroupId: string) {
+      return sortByPeriodDesc(await repository.listAllByQuery(query(repository.collectionRef, where('familyGroupId', '==', familyGroupId))));
+    },
+    async listAllByMember(memberId: string) {
+      return sortByPeriodDesc(await repository.listAllByQuery(query(repository.collectionRef, where('memberId', '==', memberId))));
+    },
+    async listAllByHolderMember(memberId: string) {
+      return sortByPeriodDesc(await repository.listAllByQuery(query(repository.collectionRef, where('holderMemberId', '==', memberId))));
     },
     async listByMember(memberId: string, pageSize = 12) {
       const items = await repository.listByQuery(

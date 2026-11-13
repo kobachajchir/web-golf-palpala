@@ -5,6 +5,9 @@ import {
   getDocs,
   limit,
   orderBy,
+  startAfter,
+  type QueryDocumentSnapshot,
+  type DocumentData,
   query,
   where,
   type Firestore,
@@ -326,29 +329,33 @@ export async function generateReport(payload: GenerateAccountingReportPayload | 
   return result.reportId;
 }
 
+function readableReport(data: AccountingReportHistoryDocument): AccountingReportHistoryDocument {
+  return { ...data, title: data.title?.trim() || 'Reporte histórico sin nombre', status: data.status ?? 'generated', scope: data.scope ?? 'period', summary: data.summary ?? { incomeTotalMinor: Number.NaN, expenseTotalMinor: Number.NaN, netTotalMinor: Number.NaN, movementCount: 0, feePendingMinor: 0, salaryTotalMinor: 0 } };
+}
+
 export async function listReportHistory() {
   const db = requireFirestore();
-  const snapshot = await getDocs(
-    query(collection(db, ACCOUNTING_REPORTS_COLLECTION), orderBy('generatedAt', 'desc'), limit(30)),
-  );
-
-  return snapshot.docs.map((entry) => ({
-    id: entry.id,
-    ...(entry.data() as AccountingReportHistoryDocument),
-  }));
+  const reports: Array<AccountingReportHistoryDocument & { id: string }> = [];
+  let cursor: QueryDocumentSnapshot<DocumentData> | undefined;
+  do {
+    const snapshot = await getDocs(query(collection(db, ACCOUNTING_REPORTS_COLLECTION), orderBy('generatedAt', 'desc'), ...(cursor ? [startAfter(cursor)] : []), limit(100)));
+    reports.push(...snapshot.docs.map((entry) => ({ id: entry.id, ...readableReport(entry.data() as AccountingReportHistoryDocument) })));
+    cursor = snapshot.size === 100 ? snapshot.docs.at(-1) : undefined;
+  } while (cursor);
+  return reports;
 }
 
 export async function getReportHistoryItem(reportId: string) {
   const db = requireFirestore();
   const snapshot = await getDoc(doc(db, ACCOUNTING_REPORTS_COLLECTION, reportId));
   if (!snapshot.exists()) return null;
-  const report = snapshot.data() as AccountingReportHistoryDocument;
+  const report = readableReport(snapshot.data() as AccountingReportHistoryDocument);
   const chunkSnapshot = report.schemaVersion === 2
     ? await getDocs(query(collection(db, ACCOUNTING_REPORTS_COLLECTION, reportId, 'chunks'), orderBy('index', 'asc')))
     : null;
   const detailRows = chunkSnapshot?.docs.flatMap((entry) => (
     (entry.data().rows ?? []) as AccountingReportDetailRow[]
-  )) ?? [];
+  )) ?? report.detailRows ?? [];
   return { id: snapshot.id, ...report, detailRows };
 }
 

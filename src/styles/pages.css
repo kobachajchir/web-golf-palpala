@@ -12573,3 +12573,84 @@ body,
     justify-self: start;
   }
 }
+
+
+/* Shared list/detail layout for payments, receipts and empty selections. */
+.master-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.master-detail-layout > *, .manual-income-two-column > * { min-width: 0; }
+.master-detail-list { display: grid; gap: 12px; align-content: start; }
+.master-detail-preview { position: sticky; top: 16px; min-height: 280px; padding: 24px; border: 1px solid var(--line); border-radius: 12px; }
+.master-detail-item { display: grid; gap: 8px; width: 100%; text-align: left; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--field-bg); color: var(--text); cursor: pointer; }
+.master-detail-item--selected { border-color: #176747; box-shadow: inset 4px 0 #176747; background: #edf7f1; color: #173e30; }
+.selection-placeholder { display: grid; justify-items: center; align-content: center; gap: 16px; min-height: 260px; padding: 32px 20px; text-align: center; color: var(--muted); }
+.selection-placeholder svg { width: 60px; height: 60px; color: #487a67; }
+.selection-placeholder h3 { margin: 0; color: var(--text); font-size: 18px; line-height: 1.4; }
+.selection-placeholder p { margin: 0; max-width: 36ch; line-height: 1.6; }
+.accounting-operation-modal:has(.accounting-master-detail), .accounting-operation-modal:has(.manual-income-fees-column) { width: min(1200px, calc(100vw - 48px)); }
+.accounting-operation-modal, .accounting-operation-modal form, .accounting-operation-modal fieldset { box-sizing: border-box; min-width: 0; }
+.accounting-operation-modal fieldset > legend.sr-only { padding: 0; width: 1px; border: 0; }
+.accounting-installment-detail .accounting-installment-table { min-width: 0; }
+.accounting-installment-detail .accounting-installment-table th, .accounting-installment-detail .accounting-installment-table td { padding: 10px 8px; }
+.accounting-master-detail .master-detail-preview > .accounting-installment-progress { margin-bottom: 24px; }
+.accounting-installment-progress__labels { flex-wrap: wrap; gap: 8px; }
+.accounting-installment-progress__labels small { line-height: 1.5; }
+.my-receipts-page .accounting-hero__summary { display: grid; gap: 12px; padding: 20px 24px; min-width: 160px; border: 1px solid var(--line); border-radius: 12px; }
+.my-receipts-page .accounting-hero__summary strong { font-size: 26px; line-height: 1.2; }
+.manual-income-composer-fieldset.accounting-entry-form { display: block; width: 100%; }
+.manual-income-two-column { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+.manual-income-two-column:has(> .manual-income-fees-column) { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); column-gap: 28px; }
+.manual-income-identity, .manual-income-payment { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.manual-income-identity { grid-column: 1; grid-row: 1; }
+.manual-income-payment { grid-column: 1; grid-row: 2; }
+.manual-income-fees-column { grid-column: 2; grid-row: 1 / span 2; display: grid; gap: 16px; padding-left: 24px; border-left: 1px solid var(--line); }
+.manual-income-fees-column h3, .manual-income-payment h3 { margin: 0; }
+.manual-income-two-column input, .manual-income-two-column select, .manual-income-two-column textarea { box-sizing: border-box; max-width: 100%; min-width: 0; }
+.manual-income-two-column .manual-income-fee-detail, .manual-income-two-column .form-field { min-width: 0; }
+.manual-income-fees-column .renewal-payment-line { position: relative; }
+.fee-remove-month { justify-self: end; border: 0; border-radius: 6px; padding: 8px 12px; background: #f4eee7; color: #744323; font-weight: 700; cursor: pointer; }
+.fee-remove-month:hover { background: #eadecf; }
+.notifications-card { --text: #1c3d33; --muted: #526b63; --primary-dark: #18533b; --field-bg: #fff; --surface-soft: #eaf4ef; --line: #cbded6; color: var(--text); }
+.notifications-card .notification-tab { color: #18533b; background: #fff; border-color: #9bbbae; }
+.notifications-card .notification-tab--active { background: #176747; color: #fff; border-color: #176747; }
+.notifications-card .search-collapse__trigger, .notifications-card .search-collapse__title strong { color: #1c3d33; }
+.notifications-card .search-collapse__title small { color: #526b63; }
+.notifications-card .notification-row { color: #1c3d33; background: #fff; }
+.notifications-card .notification-row--active { background: #eaf4ef; box-shadow: inset 4px 0 #176747; }
+.notifications-card .notification-detail { color: #1c3d33; background: #fff; }
+.notifications-card .notification-detail h2, .notifications-card .notification-detail h3 { color: #18533b; }
+.master-detail-item:focus-visible, .fee-remove-month:focus-visible, .notification-tab:focus-visible { outline: 3px solid #bd8a1f; outline-offset: 3px; }
+@media (max-width: 900px) {
+  .master-detail-layout, .manual-income-two-column:has(> .manual-income-fees-column) { grid-template-columns: minmax(0, 1fr); }
+  .master-detail-preview { position: static; }
+  .manual-income-identity, .manual-income-payment, .manual-income-fees-column { grid-column: 1; grid-row: auto; }
+  .manual-income-fees-column { padding-left: 0; border-left: 0; }
+}
+@media (max-width: 520px) {
+  .accounting-operation-modal:has(.accounting-master-detail), .accounting-operation-modal:has(.manual-income-fees-column) { width: calc(100vw - 24px); padding: 16px; }
+  .manual-income-identity, .manual-income-payment { grid-template-columns: minmax(0, 1fr); }
+  .manual-income-two-column .form-field--wide { grid-column: 1; }
+  .master-detail-preview { padding: 16px; }
+  .notifications-card .notification-row { grid-template-columns: 10px minmax(0, 1fr); }
+  .notifications-card .notification-row__meta { grid-column: 2; }
+}
+
+.notifications-card { background: #f7fbf8; padding: 24px; }
+.my-receipts-page .floating-card { --text: #1c3d33; --muted: #526b63; --field-bg: #fff; --line: #cbded6; color: var(--text); background: #fff; }
+.my-receipts-page .accounting-hero__summary { color: #1c3d33; background: #edf6f1; }
+
+.member-modal-card.quick-actions-modal.accounting-operation-modal:has(.manual-income-fees-column),
+.member-modal-card.quick-actions-modal.accounting-operation-modal:has(.accounting-master-detail) { width: min(1200px, calc(100vw - 48px)); max-width: 1200px; }
+.manual-income-identity > .form-field--wide, .manual-income-payment > .form-field--wide { grid-column: 1 / -1; }
+.manual-income-payment > .accounting-payment-account-selector { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; min-width: 0; }
+.manual-income-payment .accounting-payment-account-selector__item { width: 100%; min-width: 0; padding: 12px; overflow-wrap: anywhere; }
+.manual-income-identity > .profile-note { margin: 0; }
+@media (max-width: 520px) {
+  .member-modal-card.quick-actions-modal.accounting-operation-modal:has(.manual-income-fees-column),
+  .member-modal-card.quick-actions-modal.accounting-operation-modal:has(.accounting-master-detail) { width: calc(100vw - 24px); padding: 16px; }
+  .manual-income-payment > .accounting-payment-account-selector { grid-template-columns: minmax(0, 1fr); }
+}

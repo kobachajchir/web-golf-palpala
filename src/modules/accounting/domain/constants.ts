@@ -96,6 +96,7 @@ export const ACCOUNTING_INCOME_CATEGORY_IDS = {
 
 export const ACCOUNTING_EXPENSE_CATEGORY_IDS = {
   sueldo: 'sueldo',
+  aguinaldo: 'aguinaldo',
   f931: 'f931',
   obraSocial: 'obra_social',
   art: 'art',

@@ -1,3 +1,4 @@
+import { accountingErrorMessage } from '../utils/accountingErrors';
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { limit as firestoreLimit, query, where } from 'firebase/firestore';
 import { useSearchParams } from 'react-router-dom';
@@ -1229,6 +1230,18 @@ export function AccountingCashPage() {
   const [aagPaymentMethodId, setAagPaymentMethodId] = useState('');
   const [transferringAag, setTransferringAag] = useState(false);
   const [loading, setLoading] = useState(true);
+  const requestedMovementId = searchParams.get('movementId');
+  useEffect(() => {
+    if (!requestedMovementId) return;
+    let active = true;
+    void createFinancialMovementsRepository().getById(requestedMovementId).then((movement) => {
+      if (!active) return;
+      if (!movement) { setNotice({ kind: 'error', message: 'No encontramos el movimiento solicitado.' }); return; }
+      setMovementDetailAction('details');
+      setSelectedMovement(movement);
+    }).catch((error) => { if (active) setNotice({ kind: 'error', message: accountingErrorMessage(error) }); });
+    return () => { active = false; };
+  }, [requestedMovementId]);
   const isCurrentPeriod = period === currentAccountingPeriod;
   const isHistoricalPeriod = period < currentAccountingPeriod;
 
@@ -1383,7 +1396,8 @@ export function AccountingCashPage() {
   const todayIncomeMovements = movements.filter(
     (movement) => movement.movementType === 'income'
       && movement.originType !== 'internal_transfer'
-      && movement.status !== 'voided'
+      && movementCountsTowardBalance(movement)
+      && movement.installmentRole !== 'charge'
       && getMovementDayKey(movement) === todayKey,
   );
   const todayIncomeTotalMinor = todayIncomeMovements
@@ -1392,7 +1406,8 @@ export function AccountingCashPage() {
   const todayExpenseMovements = movements.filter(
     (movement) => movement.movementType === 'expense'
       && movement.originType !== 'internal_transfer'
-      && movement.status !== 'voided'
+      && movementCountsTowardBalance(movement)
+      && movement.installmentRole !== 'charge'
       && getMovementDayKey(movement) === todayKey,
   );
   const todayExpenseTotalMinor = todayExpenseMovements
@@ -1701,10 +1716,7 @@ export function AccountingCashPage() {
             showHeader={false}
             categoryFilterIds={[ACCOUNTING_INCOME_CATEGORY_IDS.greenFee, ACCOUNTING_INCOME_CATEGORY_IDS.cuotaSocietaria]}
             onNotice={setNotice}
-            onRegistered={async () => {
-              closeOperationModal();
-              await load();
-            }}
+            onRegistered={load}
             showMemberDebtAction={false}
           />
         </AccountingOperationModal>
@@ -1721,10 +1733,7 @@ export function AccountingCashPage() {
             excludeCategoryIds={[ACCOUNTING_INCOME_CATEGORY_IDS.greenFee, ACCOUNTING_INCOME_CATEGORY_IDS.cuotaSocietaria]}
             showPeriodControls
             onNotice={setNotice}
-            onRegistered={async () => {
-              closeOperationModal();
-              await load();
-            }}
+            onRegistered={load}
             showMemberDebtAction={false}
           />
         </AccountingOperationModal>

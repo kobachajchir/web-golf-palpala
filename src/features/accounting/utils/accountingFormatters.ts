@@ -18,11 +18,13 @@ export function shiftAccountingPeriod(period: AccountingPeriod, deltaMonths: num
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` as AccountingPeriod;
 }
 
-export function formatCurrency(amountMinor: number): string {
+export function formatCurrency(amountMinor: number | null | undefined): string {
+  if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor)) return 'No disponible';
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
     currency: 'ARS',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: amountMinor % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
   }).format(amountMinor / 100);
 }
 
@@ -39,22 +41,22 @@ export function parseAmountInputToMinor(value: string): number {
   if (!trimmed.includes(',') && /^-?\d+\.\d{1,2}$/.test(trimmed)) {
     return parseNumberInputToMinor(trimmed);
   }
+  if (!/^-?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(trimmed)) return Number.NaN;
   const normalized = trimmed.replaceAll('.', '').replace(',', '.');
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
-    return Number.NaN;
-  }
   const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NaN;
+  const minor = Math.round(parsed * 100);
+  return Number.isSafeInteger(minor) ? minor : Number.NaN;
 }
 
 /** Lee el valor de un <input type="number">: punto decimal, sin separador de miles. */
 export function parseNumberInputToMinor(value: string): number {
   const trimmed = value.trim();
-  if (!trimmed || !/^-?\d+(\.\d+)?$/.test(trimmed)) {
+  if (!trimmed || !/^-?\d+(\.\d{1,2})?$/.test(trimmed)) {
     return Number.NaN;
   }
   const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NaN;
+  const minor = Math.round(parsed * 100);
+  return Number.isSafeInteger(minor) ? minor : Number.NaN;
 }
 
 export function formatPeriod(period: string): string {

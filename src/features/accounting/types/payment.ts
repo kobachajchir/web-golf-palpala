@@ -22,6 +22,7 @@ export type OpenItem = {
 export type PaymentMethod = PaymentMethodDocument & { id: DocId };
 
 export type ManualPaymentRequest = {
+  expectedCommissionPctBps?: number | undefined;
   memberId: string;
   openItemIds: string[];
   paymentMethodId: string;

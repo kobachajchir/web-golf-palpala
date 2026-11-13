@@ -45,9 +45,9 @@ export function InstallmentProgress({ movement, compact = false }: {
     <div className={`accounting-installment-progress ${compact ? 'accounting-installment-progress--compact' : ''}`}>
       <div className="accounting-installment-progress__labels">
         <span>{progress.percentage}% pagado</span>
-        {!compact && <small>{formatCurrency(progress.paidAmountMinor)} de {formatCurrency(progress.totalAmountMinor)}</small>}
+        {!compact && <small>{formatCurrency(progress.paidAmountMinor)} pagados de {formatCurrency(progress.totalAmountMinor)} · Saldo {formatCurrency(Math.max(progress.totalAmountMinor - progress.paidAmountMinor, 0))}</small>}
       </div>
-      <div className="accounting-installment-progress__track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percentage}>
+      <div className="accounting-installment-progress__track" role="progressbar" aria-label="Progreso de pagos del plan" aria-valuetext={`${progress.percentage}% pagado. Saldo ${formatCurrency(Math.max(progress.totalAmountMinor - progress.paidAmountMinor, 0))}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percentage}>
         <span style={{ width: `${progress.percentage}%` }} />
       </div>
     </div>

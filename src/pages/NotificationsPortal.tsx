@@ -1,3 +1,6 @@
+import { formatCurrency as formatAccountingCurrency } from '../features/accounting/utils/accountingFormatters';
+import { SelectionPlaceholder } from '../components/SelectionPlaceholder';
+import { getMovementStatusLabel, getPaymentMethodDisplayName } from '../features/accounting/utils/paymentMethods';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   collection,
@@ -200,11 +203,7 @@ function readDateLike(value: unknown): TimestampLike | string | Date | number | 
 }
 
 function formatCurrencyMinor(amountMinor: number | null | undefined): string {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format((amountMinor ?? 0) / 100);
+  return formatAccountingCurrency(amountMinor);
 }
 
 function getReceiptSnapshot(delivery: NotificationDelivery): ReceiptSnapshot | null {
@@ -366,7 +365,7 @@ export function NotificationsPortal() {
         setLoadingOwnItems(false);
         setSelectedDelivery((current) => {
           if (!current) {
-            return items[0] ?? null;
+            return null;
           }
 
           return items.find((item) => item.id === current.id) ?? current;
@@ -392,7 +391,7 @@ export function NotificationsPortal() {
       setAdminItems(result.items);
       setSelectedDelivery((current) => {
         if (!current || view !== 'admin') {
-          return result.items[0] ?? current;
+          return current;
         }
 
         return result.items.find((item) => item.id === current.id) ?? current;
@@ -483,7 +482,7 @@ export function NotificationsPortal() {
 
   const handleSelectDelivery = async (delivery: NotificationDelivery) => {
     setSelectedDelivery(delivery);
-    setVisibleReceiptDeliveryId(null);
+    setVisibleReceiptDeliveryId(getReceiptSnapshot(delivery) ? delivery.id : null);
 
     try {
       await markRead(delivery);
@@ -598,14 +597,14 @@ export function NotificationsPortal() {
               <button
                 type="button"
                 className={`notification-tab ${view === 'mine' ? 'notification-tab--active' : ''}`}
-                onClick={() => setView('mine')}
+                role="tab" aria-selected={view === 'mine'} onClick={() => { setView('mine'); setSelectedDelivery(null); }}
               >
                 Mis notificaciones
               </button>
               <button
                 type="button"
                 className={`notification-tab ${view === 'admin' ? 'notification-tab--active' : ''}`}
-                onClick={() => setView('admin')}
+                role="tab" aria-selected={view === 'admin'} onClick={() => { setView('admin'); setSelectedDelivery(null); }}
               >
                 Administracion
               </button>
@@ -717,7 +716,7 @@ export function NotificationsPortal() {
                   <span className={`notification-status-dot notification-status-dot--${delivery.status}`} />
                   <span className="notification-row__main">
                     <strong>{delivery.titleSnapshot}</strong>
-                    <small>{delivery.bodySnapshot}</small>
+                    <small>{getReceiptSnapshot(delivery) ? `Comprobante de pago por ${formatCurrencyMinor(getReceiptSnapshot(delivery)?.grossAmountMinor)}.` : delivery.bodySnapshot}</small>
                     <span>{formatDateTime(delivery.createdAt as unknown as TimestampLike)}</span>
                   </span>
                   <span className="notification-row__meta">
@@ -836,7 +835,7 @@ export function NotificationsPortal() {
                       </div>
                       <div>
                         <dt>Medio de pago</dt>
-                        <dd>{selectedReceipt.paymentMethodId ?? 'Sin medio informado'}</dd>
+                        <dd>{getPaymentMethodDisplayName(selectedReceipt.paymentMethodId)}</dd>
                       </div>
                       <div>
                         <dt>Categoria</dt>
@@ -852,7 +851,7 @@ export function NotificationsPortal() {
                       </div>
                       <div>
                         <dt>Estado</dt>
-                        <dd>{selectedReceipt.status ?? 'posted'}</dd>
+                        <dd>{getMovementStatusLabel(selectedReceipt.status ?? 'posted')}</dd>
                       </div>
                       <div>
                         <dt>Importe bruto</dt>
@@ -905,7 +904,7 @@ export function NotificationsPortal() {
                 </div>
               </>
             ) : (
-              <div className="empty-state empty-state--inline">Selecciona una notificacion para ver el detalle.</div>
+              <SelectionPlaceholder title="Todavía no seleccionaste una notificación">Elegí un elemento de la bandeja para ver su detalle y sus comprobantes acá.</SelectionPlaceholder>
             )}
           </aside>
         </div>

@@ -409,6 +409,7 @@ export interface RegisterPaymentResult {
 }
 
 export interface RegisterMemberFeeBatchPaymentPayload {
+  expectedCommissionPctBps?: number | undefined;
   allocations: Array<{
     chargeId?: DocId;
     memberId?: DocId;

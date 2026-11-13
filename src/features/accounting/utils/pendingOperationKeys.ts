@@ -10,6 +10,7 @@
  */
 const STORAGE_PREFIX = 'accounting:pending-operation:';
 const memoryFallback = new Map<string, string>();
+const payloadFallback = new Map<string, string>();
 
 function storageKey(scope: string) {
   return STORAGE_PREFIX + scope;
@@ -25,8 +26,16 @@ function readStored(scope: string): string | null {
   return memoryFallback.get(scope) ?? null;
 }
 
-export function getOrCreateOperationKey(scope: string): string {
+export function getOrCreateOperationKey(scope: string, payload?: unknown): string {
   const existing = readStored(scope);
+  if (payload !== undefined) {
+    const fingerprint = JSON.stringify(payload);
+    let previous: string | null = payloadFallback.get(scope) ?? null;
+    try { previous = window.localStorage.getItem(storageKey(scope) + ':payload') ?? previous; } catch { /* memoria disponible */ }
+    if (existing && previous && previous !== fingerprint) throw new Error('Hay un cobro anterior pendiente de confirmar. Consultá su estado antes de cambiar los datos.');
+    payloadFallback.set(scope, fingerprint);
+    try { window.localStorage.setItem(storageKey(scope) + ':payload', fingerprint); } catch { /* conserva clave en memoria */ }
+  }
   if (existing) return existing;
   const key = crypto.randomUUID();
   memoryFallback.set(scope, key);
@@ -42,12 +51,21 @@ export function peekOperationKey(scope: string): string | null {
   return readStored(scope);
 }
 
+export function getPendingOperationPayload<T>(scope: string): T | null {
+  let raw = payloadFallback.get(scope) ?? null;
+  try { raw = window.localStorage.getItem(storageKey(scope) + ':payload') ?? raw; } catch { /* usa memoria */ }
+  if (!raw || !readStored(scope)) return null;
+  try { return JSON.parse(raw) as T; } catch { return null; }
+}
+
 /** Libera la clave solo si sigue siendo la misma que uso la operacion que termino. */
 export function releaseOperationKey(scope: string, key: string) {
   if (readStored(scope) !== key) return;
   memoryFallback.delete(scope);
+  payloadFallback.delete(scope);
   try {
     window.localStorage.removeItem(storageKey(scope));
+    window.localStorage.removeItem(storageKey(scope) + ':payload');
   } catch {
     // Nada que limpiar.
   }
@@ -66,7 +84,6 @@ export function isDefinitiveServerRejection(error: unknown): boolean {
     'functions/not-found',
     'functions/permission-denied',
     'functions/unauthenticated',
-    'functions/already-exists',
   ].includes(code);
 }
 

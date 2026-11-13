@@ -1,3 +1,4 @@
+import { MemberFeePlanRecovery } from '../components/MemberFeePlanRecovery';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
@@ -17,7 +18,7 @@ import { AccountingEmptyState } from '../components/AccountingEmptyState';
 import { AccountingInlineNotice } from '../components/AccountingInlineNotice';
 import { AccountingMonthPicker } from '../components/AccountingMonthPicker';
 import { AccountingMovementDetailModal } from '../components/AccountingMovementDetailModal';
-import { ManualIncomeForm, type ManualIncomeFormSubmitPayload } from '../components/ManualIncomeForm';
+import { ManualIncomeForm } from '../components/ManualIncomeForm';
 import { MEMBER_FEE_RENEWAL_MIN_PERIOD } from '../api/accountingApi';
 import { registerManualPayment } from '../api/memberBillingApi';
 import { isDefinitiveServerRejection, memberFeePaymentOperationScope, peekOperationKey, releaseOperationKey } from '../utils/pendingOperationKeys';
@@ -456,15 +457,11 @@ export function AccountingMemberDuesPage() {
   const [notice, setNotice] = useState<AccountingNotice>(null);
   // Avisos del modal de cobro: se muestran dentro del modal, no detras de el.
   const [renewalModalNotice, setRenewalModalNotice] = useState<AccountingNotice>(null);
-  const [renewalQuote, setRenewalQuote] = useState<{ key: string; quote: MemberFeePaymentQuote } | null>(null);
   const [saving, setSaving] = useState(false);
   const [renewalSearch, setRenewalSearch] = useState('');
   const [renewalPaymentFilter, setRenewalPaymentFilter] = useState<RenewalPaymentFilter>('all');
   const [isRenewalFiltersOpen, setIsRenewalFiltersOpen] = useState(true);
   const [renewalPaymentMember, setRenewalPaymentMember] = useState<EntityWithId<MemberDocument> | null>(null);
-  const [selectedRenewalLineKeys, setSelectedRenewalLineKeys] = useState<string[]>([]);
-  const [renewalApplyEarlyPaymentDiscount, setRenewalApplyEarlyPaymentDiscount] = useState(false);
-  const [renewalSettleAsFinalAmount, setRenewalSettleAsFinalAmount] = useState(false);
   const [reconciliationPeriod, setReconciliationPeriod] = useState(() => todayInputValue().slice(0, 7) as AccountingPeriod);
   const [reconciliationResult, setReconciliationResult] = useState<ReconcileMemberFeeRenewalsResult | null>(null);
   const [reconcilingRenewals, setReconcilingRenewals] = useState(false);
@@ -519,10 +516,7 @@ export function AccountingMemberDuesPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       setRenewalPaymentMember(null);
-      setSelectedRenewalLineKeys([]);
-      setRenewalApplyEarlyPaymentDiscount(false);
-      setRenewalSettleAsFinalAmount(false);
-    };
+      };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
@@ -642,7 +636,7 @@ export function AccountingMemberDuesPage() {
           },
         ]
       : [];
-    const quoteForMember = renewalQuote && renewalPaymentMember?.id === member.id ? renewalQuote.quote : null;
+    const quoteForMember = null;
     const lines = [...existingLines, ...generatedLine].map((line) => applyQuoteToRenewalLine(line, quoteForMember));
     return {
       openCharges,
@@ -818,191 +812,14 @@ export function AccountingMemberDuesPage() {
       return;
     }
 
-    const today = todayInputValue();
-    const currentDay = getPaymentDateDay(today);
-    const defaultApplyDiscount = summary?.period === today.slice(0, 7)
-      && currentDay >= 1
-      && currentDay <= (activeConfig?.earlyPaymentDiscountDayOfMonth ?? 10);
-    const draft = buildRenewalPaymentDraft(member, today, defaultApplyDiscount ? undefined : false);
-    setRenewalApplyEarlyPaymentDiscount(defaultApplyDiscount);
-    const initialLineKeys = member.status === 'inactive'
-      ? draft.lines.map((line) => line.key)
-      : draft.lines
-          .filter((line) => line.period === summary?.period)
-          .map((line) => line.key);
-    setSelectedRenewalLineKeys(initialLineKeys);
-    setRenewalSettleAsFinalAmount(false);
     setRenewalPaymentMember(member);
   };
 
   const closeRenewalPaymentModal = () => {
     setRenewalModalNotice(null);
-    setRenewalQuote(null);
     setRenewalPaymentMember(null);
-    setSelectedRenewalLineKeys([]);
-    setRenewalApplyEarlyPaymentDiscount(false);
-    setRenewalSettleAsFinalAmount(false);
   };
 
-  const toggleRenewalLine = (lineKey: string) => {
-    setSelectedRenewalLineKeys((current) => (
-      current.includes(lineKey)
-        ? current.filter((key) => key !== lineKey)
-        : [...current, lineKey]
-    ));
-  };
-
-  const handleRenewalPaymentSubmit = async (payload: ManualIncomeFormSubmitPayload) => {
-    if (!renewalPaymentMember || !summary?.period) {
-      throw new Error('No hay un socio o periodo seleccionado para cobrar. Cierra el cobro y vuelve a abrirlo.');
-    }
-    if (!payload.paymentMethodId) {
-      throw new Error('Selecciona un medio de pago.');
-    }
-    if (payload.paymentMethodId !== ACCOUNTING_PAYMENT_METHOD_IDS.cash && !payload.paymentReference.trim()) {
-      throw new Error('Ingresa una referencia para este medio de pago.');
-    }
-
-    // Se confirma con la cotizacion del servidor para la fecha del cobro: es el mismo calculo que
-    // aplicara al registrar, asi el saldo mostrado nunca supera al admitido.
-    const localDraft = buildRenewalPaymentDraft(renewalPaymentMember, payload.operationDate, renewalApplyEarlyPaymentDiscount);
-    const submitQuote = await accountingCallables.previewMemberFeePayment({
-      memberId: renewalPaymentMember.id,
-      periods: [...new Set(localDraft.lines.map((line) => line.period))],
-      operationDate: buildArgentinaDateIso(payload.operationDate),
-      applyEarlyPaymentDiscount: renewalApplyEarlyPaymentDiscount,
-    });
-    const draftLines = localDraft.lines.map((line) => applyQuoteToRenewalLine(line, submitQuote));
-    const selectedLines = draftLines.filter((line) => selectedRenewalLineKeys.includes(line.key));
-    if (selectedLines.some((line) => line.lockedByPartialPlan)) {
-      throw new Error('Una de las cuotas seleccionadas tiene un plan de pagos parciales activo. Registra los abonos desde el plan.');
-    }
-    const selectedAmountMinor = selectedLines.reduce((total, line) => total + line.payableAmountMinor, 0);
-    if (selectedLines.length === 0 || selectedAmountMinor <= 0) {
-      throw new Error('Selecciona al menos una cuota para cobrar.');
-    }
-    if (!willSettleRenewalAsFinalAmount && selectedAmountMinor !== selectedRenewalPaymentAmountMinor && payload.amountMinor > selectedAmountMinor) {
-      throw new Error(`El saldo de las cuotas seleccionadas es ${formatCurrency(selectedAmountMinor)}. Revisa el importe antes de confirmar.`);
-    }
-    if (payload.amountMinor <= 0 || (!willSettleRenewalAsFinalAmount && payload.amountMinor > selectedAmountMinor)) {
-      throw new Error('El pago parcial debe ser mayor a cero y no superar el total seleccionado.');
-    }
-
-    const operationScope = memberFeePaymentOperationScope(renewalPaymentMember.id);
-    {
-      const periodAllocations: Array<{ period: AccountingPeriod; amountMinor: number; expectedAvailableMinor?: number; settlementAmountMinor?: number }> = [];
-      let remainingPaymentMinor = payload.amountMinor;
-      const allocationAmountsByChargeId: Record<string, number> = {};
-      const settlementAmountsByChargeId: Record<string, number> = {};
-      const expectedAvailableByChargeId: Record<string, number> = {};
-      if (willSettleRenewalAsFinalAmount) {
-        const line = selectedLines[0];
-        const chargeId = line?.chargeId ?? null;
-        if (chargeId) {
-          allocationAmountsByChargeId[chargeId] = payload.amountMinor;
-          settlementAmountsByChargeId[chargeId] = payload.amountMinor;
-          remainingPaymentMinor = 0;
-        } else if (line?.isGeneratedCurrentPeriod) {
-          periodAllocations.push({
-            period: line.period,
-            amountMinor: payload.amountMinor,
-            settlementAmountMinor: payload.amountMinor,
-          });
-          remainingPaymentMinor = 0;
-        }
-      } else {
-        for (const line of selectedLines) {
-          if (remainingPaymentMinor <= 0) break;
-          const appliedAmountMinor = Math.min(remainingPaymentMinor, line.payableAmountMinor);
-          if (appliedAmountMinor <= 0) continue;
-          if (line.chargeId) {
-            allocationAmountsByChargeId[line.chargeId] = appliedAmountMinor;
-            expectedAvailableByChargeId[line.chargeId] = line.payableAmountMinor;
-          } else if (line.isGeneratedCurrentPeriod) {
-            periodAllocations.push({ period: line.period, amountMinor: appliedAmountMinor, expectedAvailableMinor: line.payableAmountMinor });
-          }
-          remainingPaymentMinor -= appliedAmountMinor;
-        }
-      }
-      const openItemIds = Object.keys(allocationAmountsByChargeId);
-      if ((openItemIds.length === 0 && periodAllocations.length === 0) || remainingPaymentMinor > 0) {
-        throw new Error('No se pudo distribuir el pago entre las cuotas seleccionadas.');
-      }
-
-      let receipt;
-      try {
-        receipt = await registerManualPayment({
-        memberId: renewalPaymentMember.id,
-        operationScope,
-        expectedAvailableByChargeId,
-        openItemIds,
-        paymentMethodId: payload.paymentMethodId,
-        paymentDate: payload.operationDate,
-        reference: payload.paymentReference,
-        amount: payload.amountMinor,
-        allocationAmountsByChargeId,
-        settlementAmountsByChargeId,
-        periodAllocations,
-        applyEarlyPaymentDiscount: renewalApplyEarlyPaymentDiscount,
-        notes: payload.notes,
-        });
-      } catch (paymentError) {
-        // Rechazo definitivo: no se registro nada y se puede usar otra clave. Ante un corte o
-        // demora se conserva, para que reintentar el mismo cobro no lo duplique.
-        if (isDefinitiveServerRejection(paymentError)) {
-          releaseOperationKey(operationScope, peekOperationKey(operationScope) ?? '');
-        }
-        // Se propaga para que el formulario lo muestre dentro del modal.
-        throw paymentError;
-      }
-      releaseOperationKey(receipt.operationScope, receipt.operationKey);
-      setNotice({
-        kind: 'success',
-        message: `Cobro registrado por ${formatCurrency(receipt.totalAmountMinor)}${receipt.receiptNumbers.length ? ` con recibo ${receipt.receiptNumbers.join(', ')}` : ''}.`,
-      });
-      closeRenewalPaymentModal();
-      void reload().catch((reloadError: unknown) => {
-        setNotice({ kind: 'error', message: reloadError instanceof Error ? `El cobro se registro, pero no pudimos refrescar la lista: ${reloadError.message}` : 'El cobro se registro, pero no pudimos refrescar la lista.' });
-      });
-    }
-  };
-
-  const renewalQuotePeriods = renewalPaymentMember
-    ? [...new Set([
-        ...(pendingChargesByMemberId.get(renewalPaymentMember.id) ?? []).map((charge) => charge.period),
-        ...(summary?.period ? [summary.period] : []),
-      ])].sort()
-    : [];
-  const renewalQuoteKey = renewalPaymentMember
-    ? JSON.stringify([renewalPaymentMember.id, renewalQuotePeriods, renewalApplyEarlyPaymentDiscount, todayInputValue()])
-    : '';
-  useEffect(() => {
-    if (!renewalQuoteKey || !renewalPaymentMember || renewalQuotePeriods.length === 0) return undefined;
-    let active = true;
-    accountingCallables.previewMemberFeePayment({
-      memberId: renewalPaymentMember.id,
-      periods: renewalQuotePeriods,
-      operationDate: buildArgentinaDateIso(todayInputValue()),
-      applyEarlyPaymentDiscount: renewalApplyEarlyPaymentDiscount,
-    })
-      .then((quote) => { if (active) setRenewalQuote({ key: renewalQuoteKey, quote }); })
-      .catch((quoteError: unknown) => {
-        if (active) setRenewalModalNotice({ kind: 'error', message: quoteError instanceof Error ? quoteError.message : 'No pudimos calcular los importes de las cuotas.' });
-      });
-    return () => { active = false; };
-    // renewalQuoteKey resume las entradas de la cotizacion.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renewalQuoteKey]);
-
-  const renewalPaymentDraft = renewalPaymentMember
-    ? buildRenewalPaymentDraft(renewalPaymentMember, todayInputValue(), renewalApplyEarlyPaymentDiscount)
-    : null;
-  const selectedRenewalPaymentLines = renewalPaymentDraft
-    ? renewalPaymentDraft.lines.filter((line) => selectedRenewalLineKeys.includes(line.key) && !line.lockedByPartialPlan)
-    : [];
-  const selectedRenewalPaymentAmountMinor = selectedRenewalPaymentLines.reduce((total, line) => total + line.payableAmountMinor, 0);
-  const canSettleRenewalAsFinalAmount = selectedRenewalPaymentLines.length === 1;
-  const willSettleRenewalAsFinalAmount = renewalSettleAsFinalAmount && canSettleRenewalAsFinalAmount;
 
   return (
     <div className="accounting-shell accounting-member-dues-page">
@@ -1132,8 +949,9 @@ export function AccountingMemberDuesPage() {
               helper: 'Compara movimientos de cuota con renovaciones mes a mes',
               content: (
                 <div className="accounting-full-width-section accounting-renewal-reconciliation">
+                  {canConfigureSensitive && <MemberFeePlanRecovery />}
                   <div className="profile-note">
-                    La revisión no modifica movimientos contables. Solo propone reparar cuotas con una coincidencia inequívoca por vínculo guardado o por socio y mes.
+                    La revisión no modifica movimientos contables. Solo propone reparar cuotas con una coincidencia inequívoca por vínculo guardado. Las asociaciones antiguas se eligen según comprobantes.
                   </div>
                   {canConfigure ? (
                     <>
@@ -1443,7 +1261,7 @@ export function AccountingMemberDuesPage() {
           onClose={() => setSelectedReconciliationMovement(null)}
         />
       )}
-      {renewalPaymentMember && renewalPaymentDraft && (
+      {renewalPaymentMember && (
         <div className="modal-overlay quick-actions-modal-overlay" role="presentation">
           <section
             className="member-modal-card quick-actions-modal accounting-operation-modal"
@@ -1468,107 +1286,17 @@ export function AccountingMemberDuesPage() {
               members={[renewalPaymentMember]}
               initialMember={renewalPaymentMember}
               payerReadOnly
-              fixedAmountMinor={selectedRenewalPaymentAmountMinor}
-              fixedAmountEditable
+              activeConfig={activeConfig}
+              initialFeePeriod={summary?.period}
               initialDescription="Cuota societaria"
-              initialNotes={`Cobro de cuota societaria ${selectedRenewalPaymentLines.map((line) => formatPeriod(line.period)).join(', ')}`.trim()}
+              initialNotes="Cobro de cuotas desde Renovaciones"
               showHeader={false}
               showMemberDebtAction={false}
               categoryFilterIds={[ACCOUNTING_INCOME_CATEGORY_IDS.cuotaSocietaria]}
               submitLabel="Cobrar"
               savingLabel="Cobrando..."
               onNotice={setRenewalModalNotice}
-              onSubmitPayment={handleRenewalPaymentSubmit}
-              extraDetail={(
-                <section className="renewal-payment-breakdown manual-income-fee-detail form-field--wide" aria-label="Detalle del cobro">
-                  <div className="renewal-payment-breakdown__header">
-                    <div>
-                      <strong>Detalle de cuota societaria</strong>
-                      <small>Selecciona las cuotas y ajusta el monto para registrar un pago parcial o el importe final del mes</small>
-                    </div>
-                    <span>{formatCurrency(selectedRenewalPaymentAmountMinor)}</span>
-                  </div>
-                  <label className="checkbox-row renewal-payment-discount-toggle">
-                    <input
-                      type="checkbox"
-                      checked={renewalApplyEarlyPaymentDiscount}
-                      onChange={(event) => setRenewalApplyEarlyPaymentDiscount(event.target.checked)}
-                    />
-                    <span>
-                      Aplicar descuento por pronto pago ({formatBps(activeConfig?.earlyPaymentDiscountPctBps ?? 0)})
-                      <small>Solo modifica la renovacion del mes del pago; las cuotas atrasadas conservan su importe.</small>
-                    </span>
-                  </label>
-                  <label className="checkbox-row renewal-payment-discount-toggle">
-                    <input
-                      type="checkbox"
-                      checked={willSettleRenewalAsFinalAmount}
-                      disabled={!canSettleRenewalAsFinalAmount}
-                      onChange={(event) => setRenewalSettleAsFinalAmount(event.target.checked)}
-                    />
-                    <span>
-                      Tomar este importe como monto final del mes
-                      <small>Con una sola cuota seleccionada, el mes queda pagado por el importe que ingreses, aunque sea distinto del valor configurado.</small>
-                    </span>
-                  </label>
-                  <div className="renewal-payment-selection-actions">
-                    <button type="button" className="btn-secondary" onClick={() => setSelectedRenewalLineKeys(renewalPaymentDraft.lines.filter((line) => !line.lockedByPartialPlan).map((line) => line.key))}>
-                      Seleccionar todo
-                    </button>
-                    <button type="button" className="btn-secondary" onClick={() => setSelectedRenewalLineKeys([])}>
-                      Limpiar
-                    </button>
-                  </div>
-                  {renewalPaymentDraft.lines.map((line) => (
-                    <article key={line.key} className={`renewal-payment-line ${selectedRenewalLineKeys.includes(line.key) ? 'renewal-payment-line--selected' : ''}`}>
-                      <label className="renewal-payment-line__selector">
-                        <input
-                          type="checkbox"
-                          disabled={line.lockedByPartialPlan}
-                          checked={selectedRenewalLineKeys.includes(line.key) && !line.lockedByPartialPlan}
-                          onChange={() => toggleRenewalLine(line.key)}
-                        />
-                        <span>Cobrar esta cuota</span>
-                      </label>
-                      <div className="renewal-payment-line__title">
-                        <div>
-                          <strong>Cuota societaria {formatPeriod(line.period)}</strong>
-                          <small>{line.statusLabel} - tipo {line.typeLabel}</small>
-                        </div>
-                        <strong>{formatCurrency(line.payableAmountMinor)}</strong>
-                      </div>
-                      <div className="renewal-payment-line__detail">
-                        <span>Cuota base</span>
-                        <strong>{formatCurrency(line.baseAmountMinor)}</strong>
-                      </div>
-                      {line.typeDiscountAmountMinor > 0 && (
-                        <div className="renewal-payment-line__detail">
-                          <span>Descuento por tipo de socio ({formatBps(10000 - line.appliedPctBps)})</span>
-                          <strong>-{formatCurrency(line.typeDiscountAmountMinor)}</strong>
-                        </div>
-                      )}
-                      <div className="renewal-payment-line__detail">
-                        <span>Subtotal cuota</span>
-                        <strong>{formatCurrency(line.subtotalMinor)}</strong>
-                      </div>
-                      {line.earlyDiscountAmountMinor > 0 && (
-                        <div className="renewal-payment-line__detail renewal-payment-line__detail--early">
-                          <span>Descuento por pago pronto ({formatBps(line.earlyDiscountPctBps)})</span>
-                          <strong>-{formatCurrency(line.earlyDiscountAmountMinor)}</strong>
-                        </div>
-                      )}
-                      <div className="renewal-payment-line__detail renewal-payment-line__detail--total">
-                        <span>Total de esta cuota</span>
-                        <strong>{formatCurrency(line.payableAmountMinor)}</strong>
-                      </div>
-                    </article>
-                  ))}
-                  <div className="renewal-payment-breakdown__total">
-                    <span>Total seleccionado</span>
-                    <strong>{formatCurrency(selectedRenewalPaymentAmountMinor)}</strong>
-                  </div>
-                </section>
-              )}
+              onRegistered={reload}
             />
           </section>
         </div>
