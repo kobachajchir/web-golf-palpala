@@ -33,8 +33,29 @@ for (const employeeId of ['MX0nLxwErb1pwSC6mNxQ', 'Slk7feSy09D4Vj0QIjei']) {
  audit.enabled.push(record);
 }
 const plans = await query('financial_movements','installmentRole','charge');
-for (const plan of plans.filter(x => x.categoryId === 'cuota_societaria' && x.installmentPaidAmountMinor >= x.installmentTotalAmountMinor)) {
+const charges = await query('member_fee_charges');
+const requestedPlanId = process.argv.find(value => value.startsWith('--plan-id='))?.slice('--plan-id='.length);
+for (const plan of plans.filter(x => x.categoryId === 'cuota_societaria' && (!requestedPlanId || requestedPlanId === x.id))) {
+ const payments = (await query('financial_movements', 'installmentPlanId', plan.id)).filter(x => x.installmentRole === 'payment' && x.status === 'posted');
+ const effectivePaid = payments.reduce((sum, payment) => sum + (payment.netAmountMinor ?? 0), 0);
  const allocations = plan.metadata?.memberFeeRenewalAllocations;
- if (!allocations?.length) audit.manualReview.push({planId:plan.id, reason:'Plan completo sin asignacion explicita: requiere identificar cuotas por comprobante. No se infiere por fecha del movimiento.'});
+ const mappedIds = allocations?.map(x => x.chargeId).filter(Boolean) ?? [];
+ const issues = [];
+ if (!mappedIds.length) issues.push('Sin cuotas asociadas explícitamente');
+ if (effectivePaid !== plan.installmentPaidAmountMinor) issues.push('El total guardado difiere de los pagos efectivos');
+ for (const chargeId of mappedIds) {
+  const charge = charges.find(x => x.id === chargeId);
+  if (!charge) issues.push('No existe la cuota asociada: ' + chargeId);
+  else if (effectivePaid >= (plan.installmentTotalAmountMinor ?? plan.netAmountMinor) && charge.status !== 'paid') issues.push('Plan completo con cuota pendiente: ' + chargeId);
+ }
+ if (!issues.length) continue;
+ audit.manualReview.push({
+  planId: plan.id, memberId: plan.thirdPartyId, reason: issues.join('. '),
+  capitalAmountMinor: plan.installmentBaseAmountMinor, totalAmountMinor: plan.installmentTotalAmountMinor,
+  effectivePaidAmountMinor: effectivePaid,
+  payments: payments.map(payment => ({ movementId: payment.id, amountMinor: payment.netAmountMinor, receiptNumber: payment.metadata?.receiptNumber ?? null, operationDate: payment.operationDate })),
+  candidateCharges: charges.filter(charge => charge.memberId === plan.thirdPartyId || (charge.billingMode === 'single_group_charge' && charge.holderMemberId === plan.thirdPartyId)).map(charge => ({ chargeId: charge.id, period: charge.period, status: charge.status, amountMinor: charge.settlementAmountMinor ?? charge.finalAmountMinor, remainingAmountMinor: charge.remainingAmountMinor })),
+  action: 'Revisar comprobantes en Cuotas > Sincronización > Asociar cuotas a un plan antiguo. No se infiere por fecha ni se aplican reparaciones desde este inventario.',
+ });
 }
 console.log(JSON.stringify(audit,null,2));
